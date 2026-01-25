@@ -133,3 +133,43 @@ export async function respondToPermission(allow: boolean, message?: string): Pro
 export async function getLaunchDir(): Promise<string> {
   return await invoke<string>("get_launch_dir");
 }
+
+// ============================================================================
+// Sync Functions (CCMS integration)
+// ============================================================================
+
+export interface SyncResult {
+  success: boolean;
+  output: string;
+  error?: string;
+}
+
+/**
+ * Pull latest ~/.claude/ from remote machine
+ * Called on app startup to get latest session data
+ */
+export async function syncPull(): Promise<SyncResult> {
+  return await invoke<SyncResult>("sync_pull");
+}
+
+/**
+ * Push local ~/.claude/ to remote machine
+ * Called periodically during work and on app close
+ */
+export async function syncPush(): Promise<SyncResult> {
+  return await invoke<SyncResult>("sync_push");
+}
+
+/**
+ * Get sync status (dry-run showing what would change)
+ */
+export async function syncStatus(): Promise<SyncResult> {
+  return await invoke<SyncResult>("sync_status");
+}
+
+/**
+ * Check if sync is available (ccms installed and configured)
+ */
+export async function isSyncAvailable(): Promise<boolean> {
+  return await invoke<boolean>("is_sync_available");
+}
