@@ -54,8 +54,20 @@ A native macOS desktop app that wraps Claude Code CLI, providing a streamlined t
 | `tool_pending` | Tool is about to execute |
 | `tool_result` | Tool execution completed (includes `tool_use_id` for matching) |
 | `text_delta` | Streaming text chunk from Claude |
+| `thinking_delta` | Extended thinking chunk (when enabled) |
+| `context_update` | Real-time token usage at response start |
 | `result` | Final response metadata (tokens, cost, duration) |
 | `done` | Response complete |
+
+### Context Window Tracking
+
+The app displays real-time context usage in the status bar. Token tracking uses this formula:
+
+```
+context = input_tokens + cache_read + cache_creation + output_tokens
+```
+
+Key insight: With Anthropic's prompt caching, `input_tokens` only represents tokens AFTER the last cache breakpoint—it can be as small as 10 tokens even when the actual context is 30k+. The `cache_read` and `cache_creation` fields contain the rest.
 
 ## Local Tools vs Server-Side Tools
 
@@ -155,6 +167,41 @@ loop {
         _ => break,
     }
 }
+```
+
+### 7. Token Counting is Tricky with Prompt Caching
+Anthropic's caching changes how tokens are reported. A common mistake:
+
+```javascript
+// WRONG - input_tokens alone can be tiny (~10) when caching is active
+const context = usage.input_tokens;
+
+// CORRECT - must include all cache components
+const context = usage.input_tokens +
+                usage.cache_read_input_tokens +
+                usage.cache_creation_input_tokens;
+```
+
+The `cache_creation_input_tokens` represents tokens being cached for the FIRST time—they're in the context but not yet cached. On subsequent requests, they move to `cache_read`.
+
+### 8. Multiple Events Can Update the Same State
+Different events (`context_update` vs `result`) can try to update the same state with different values. Use a **single source of truth**:
+- `context_update` (from `message_start`) → Sets input context
+- `result` → Only ADDS output tokens
+
+Don't let `result`'s `input_tokens` overwrite context—it has different semantics (CLI aggregates differently than raw API).
+
+### 9. SolidJS Show Components Need Stable Conditions
+Using `<Show when={value}>` with values that can be 0 or undefined causes flickering:
+
+```jsx
+// BAD - flickers when totalContext is 0
+<Show when={sessionInfo().totalContext}>
+
+// GOOD - stable condition
+<Show when={sessionActive()}>
+  {sessionInfo().totalContext ? `${Math.round(sessionInfo().totalContext / 1000)}k` : '—'}
+</Show>
 ```
 
 ## File Structure

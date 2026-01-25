@@ -183,17 +183,104 @@ Events flow from Claude CLI through the bridge to the frontend:
 
 | Event | Description |
 |-------|-------------|
-| `status` | Bridge status messages |
+| `status` | Bridge status messages (including compaction notifications) |
 | `ready` | Session initialized with model info |
 | `processing` | User message being processed |
 | `text_delta` | Streaming text chunk |
+| `thinking_start` | Extended thinking block begins |
+| `thinking_delta` | Streaming thinking chunk |
 | `tool_start` | Tool invocation beginning |
 | `tool_input` | Streaming tool input JSON |
 | `tool_pending` | Tool about to execute |
 | `tool_result` | Tool execution completed |
 | `block_end` | Content block finished |
+| `context_update` | Real-time token usage (from message_start) |
 | `result` | Final response with metadata (cost, tokens, etc.) |
 | `done` | Response complete |
+
+## Context Window & Token Tracking
+
+The app tracks context window usage in real-time via a multi-stage pipeline.
+
+### Anthropic API Token Semantics
+
+Understanding how Anthropic reports tokens is critical:
+
+| Field | Meaning |
+|-------|---------|
+| `input_tokens` | Tokens AFTER the last cache breakpoint (can be very small with caching) |
+| `cache_read_input_tokens` | Tokens served FROM cache (already cached content) |
+| `cache_creation_input_tokens` | Tokens being written TO cache (first-time caching) |
+| `output_tokens` | Generated response tokens (includes thinking tokens) |
+
+### Correct Context Formula
+
+```
+context_used = input_tokens + cache_read + cache_creation + output_tokens
+```
+
+All tokens count toward the 200k context limit. **Caching saves cost, NOT context space.**
+
+### Token Update Flow
+
+```
+User sends message
+       │
+       ▼
+[message_start event fires - START of response]
+       │
+       ▼
+Bridge extracts usage from event.message.usage
+       │
+       ▼
+Bridge calculates: input + cache_read + cache_creation
+       │
+       ▼
+Bridge sends context_update event
+       │
+       ▼
+Rust parses and forwards to frontend
+       │
+       ▼
+Frontend sets totalContext (replaces, doesn't accumulate)
+       │
+       ▼
+Display shows: "26k"
+       │
+       ▼
+[Response streams...]
+       │
+       ▼
+[result event fires - END of response]
+       │
+       ▼
+Frontend ADDS output_tokens to totalContext
+       │
+       ▼
+Display shows: "27k"
+       │
+       ▼
+[Next message's message_start includes previous output]
+```
+
+### Why Replace Instead of Accumulate?
+
+Each `message_start` reports the TOTAL tokens for that API call, including:
+- System prompt
+- All previous conversation turns
+- New user message
+
+So we **replace** `totalContext` with the new value (not add to it). Output tokens are added separately because they're not included in `message_start`.
+
+### Context Thresholds
+
+| Threshold | Level | Behavior |
+|-----------|-------|----------|
+| < 60% | OK | Normal display |
+| 60%+ | Warning | Yellow indicator, suggest compaction |
+| 75%+ | Critical | Red indicator, auto-compact imminent |
+
+The CLI auto-compacts around 75% to preserve working memory for reasoning.
 
 ## State Management
 
