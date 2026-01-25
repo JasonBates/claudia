@@ -184,7 +184,8 @@ const MessageList: Component<MessageListProps> = (props) => {
                   // Find indices for cursor/streaming state logic
                   const blocks = props.streamingBlocks || [];
                   const lastThinkingIndex = blocks.map((b, i) => b.type === "thinking" ? i : -1).filter(i => i >= 0).pop() ?? -1;
-                  const lastTextIndex = blocks.map((b, i) => b.type === "text" ? i : -1).filter(i => i >= 0).pop() ?? -1;
+                  // Only show cursor if the very last block is text (meaning text is actively streaming)
+                  const isTextStreamingAtEnd = blocks.length > 0 && blocks[blocks.length - 1].type === "text";
 
                   return (
                     <Show when={block.type === "thinking"} fallback={
@@ -199,8 +200,8 @@ const MessageList: Component<MessageListProps> = (props) => {
                         </div>
                       }>
                         <MessageContent content={(block as { type: "text"; content: string }).content} />
-                        {/* Show cursor after last text block */}
-                        <Show when={index() === lastTextIndex}>
+                        {/* Show cursor only when this is the last block AND it's text (actively streaming) */}
+                        <Show when={isTextStreamingAtEnd && index() === blocks.length - 1}>
                           <span class="cursor">|</span>
                         </Show>
                       </Show>
