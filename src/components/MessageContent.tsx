@@ -65,7 +65,74 @@ const CodeBlock: Component<{ code: string; lang: string }> = (props) => {
   );
 };
 
+// Callout icons for different types
+const calloutIcons: Record<string, string> = {
+  insight: '✎',
+  note: '✎',
+  tip: '💡',
+  info: 'ℹ',
+  warning: '⚠',
+  danger: '⚠',
+  example: '→',
+  quote: '❝',
+  success: '✓',
+  question: '?',
+};
+
+function processCallouts(content: string): string {
+  const lines = content.split('\n');
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Check for callout start: > [!type] or > [!type] Title
+    const calloutMatch = line.match(/^>\s*\[!(\w+)\]\s*(.*)$/i);
+    if (calloutMatch) {
+      const calloutType = calloutMatch[1].toLowerCase();
+      const calloutTitle = calloutMatch[2] || calloutType.charAt(0).toUpperCase() + calloutType.slice(1);
+      const icon = calloutIcons[calloutType] || '✎';
+
+      // Collect all callout content lines
+      const contentLines: string[] = [];
+      let j = i + 1;
+      while (j < lines.length) {
+        const nextLine = lines[j];
+        // Continue if line starts with > (callout continuation)
+        if (nextLine.match(/^>\s?(.*)$/)) {
+          const contentMatch = nextLine.match(/^>\s?(.*)$/);
+          contentLines.push(contentMatch ? contentMatch[1] : '');
+          j++;
+        } else {
+          break;
+        }
+      }
+
+      // Build callout HTML
+      const calloutContent = contentLines.join('<br>');
+      result.push(
+        `<div class="callout callout-${calloutType}">` +
+        `<div class="callout-header"><span class="callout-icon">${icon}</span><span class="callout-title">${calloutTitle}</span></div>` +
+        `<div class="callout-content">${calloutContent}</div>` +
+        `</div>`
+      );
+
+      i = j;
+      continue;
+    }
+
+    result.push(line);
+    i++;
+  }
+
+  return result.join('\n');
+}
+
 function processMarkdownWithTables(content: string): string {
+  // Process callouts first
+  content = processCallouts(content);
+
   const lines = content.split('\n');
   const result: string[] = [];
   let i = 0;

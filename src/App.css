@@ -1,19 +1,38 @@
-/* Terminal-inspired dark theme with proportional fonts */
+/* Solarized Dark theme with proportional fonts */
 
 :root {
-  --bg: #1a1b26;
-  --bg-secondary: #24283b;
-  --bg-tertiary: #16161e;
-  --fg: #a9b1d6;
-  --fg-muted: #565f89;
-  --accent: #7aa2f7;
-  --accent-secondary: #bb9af7;
-  --success: #9ece6a;
-  --warning: #e0af68;
-  --error: #f7768e;
-  --border: #414868;
-  --user-bg: #24283b;
-  --code-bg: #16161e;
+  /* Solarized Dark base colors */
+  --base03: #002b36;  /* darkest background */
+  --base02: #073642;  /* background highlights */
+  --base01: #586e75;  /* comments, secondary content */
+  --base00: #657b83;  /* optional emphasized content */
+  --base0: #839496;   /* body text */
+  --base1: #93a1a1;   /* optional emphasized content */
+
+  /* Solarized accent colors */
+  --yellow: #b58900;
+  --orange: #cb4b16;
+  --red: #dc322f;
+  --magenta: #d33682;
+  --violet: #6c71c4;
+  --blue: #268bd2;
+  --cyan: #2aa198;
+  --green: #859900;
+
+  /* Theme mappings */
+  --bg: var(--base03);
+  --bg-secondary: var(--base02);
+  --bg-tertiary: #001e26;
+  --fg: var(--base1);          /* brighter: base1 instead of base0 */
+  --fg-muted: var(--base00);   /* brighter: base00 instead of base01 */
+  --accent: var(--blue);
+  --accent-secondary: var(--violet);
+  --success: var(--green);
+  --warning: var(--yellow);
+  --error: var(--red);
+  --border: #0a4959;
+  --user-bg: var(--base02);
+  --code-bg: #001e26;
 }
 
 * {
@@ -32,7 +51,7 @@ body,
 body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.6;
   background: var(--bg);
   color: var(--fg);
@@ -82,11 +101,11 @@ body {
 }
 
 .status-indicator.connected .status-icon {
-  color: rgba(158, 206, 106, 0.6);
+  color: rgba(133, 153, 0, 0.7);  /* Solarized green */
 }
 
 .status-indicator.disconnected .status-icon {
-  color: rgba(247, 118, 142, 0.6);
+  color: rgba(220, 50, 47, 0.7);  /* Solarized red */
 }
 
 .context-mini {
@@ -96,11 +115,11 @@ body {
 }
 
 .context-mini.warning {
-  color: rgba(224, 175, 104, 0.8);
+  color: rgba(181, 137, 0, 0.9);  /* Solarized yellow */
 }
 
 .context-mini.danger {
-  color: rgba(247, 118, 142, 0.8);
+  color: rgba(220, 50, 47, 0.9);  /* Solarized red */
 }
 
 .app-main {
@@ -122,7 +141,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  background: rgba(247, 118, 142, 0.15);
+  background: rgba(220, 50, 47, 0.15);  /* Solarized red */
   color: var(--error);
   font-size: 13px;
 }
@@ -138,7 +157,7 @@ body {
 }
 
 .error-banner button:hover {
-  background: rgba(247, 118, 142, 0.2);
+  background: rgba(220, 50, 47, 0.25);  /* Solarized red */
 }
 
 /* Message List */
@@ -192,8 +211,8 @@ body {
 }
 
 .message-system .message-body {
-  background: rgba(224, 175, 104, 0.1);
-  border: 1px solid rgba(224, 175, 104, 0.3);
+  background: rgba(181, 137, 0, 0.1);  /* Solarized yellow */
+  border: 1px solid rgba(181, 137, 0, 0.3);
 }
 
 .streaming .message-body {
@@ -294,6 +313,117 @@ body {
   font-style: italic;
 }
 
+/* Obsidian-style Callouts */
+.callout {
+  display: block;
+  margin: 12px 0;
+  padding: 12px 16px;
+  border-radius: 6px;
+  border-left: 4px solid var(--cyan);
+  background: rgba(7, 54, 66, 0.5);  /* base02 with transparency */
+}
+
+.callout-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.callout-icon {
+  font-size: 14px;
+  color: var(--cyan);
+  opacity: 0.9;
+}
+
+.callout-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cyan);
+  text-transform: capitalize;
+}
+
+.callout-content {
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Callout type variants */
+.callout-insight,
+.callout-note {
+  border-left-color: var(--cyan);
+}
+.callout-insight .callout-icon,
+.callout-insight .callout-title,
+.callout-note .callout-icon,
+.callout-note .callout-title {
+  color: var(--cyan);
+}
+
+.callout-tip {
+  border-left-color: var(--green);
+  background: rgba(133, 153, 0, 0.1);
+}
+.callout-tip .callout-icon,
+.callout-tip .callout-title {
+  color: var(--green);
+}
+
+.callout-warning {
+  border-left-color: var(--yellow);
+  background: rgba(181, 137, 0, 0.1);
+}
+.callout-warning .callout-icon,
+.callout-warning .callout-title {
+  color: var(--yellow);
+}
+
+.callout-danger {
+  border-left-color: var(--red);
+  background: rgba(220, 50, 47, 0.1);
+}
+.callout-danger .callout-icon,
+.callout-danger .callout-title {
+  color: var(--red);
+}
+
+.callout-info {
+  border-left-color: var(--blue);
+  background: rgba(38, 139, 210, 0.1);
+}
+.callout-info .callout-icon,
+.callout-info .callout-title {
+  color: var(--blue);
+}
+
+.callout-example {
+  border-left-color: var(--violet);
+  background: rgba(108, 113, 196, 0.1);
+}
+.callout-example .callout-icon,
+.callout-example .callout-title {
+  color: var(--violet);
+}
+
+.callout-success {
+  border-left-color: var(--green);
+  background: rgba(133, 153, 0, 0.1);
+}
+.callout-success .callout-icon,
+.callout-success .callout-title {
+  color: var(--green);
+}
+
+.callout-question {
+  border-left-color: var(--orange);
+  background: rgba(203, 75, 22, 0.1);
+}
+.callout-question .callout-icon,
+.callout-question .callout-title {
+  color: var(--orange);
+}
+
 /* Markdown HR */
 .md-hr {
   border: none;
@@ -346,10 +476,10 @@ del {
   font-family: "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Monaco,
     "Courier New", monospace;
   font-size: 0.9em;
-  background: var(--code-bg);
+  background: rgba(7, 54, 66, 0.6);  /* subtle base02 */
   padding: 2px 6px;
   border-radius: 4px;
-  color: var(--accent);
+  color: var(--cyan);  /* softer than blue accent */
 }
 
 /* Code Blocks */
@@ -364,7 +494,7 @@ del {
   display: flex;
   justify-content: space-between;
   padding: 6px 12px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(147, 161, 161, 0.05);  /* Solarized base1 */
   border-bottom: 1px solid var(--border);
 }
 
@@ -600,7 +730,7 @@ del {
   font-size: 11px;
   font-family: "SF Mono", monospace;
   color: var(--accent);
-  background: rgba(122, 162, 247, 0.15);
+  background: rgba(38, 139, 210, 0.2);  /* Solarized blue */
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -717,7 +847,7 @@ del {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--accent);
-  background: rgba(122, 162, 247, 0.15);
+  background: rgba(38, 139, 210, 0.2);  /* Solarized blue */
   padding: 4px 10px;
   border-radius: 4px;
 }
@@ -752,12 +882,12 @@ del {
 
 .question-option:hover {
   border-color: var(--accent);
-  background: rgba(122, 162, 247, 0.1);
+  background: rgba(38, 139, 210, 0.12);  /* Solarized blue */
 }
 
 .question-option.selected {
   border-color: var(--accent);
-  background: rgba(122, 162, 247, 0.15);
+  background: rgba(38, 139, 210, 0.2);  /* Solarized blue */
 }
 
 .option-label {
@@ -926,7 +1056,7 @@ del {
 
 .mode-indicator:hover {
   border-color: var(--accent);
-  background: rgba(122, 162, 247, 0.1);
+  background: rgba(38, 139, 210, 0.12);  /* Solarized blue */
 }
 
 .mode-icon {
@@ -949,18 +1079,18 @@ del {
 }
 
 .mode-plan {
-  border-color: #5c6bc0;
-  background: rgba(92, 107, 192, 0.15);
+  border-color: var(--cyan);
+  background: rgba(42, 161, 152, 0.15);  /* Solarized cyan */
 }
 
 .mode-plan .mode-icon,
 .mode-plan .mode-label {
-  color: #a5d6ff;
+  color: var(--cyan);
 }
 
 .mode-auto {
   border-color: var(--warning);
-  background: rgba(224, 175, 104, 0.15);
+  background: rgba(181, 137, 0, 0.15);  /* Solarized yellow */
 }
 
 .mode-auto .mode-icon,
@@ -993,17 +1123,17 @@ del {
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
-  background: linear-gradient(135deg, #3b4261 0%, #2d3250 100%);
-  border-bottom: 1px solid #5c6bc0;
+  background: linear-gradient(135deg, #073642 0%, #002b36 100%);
+  border-bottom: 1px solid var(--cyan);
   animation: planningPulse 2s ease-in-out infinite;
 }
 
 @keyframes planningPulse {
   0%, 100% {
-    background: linear-gradient(135deg, #3b4261 0%, #2d3250 100%);
+    background: linear-gradient(135deg, #073642 0%, #002b36 100%);
   }
   50% {
-    background: linear-gradient(135deg, #434869 0%, #353a5c 100%);
+    background: linear-gradient(135deg, #0a4959 0%, #073642 100%);
   }
 }
 
@@ -1014,13 +1144,13 @@ del {
 .planning-text {
   font-size: 13px;
   font-weight: 600;
-  color: #a5d6ff;
+  color: var(--cyan);
 }
 
 .planning-file {
   font-family: "SF Mono", monospace;
   font-size: 11px;
-  color: #7aa2f7;
+  color: var(--blue);
   opacity: 0.7;
   margin-left: auto;
 }
@@ -1126,7 +1256,7 @@ del {
 
 .plan-btn-approve {
   background: var(--success);
-  color: #1a1b26;
+  color: var(--base03);
 }
 
 .plan-btn-approve:hover {
@@ -1141,7 +1271,7 @@ del {
 
 .plan-btn-changes:hover {
   border-color: var(--accent);
-  background: rgba(122, 162, 247, 0.1);
+  background: rgba(38, 139, 210, 0.12);  /* Solarized blue */
 }
 
 .plan-btn-cancel {
@@ -1180,7 +1310,7 @@ del {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(224, 175, 104, 0.15);
+  background: rgba(181, 137, 0, 0.15);  /* Solarized yellow */
   border-radius: 6px;
   font-family: "SF Mono", monospace;
   font-size: 14px;
@@ -1228,7 +1358,7 @@ del {
 
 .permission-allow {
   background: var(--success);
-  color: #1a1b26;
+  color: var(--base03);
 }
 
 .permission-allow:hover {
@@ -1236,17 +1366,17 @@ del {
 }
 
 .permission-always {
-  background: rgba(158, 206, 106, 0.2);
+  background: rgba(133, 153, 0, 0.2);  /* Solarized green */
   color: var(--success);
   border: 1px solid var(--success);
 }
 
 .permission-always:hover {
-  background: rgba(158, 206, 106, 0.3);
+  background: rgba(133, 153, 0, 0.3);  /* Solarized green */
 }
 
 .permission-deny {
-  background: rgba(247, 118, 142, 0.15);
+  background: rgba(220, 50, 47, 0.15);  /* Solarized red */
   color: var(--error);
   border: 1px solid transparent;
 }
