@@ -17,9 +17,8 @@ const CommandInput: Component<CommandInputProps> = (props) => {
   let textareaRef: HTMLTextAreaElement | undefined;
 
   const focusInput = () => {
-    if (!props.disabled) {
-      textareaRef?.focus();
-    }
+    // Always allow focus - disabled only prevents submission, not typing
+    textareaRef?.focus();
   };
 
   onMount(() => {
@@ -143,16 +142,8 @@ const CommandInput: Component<CommandInputProps> = (props) => {
         onInput={handleInput}
         onKeyDown={handleKeyDown}
         placeholder={props.placeholder || "Type a message..."}
-        disabled={props.disabled}
         rows={1}
       />
-      <button
-        class="command-submit"
-        onClick={submit}
-        disabled={props.disabled || !value().trim()}
-      >
-        Send
-      </button>
     </div>
   );
 };

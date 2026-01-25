@@ -382,14 +382,21 @@ function App() {
             return updated;
           });
 
-          // Also update in streamingBlocks
+          // Also update in streamingBlocks - create new objects for reactivity
           setStreamingBlocks(prev => {
             const blocks = [...prev];
             // Find last tool_use block
             for (let i = blocks.length - 1; i >= 0; i--) {
               if (blocks[i].type === "tool_use") {
                 const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
-                toolBlock.tool.input = parsedInput;
+                // Create new block object to trigger SolidJS reactivity
+                blocks[i] = {
+                  type: "tool_use",
+                  tool: {
+                    ...toolBlock.tool,
+                    input: parsedInput,
+                  }
+                };
                 break;
               }
             }
@@ -399,46 +406,83 @@ function App() {
         break;
 
       case "tool_result":
-        // Tool finished - update the last tool
+        // Tool finished - update the matching tool by ID
         if (isCollectingTodoWrite) {
           isCollectingTodoWrite = false;
           // Don't add to currentToolUses - shown in panel instead
         } else if (isCollectingQuestion) {
           isCollectingQuestion = false;
           // Keep question panel visible until user answers
-        } else if (currentToolUses().length > 0) {
+        } else {
           const resultData = {
             result: event.is_error ? `Error: ${event.stderr || event.stdout}` : (event.stdout || event.stderr || ""),
             isLoading: false,
           };
+          const targetToolId = event.tool_use_id;
 
-          // Update currentToolUses
+          console.log("[TOOL_RESULT] Received tool_use_id:", targetToolId, "result length:", resultData.result.length);
+
+          // Update currentToolUses - find by ID or fall back to last tool
           setCurrentToolUses(prev => {
+            if (prev.length === 0) {
+              console.log("[TOOL_RESULT] No tools in currentToolUses, skipping update");
+              return prev;
+            }
             const updated = [...prev];
-            const lastTool = updated[updated.length - 1];
+            // Find tool by ID, or use last tool as fallback
+            let toolIndex = targetToolId
+              ? updated.findIndex(t => t.id === targetToolId)
+              : updated.length - 1;
+            if (toolIndex === -1) toolIndex = updated.length - 1;
+
+            const tool = updated[toolIndex];
+            console.log("[TOOL_RESULT] Updating tool:", tool.name, "at index:", toolIndex);
+
             // Check if this is a Read tool result for the plan file
-            if (lastTool.name === "Read" && planFilePath()) {
-              const inputPath = (lastTool.input as any)?.file_path || "";
+            if (tool.name === "Read" && planFilePath()) {
+              const inputPath = (tool.input as any)?.file_path || "";
               if (inputPath === planFilePath()) {
                 setPlanContent(event.stdout || "");
               }
             }
-            lastTool.result = resultData.result;
-            lastTool.isLoading = resultData.isLoading;
+            updated[toolIndex] = {
+              ...tool,
+              result: resultData.result,
+              isLoading: resultData.isLoading,
+            };
             return updated;
           });
 
-          // Also update in streamingBlocks
+          // Also update in streamingBlocks - find by ID for correct matching
           setStreamingBlocks(prev => {
             const blocks = [...prev];
-            // Find last tool_use block
+            // Find matching tool_use block by ID, or fall back to last one
+            let foundIndex = -1;
             for (let i = blocks.length - 1; i >= 0; i--) {
               if (blocks[i].type === "tool_use") {
                 const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
-                toolBlock.tool.result = resultData.result;
-                toolBlock.tool.isLoading = resultData.isLoading;
-                break;
+                if (targetToolId && toolBlock.tool.id === targetToolId) {
+                  foundIndex = i;
+                  break;
+                }
+                if (foundIndex === -1) foundIndex = i; // Remember last one as fallback
               }
+            }
+
+            if (foundIndex !== -1) {
+              const toolBlock = blocks[foundIndex] as { type: "tool_use"; tool: ToolUse };
+              console.log("[TOOL_RESULT] Updating streamingBlocks tool:", toolBlock.tool.name, "at index:", foundIndex);
+              // Create new block object to trigger SolidJS reactivity
+              blocks[foundIndex] = {
+                type: "tool_use",
+                tool: {
+                  ...toolBlock.tool,
+                  result: resultData.result,
+                  isLoading: resultData.isLoading,
+                }
+              };
+            } else {
+              console.log("[TOOL_RESULT] No matching tool_use block found in streamingBlocks");
             }
             return blocks;
           });

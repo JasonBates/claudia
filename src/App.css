@@ -541,7 +541,7 @@ del {
 /* Floating Todo Panel */
 .todo-panel {
   position: fixed;
-  bottom: 80px;
+  top: 50px;
   right: 20px;
   width: 300px;
   background: var(--bg-secondary);
@@ -560,7 +560,7 @@ del {
 @keyframes fadeSlideIn {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(-10px);
   }
   to {
     opacity: 1;

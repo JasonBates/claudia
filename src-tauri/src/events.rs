@@ -39,6 +39,7 @@ pub enum ClaudeEvent {
 
     /// Tool execution result
     ToolResult {
+        tool_use_id: Option<String>,
         stdout: Option<String>,
         stderr: Option<String>,
         is_error: bool,

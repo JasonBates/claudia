@@ -8,10 +8,44 @@
 
 import { spawn } from "child_process";
 import * as readline from "readline";
-import { writeFileSync, appendFileSync } from "fs";
+import { writeFileSync, appendFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
-import { tmpdir } from "os";
+import { tmpdir, homedir } from "os";
 import { fileURLToPath } from "url";
+
+// Find binary in common locations (PATH not available in bundled app)
+function findBinary(name) {
+  const home = homedir();
+  const candidates = [
+    join(home, ".local/bin", name),
+    join(home, ".nvm/versions/node/v22.16.0/bin", name),
+    `/usr/local/bin/${name}`,
+    `/opt/homebrew/bin/${name}`,
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return name; // fallback to PATH
+}
+
+// Get timezone (already descriptive: "Europe/London", "America/Chicago", etc.)
+function getTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+// Format current date/time for prompt injection
+function getDateTimePrefix() {
+  const now = new Date();
+  return now.toLocaleString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -44,32 +78,22 @@ async function main() {
   // Spawn Claude CLI with streaming
   sendEvent("status", { message: "Starting Claude..." });
 
-  // Track pending control requests for permission responses
-  const pendingControlRequests = new Map();
+  const claudePath = findBinary("claude");
 
-  // Path to our permission MCP server
-  const permissionServerPath = join(__dirname, "permission-mcp-server.mjs");
+  // Detect timezone once at startup
+  const userTimezone = getTimezone();
+  debugLog("TIMEZONE", userTimezone);
+  debugLog("CLAUDE_PATH", claudePath);
 
-  // MCP config for our permission server
-  const mcpConfig = {
-    mcpServers: {
-      permission: {
-        command: "node",
-        args: [permissionServerPath],
-      }
-    }
-  };
-
-  debugLog("MCP_CONFIG", mcpConfig);
-
-  const claude = spawn("claude", [
+  // Let CLI load MCP servers and agents from user's global config (~/.claude/)
+  const claude = spawn(claudePath, [
     "--input-format", "stream-json",
     "--output-format", "stream-json",
     "--include-partial-messages",
     "--model", "opus",
     "--verbose",
-    "--mcp-config", JSON.stringify(mcpConfig),
-    "--permission-prompt-tool", "mcp__permission__permission_prompt"
+    "--dangerously-skip-permissions",
+    "--append-system-prompt", `User's timezone: ${userTimezone}`
   ], {
     stdio: ["pipe", "pipe", "pipe"]
   });
@@ -106,7 +130,23 @@ async function main() {
           break;
 
         case "user":
-          // Tool result embedded in user message
+          // Tool result embedded in user message (e.g., WebSearch results)
+          debugLog("USER_MSG", { hasContent: !!msg.message?.content, isArray: Array.isArray(msg.message?.content) });
+          if (msg.message?.content && Array.isArray(msg.message.content)) {
+            for (const item of msg.message.content) {
+              debugLog("USER_CONTENT_ITEM", { type: item.type, hasContent: !!item.content });
+              if (item.type === "tool_result") {
+                debugLog("TOOL_RESULT_FROM_USER", { toolUseId: item.tool_use_id, contentLength: item.content?.length });
+                sendEvent("tool_result", {
+                  tool_use_id: item.tool_use_id,
+                  stdout: typeof item.content === 'string' ? item.content : JSON.stringify(item.content),
+                  stderr: "",
+                  isError: item.is_error || false
+                });
+              }
+            }
+          }
+          // Legacy format
           if (msg.tool_use_result) {
             sendEvent("tool_result", {
               stdout: msg.tool_use_result.stdout?.slice(0, 500),
@@ -254,11 +294,45 @@ async function main() {
       }
     }
 
+    // Handle slash commands locally
+    if (input.startsWith("/")) {
+      const [cmd, ...args] = input.slice(1).split(" ");
+      debugLog("SLASH_CMD", { cmd, args });
+
+      switch (cmd.toLowerCase()) {
+        case "exit":
+        case "quit":
+          sendEvent("status", { message: "Exiting..." });
+          claude.kill();
+          process.exit(0);
+          return;
+        case "clear":
+          // Send clear command to CLI
+          const clearMsg = JSON.stringify({ type: "command", command: "clear" }) + "\n";
+          claude.stdin.write(clearMsg);
+          sendEvent("status", { message: "Conversation cleared" });
+          return;
+        case "help":
+          sendEvent("status", { message: "Commands: /exit, /clear, /help. Other messages are sent to Claude." });
+          return;
+        default:
+          // Try sending as command, fall through to user message if not recognized
+          const cmdMsg = JSON.stringify({ type: "command", command: input }) + "\n";
+          debugLog("CLAUDE_CMD", cmdMsg);
+          claude.stdin.write(cmdMsg);
+          return;
+      }
+    }
+
     sendEvent("processing", { prompt: input });
+
+    // Inject current date/time with each message
+    const dateTime = getDateTimePrefix();
+    const contextualInput = `[${dateTime}] ${input}`;
 
     const msg = JSON.stringify({
       type: "user",
-      message: { role: "user", content: input }
+      message: { role: "user", content: contextualInput }
     }) + "\n";
 
     debugLog("CLAUDE_STDIN", msg);

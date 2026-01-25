@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "claude-terminal",
+  "productName": "CT",
   "version": "0.1.0",
-  "identifier": "com.jasonbates.claude-terminal",
+  "identifier": "com.jasonbates.ct",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "claude-terminal",
+        "title": "CT",
         "width": 800,
         "height": 600,
         "titleBarStyle": "Overlay",

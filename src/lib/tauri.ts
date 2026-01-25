@@ -37,6 +37,7 @@ export interface ClaudeEvent {
   tool_input?: unknown;
   description?: string;
   // ToolResult
+  tool_use_id?: string;
   stdout?: string;
   stderr?: string;
   is_error?: boolean;

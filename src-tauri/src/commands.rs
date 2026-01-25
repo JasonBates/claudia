@@ -82,6 +82,30 @@ pub async fn send_message(
 
     cmd_debug_log("SEND", &format!("Message: {}", &message[..message.len().min(50)]));
 
+    // Stream responses - clone Arc for streaming loop
+    let process_arc = state.process.clone();
+
+    // Drain any stale events from previous response before sending new message
+    {
+        let mut process_guard = process_arc.lock().await;
+        if let Some(process) = process_guard.as_mut() {
+            cmd_debug_log("DRAIN", "Draining stale events...");
+            let mut drained = 0;
+            loop {
+                match timeout(Duration::from_millis(10), process.recv_event()).await {
+                    Ok(Some(event)) => {
+                        cmd_debug_log("DRAIN", &format!("Drained: {:?}", event));
+                        drained += 1;
+                    }
+                    _ => break,
+                }
+            }
+            if drained > 0 {
+                cmd_debug_log("DRAIN", &format!("Drained {} stale events", drained));
+            }
+        }
+    }
+
     // Send message (brief lock)
     {
         let mut process_guard = state.process.lock().await;
@@ -94,15 +118,13 @@ pub async fn send_message(
         cmd_debug_log("SEND", "Message sent to process");
     }
 
-    // Stream responses - clone Arc for streaming loop
-    let process_arc = state.process.clone();
-
     // Read events with timeout to detect end of response
     // Note: Claude can take several seconds to start streaming, especially on first request
     let mut idle_count = 0;
     let max_idle = 60; // Wait up to 30 seconds (60 x 500ms) for initial response
     let mut event_count = 0;
     let mut got_first_content = false;
+    let mut tool_pending = false; // Track if a tool is executing on server (e.g., WebSearch)
 
     cmd_debug_log("LOOP", "Starting event receive loop");
 
@@ -116,9 +138,10 @@ pub async fn send_message(
             }
         };
 
-        // Once we've received content, use shorter timeout (content streaming is fast)
-        let current_timeout = if got_first_content { 2000 } else { 500 };
-        let current_max_idle = if got_first_content { 3 } else { max_idle };
+        // Use longer timeout when tool is executing on server (WebSearch can take 10+ seconds)
+        // Use shorter timeout once content is streaming (text comes fast)
+        let current_timeout = if tool_pending { 5000 } else if got_first_content { 2000 } else { 500 };
+        let current_max_idle = if tool_pending { 24 } else if got_first_content { 3 } else { max_idle }; // 2 min for tools
 
         // Try to receive with timeout
         match timeout(Duration::from_millis(current_timeout), process.recv_event()).await {
@@ -129,6 +152,27 @@ pub async fn send_message(
                 // Track if we've received actual content (text or tool use)
                 if matches!(event, ClaudeEvent::TextDelta { .. } | ClaudeEvent::ToolStart { .. }) {
                     got_first_content = true;
+                }
+
+                // Track tool pending state
+                if matches!(event, ClaudeEvent::ToolPending) {
+                    tool_pending = true;
+                    cmd_debug_log("TOOL", "Tool pending - waiting for server execution");
+                }
+                // Tool result or new text means tool finished
+                if let ClaudeEvent::ToolResult { ref tool_use_id, ref stdout, .. } = event {
+                    let stdout_len = stdout.as_ref().map(|s| s.len()).unwrap_or(0);
+                    cmd_debug_log("TOOL_RESULT", &format!("Received tool_use_id={:?}, stdout_len={}", tool_use_id, stdout_len));
+                    if tool_pending {
+                        cmd_debug_log("TOOL", "Tool completed");
+                    }
+                    tool_pending = false;
+                }
+                if matches!(event, ClaudeEvent::TextDelta { .. }) {
+                    if tool_pending {
+                        cmd_debug_log("TOOL", "Tool completed (via text)");
+                    }
+                    tool_pending = false;
                 }
 
                 cmd_debug_log("EVENT", &format!("#{} Received: {:?}", event_count, event));
@@ -158,7 +202,7 @@ pub async fn send_message(
             Err(_) => {
                 // Timeout - might be end of response
                 idle_count += 1;
-                cmd_debug_log("TIMEOUT", &format!("Idle count: {}/{} (got_content: {})", idle_count, current_max_idle, got_first_content));
+                cmd_debug_log("TIMEOUT", &format!("Idle count: {}/{} (got_content: {}, tool_pending: {})", idle_count, current_max_idle, got_first_content, tool_pending));
                 if idle_count >= current_max_idle {
                     // Likely done responding
                     cmd_debug_log("LOOP", "Max idle reached, sending Done");

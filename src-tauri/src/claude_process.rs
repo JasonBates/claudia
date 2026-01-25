@@ -286,6 +286,9 @@ impl ClaudeProcess {
             }
 
             "tool_result" => {
+                let tool_use_id = json.get("tool_use_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 let stdout = json.get("stdout")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
@@ -295,7 +298,7 @@ impl ClaudeProcess {
                 let is_error = json.get("isError")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                Some(ClaudeEvent::ToolResult { stdout, stderr, is_error })
+                Some(ClaudeEvent::ToolResult { tool_use_id, stdout, stderr, is_error })
             }
 
             "block_end" => {
