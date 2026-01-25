@@ -565,12 +565,11 @@ del {
 }
 
 .tool-result {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   padding: 4px 10px;
   border-radius: 4px;
   background: rgba(133, 153, 0, 0.04);  /* Very subtle green tint */
   border-left: 1px solid var(--base01);
-  transition: all 0.15s ease;
 }
 
 .tool-result.expanded {
@@ -579,14 +578,9 @@ del {
   border-left-color: var(--green);
 }
 
+/* Loading state - keep same muted appearance */
 .tool-result.loading {
-  border-left-color: var(--yellow);
-  animation: toolPulse 1.5s ease-in-out infinite;
-}
-
-@keyframes toolPulse {
-  0%, 100% { background: rgba(133, 153, 0, 0.04); }
-  50% { background: rgba(181, 137, 0, 0.08); }
+  /* No visual change, stays consistent */
 }
 
 .tool-header {
@@ -603,8 +597,6 @@ del {
 }
 
 .tool-result.loading .tool-icon {
-  color: var(--yellow);
-  opacity: 1;
   animation: spin 1s linear infinite;
 }
 
@@ -1591,7 +1583,7 @@ del {
 
 /* Thinking Block Styles - Ultra compact */
 .thinking-block {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   padding: 4px 10px;
   border-radius: 4px;
   background: rgba(108, 113, 196, 0.04);  /* Very subtle violet */
@@ -1713,19 +1705,9 @@ del {
   50.01%, 100% { opacity: 0; }
 }
 
-.thinking-block.streaming {
-  background: rgba(108, 113, 196, 0.06);
-  border-left-color: var(--violet);
-}
-
+/* Streaming state - keep same muted appearance, just animate the icon */
 .thinking-block.streaming .thinking-icon {
   animation: spin 1s linear infinite;
-  color: var(--violet);
-  opacity: 1;
-}
-
-.thinking-block.streaming .thinking-label {
-  color: var(--violet);
 }
 
 @keyframes spin {
