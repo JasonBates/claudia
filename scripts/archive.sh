@@ -13,7 +13,8 @@ NC='\033[0m' # No Color
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_NAME=$(basename "$SCRIPT_DIR")
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_NAME=$(basename "$PROJECT_DIR")
 ARCHIVE_DIR="$HOME/conductor-archives"
 CARGO_TARGET="$HOME/.cargo/target/claude-terminal"
 
@@ -156,7 +157,7 @@ create_archive() {
         --exclude='dist' \
         --exclude='src-tauri/target' \
         --exclude='.git' \
-        -C "$(dirname "$SCRIPT_DIR")" \
+        -C "$(dirname "$PROJECT_DIR")" \
         "$PROJECT_NAME"
 
     echo -e "${GREEN}  Archive created: $ARCHIVE_PATH${NC}"
@@ -190,8 +191,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Change to script directory
-cd "$SCRIPT_DIR"
+# Change to project directory
+cd "$PROJECT_DIR"
 
 echo ""
 echo -e "${BLUE}=== Claude Terminal Archive/Clean ===${NC}"
@@ -232,7 +233,7 @@ echo ""
 
 if [ "$FULL" = true ]; then
     echo "Cleaned: dist/, node_modules/, temp files"
-    echo "Run ./setup.sh to reinstall dependencies"
+    echo "Run ./scripts/setup.sh to reinstall dependencies"
 else
     echo "Cleaned: dist/, temp files"
     echo "node_modules/ preserved (use --full to remove)"

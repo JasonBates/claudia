@@ -16,6 +16,7 @@ export CARGO_TARGET_DIR="$HOME/.cargo/target/claude-terminal"
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_BUNDLE="$CARGO_TARGET_DIR/release/bundle/macos/CT.app"
 INSTALL_PATH="/Applications/CT.app"
 
@@ -44,9 +45,9 @@ print_help() {
 }
 
 check_deps() {
-    if [ ! -d "node_modules" ]; then
+    if [ ! -d "$PROJECT_DIR/node_modules" ]; then
         echo -e "${YELLOW}node_modules not found. Running setup...${NC}"
-        ./setup.sh
+        "$SCRIPT_DIR/setup.sh"
     fi
 }
 
@@ -152,8 +153,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Change to script directory
-cd "$SCRIPT_DIR"
+# Change to project directory
+cd "$PROJECT_DIR"
 
 echo ""
 echo -e "${BLUE}=== Claude Terminal ===${NC}"

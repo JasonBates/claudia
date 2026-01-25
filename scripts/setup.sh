@@ -11,6 +11,10 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Shared directories
 CARGO_TARGET="$HOME/.cargo/target/claude-terminal"
 CONFIG_DIR="$HOME/.config/claude-terminal"
@@ -97,6 +101,7 @@ setup_shared_dirs() {
 install_npm_deps() {
     echo -e "${BLUE}Checking npm dependencies...${NC}"
 
+    cd "$PROJECT_DIR"
     HASH_FILE="node_modules/.package-lock-hash"
     CURRENT_HASH=$(md5 -q package-lock.json 2>/dev/null || md5sum package-lock.json | awk '{print $1}')
 
@@ -148,7 +153,7 @@ echo ""
 echo -e "${GREEN}=== Setup Complete ===${NC}"
 echo ""
 echo "Next steps:"
-echo "  ./run.sh --dev      Start development mode"
-echo "  ./run.sh --build    Build production app"
-echo "  ./run.sh --help     See all options"
+echo "  ./scripts/run.sh --dev      Start development mode"
+echo "  ./scripts/run.sh --build    Build production app"
+echo "  ./scripts/run.sh --help     See all options"
 echo ""
