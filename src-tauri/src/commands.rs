@@ -21,23 +21,33 @@ fn cmd_debug_log(prefix: &str, msg: &str) {
 pub struct AppState {
     pub process: Arc<Mutex<Option<ClaudeProcess>>>,
     pub config: Arc<Mutex<Config>>,
+    pub launch_dir: String,
 }
 
 impl AppState {
     pub fn new() -> Self {
         let config = Config::load().unwrap_or_default();
+        let launch_dir = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string());
         Self {
             process: Arc::new(Mutex::new(None)),
             config: Arc::new(Mutex::new(config)),
+            launch_dir,
         }
     }
+}
+
+#[tauri::command]
+pub fn get_launch_dir(state: State<'_, AppState>) -> String {
+    state.launch_dir.clone()
 }
 
 #[tauri::command]
 pub async fn start_session(
     working_dir: Option<String>,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     cmd_debug_log("SESSION", &format!("start_session called, working_dir: {:?}", working_dir));
 
     let mut process_guard = state.process.lock().await;
@@ -54,6 +64,7 @@ pub async fn start_session(
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| config.working_dir());
 
+    let dir_string = dir.to_string_lossy().to_string();
     cmd_debug_log("SESSION", &format!("Using directory: {:?}", dir));
 
     // Spawn new Claude process (sync operation wrapped in blocking task)
@@ -67,7 +78,7 @@ pub async fn start_session(
     cmd_debug_log("SESSION", "Process spawned successfully");
     *process_guard = Some(process);
 
-    Ok(())
+    Ok(dir_string)
 }
 
 #[tauri::command]

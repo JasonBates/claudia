@@ -110,8 +110,9 @@ body {
 
 .context-mini {
   font-family: "SF Mono", monospace;
-  font-size: 10px;
-  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
 }
 
 .context-mini.warning {
@@ -120,6 +121,36 @@ body {
 
 .context-mini.danger {
   color: rgba(220, 50, 47, 0.9);  /* Solarized red */
+}
+
+.launch-dir {
+  font-family: "SF Mono", monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--yellow);
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dir-separator {
+  font-family: "SF Mono", monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  margin: 0 2px;
+}
+
+.working-dir {
+  font-family: "SF Mono", monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-main {

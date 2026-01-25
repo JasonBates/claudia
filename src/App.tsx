@@ -6,7 +6,7 @@ import QuestionPanel from "./components/QuestionPanel";
 import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
-import { startSession, sendMessage, sendPermissionResponse, pollPermissionRequest, respondToPermission, ClaudeEvent, PermissionRequestFromHook } from "./lib/tauri";
+import { startSession, sendMessage, sendPermissionResponse, pollPermissionRequest, respondToPermission, getLaunchDir, ClaudeEvent, PermissionRequestFromHook } from "./lib/tauri";
 import "./App.css";
 
 interface Todo {
@@ -33,6 +33,8 @@ function App() {
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
   const [sessionActive, setSessionActive] = createSignal(false);
+  const [launchDir, setLaunchDir] = createSignal<string | null>(null);
+  const [workingDir, setWorkingDir] = createSignal<string | null>(null);
   const [sessionInfo, setSessionInfo] = createSignal<{
     model?: string;
     totalContext?: number;  // Total context used (all input tokens)
@@ -145,8 +147,14 @@ function App() {
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
     try {
-      await startSession();
-      console.log("[MOUNT] Session started successfully");
+      // Get launch directory (worktree) first
+      const launch = await getLaunchDir();
+      console.log("[MOUNT] Launch directory:", launch);
+      setLaunchDir(launch);
+
+      const dir = await startSession();
+      console.log("[MOUNT] Session started successfully in:", dir);
+      setWorkingDir(dir);
       setSessionActive(true);
       startPermissionPolling();
     } catch (e) {
@@ -651,6 +659,19 @@ function App() {
 
       {/* Floating status indicator */}
       <div class="status-indicator" classList={{ connected: sessionActive(), disconnected: !sessionActive() }}>
+        <Show when={launchDir()}>
+          <span class="launch-dir" title={launchDir()!}>
+            {launchDir()!.split('/').pop() || launchDir()}
+          </span>
+        </Show>
+        <Show when={launchDir() && workingDir()}>
+          <span class="dir-separator">:</span>
+        </Show>
+        <Show when={workingDir()}>
+          <span class="working-dir" title={workingDir()!}>
+            {workingDir()}
+          </span>
+        </Show>
         <Show when={sessionActive()} fallback={<span class="status-icon">⊘</span>}>
           <span class="status-icon">⚡</span>
         </Show>

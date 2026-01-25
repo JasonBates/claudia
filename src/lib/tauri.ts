@@ -60,8 +60,8 @@ export interface Config {
   theme: string;
 }
 
-export async function startSession(workingDir?: string): Promise<void> {
-  await invoke("start_session", { workingDir });
+export async function startSession(workingDir?: string): Promise<string> {
+  return await invoke<string>("start_session", { workingDir });
 }
 
 export async function sendMessage(
@@ -128,4 +128,8 @@ export async function pollPermissionRequest(): Promise<PermissionRequestFromHook
 
 export async function respondToPermission(allow: boolean, message?: string): Promise<void> {
   await invoke("respond_to_permission", { allow, message });
+}
+
+export async function getLaunchDir(): Promise<string> {
+  return await invoke<string>("get_launch_dir");
 }
