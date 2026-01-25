@@ -668,13 +668,12 @@ function App() {
         if (contextTotal > 0) {
           // Track baseContext (system prompt size) for post-compaction estimation
           // It's the larger of cache_read or cache_write (cache_write on first msg, cache_read after)
+          // Always take MAX seen - cache can grow as MCP servers load, etc.
           const cacheSize = Math.max(event.cache_read || 0, event.cache_write || 0);
           setSessionInfo((prev) => ({
             ...prev,
             totalContext: contextTotal,
-            // Only set baseContext if not already set, or if this is larger
-            // (catches the initial system prompt caching)
-            baseContext: prev.baseContext ? prev.baseContext : cacheSize,
+            baseContext: Math.max(prev.baseContext || 0, cacheSize),
           }));
         }
         break;
