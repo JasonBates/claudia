@@ -8,16 +8,16 @@ interface ThinkingPreviewProps {
 }
 
 const ThinkingPreview: Component<ThinkingPreviewProps> = (props) => {
-  // In preview mode, show first ~500 chars (roughly 3-5 lines); in expanded mode, show all
+  // In preview mode, show ~80 chars (roughly 1 line); in expanded mode, show all
   const displayContent = createMemo(() => {
     if (props.expanded) return props.content;
 
     const len = props.content.length;
-    if (len <= 500) return props.content;
-    return props.content.slice(0, 500);
+    if (len <= 80) return props.content;
+    return props.content.slice(0, 80);
   });
 
-  const hasMore = () => !props.expanded && props.content.length > 500;
+  const hasMore = () => !props.expanded && props.content.length > 80;
 
   return (
     <div
