@@ -20,6 +20,12 @@ pub enum ClaudeEvent {
     /// Streaming text chunk (real-time)
     TextDelta { text: String },
 
+    /// Thinking block started
+    ThinkingStart { index: Option<u32> },
+
+    /// Streaming thinking chunk
+    ThinkingDelta { thinking: String },
+
     /// Tool invocation started
     ToolStart { id: String, name: String },
 

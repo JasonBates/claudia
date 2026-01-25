@@ -230,6 +230,10 @@ async function main() {
             name: event.content_block.name
           });
         }
+        // Handle thinking block start
+        if (event.content_block?.type === "thinking") {
+          sendEvent("thinking_start", { index: event.index });
+        }
         break;
 
       case "content_block_delta":
@@ -240,6 +244,10 @@ async function main() {
         if (event.delta?.type === "input_json_delta") {
           // Tool input streaming
           sendEvent("tool_input", { json: event.delta.partial_json });
+        }
+        // Handle thinking delta
+        if (event.delta?.type === "thinking_delta") {
+          sendEvent("thinking_delta", { thinking: event.delta.thinking });
         }
         break;
 

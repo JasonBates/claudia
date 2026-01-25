@@ -1500,3 +1500,171 @@ del {
 .permission-deny:hover {
   border-color: var(--error);
 }
+
+/* Thinking Block Styles */
+.thinking-block {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(7, 54, 66, 0.4);  /* Solarized base02 subdued */
+  border-left: 2px solid var(--fg-muted);
+}
+
+.thinking-block.preview {
+  max-height: 130px;
+  overflow: hidden;
+  position: relative;
+}
+
+.thinking-block.expanded {
+  max-height: none;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.thinking-icon {
+  font-size: 12px;
+  color: var(--fg-muted);
+  animation: thinkingPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes thinkingPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.thinking-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-muted);
+}
+
+.thinking-hint {
+  font-size: 10px;
+  color: var(--fg-muted);
+  opacity: 0.6;
+  margin-left: auto;
+}
+
+.thinking-toggle-btn {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--fg-muted);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.thinking-toggle-btn:hover {
+  background: var(--fg-muted);
+  color: var(--bg);
+  border-color: var(--fg-muted);
+}
+
+.thinking-content {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--base00);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  position: relative;
+}
+
+.thinking-block.preview .thinking-content {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+}
+
+.thinking-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(
+    to top,
+    rgba(7, 54, 66, 0.95) 0%,
+    rgba(7, 54, 66, 0.7) 40%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.thinking-cursor {
+  animation: blink 1s step-end infinite;
+  color: var(--fg-muted);
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+.thinking-block.streaming .thinking-icon {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* When expanded, show with normal styling */
+.thinking-block.expanded .thinking-content {
+  font-style: normal;
+  color: var(--fg);
+}
+
+.thinking-block.expanded {
+  border-left-color: var(--cyan);
+}
+
+/* Collapsed thinking indicator - shows "Thinking" label when not expanded */
+.thinking-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  background: var(--bg-tertiary);
+  border-left: 2px solid var(--base01);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--base01);
+}
+
+.thinking-collapsed .thinking-icon {
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.thinking-collapsed .thinking-label {
+  font-style: italic;
+  font-weight: 500;
+}
+
+.thinking-collapsed .thinking-hint {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--base00);
+  opacity: 0.7;
+}

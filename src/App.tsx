@@ -54,6 +54,10 @@ function App() {
   const [streamingBlocks, setStreamingBlocks] = createSignal<ContentBlock[]>([]);
   let currentTextBlockIndex = -1;  // Index of current text block being streamed
 
+  // Thinking mode tracking
+  const [streamingThinking, setStreamingThinking] = createSignal("");
+  const [showThinking, setShowThinking] = createSignal(false);
+
   // TodoWrite tracking for real-time display
   const [currentTodos, setCurrentTodos] = createSignal<Todo[]>([]);
   const [showTodoPanel, setShowTodoPanel] = createSignal(false);
@@ -144,8 +148,24 @@ function App() {
     }
   };
 
+  // Keyboard handler for Opt+T (thinking toggle)
+  // Use capture phase to intercept before input field processes it
+  const handleKeyDown = (e: KeyboardEvent) => {
+    // On macOS, Alt+T produces '†' but we check for the key code
+    // e.key might be '†' or 't' depending on the keyboard layout
+    if (e.altKey && (e.key === 't' || e.key === 'T' || e.key === '†' || e.code === 'KeyT')) {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowThinking(prev => !prev);
+    }
+  };
+
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
+
+    // Add keyboard listener for thinking toggle (capture phase to get it before input)
+    window.addEventListener('keydown', handleKeyDown, true);
+
     try {
       // Get launch directory (worktree) first
       const launch = await getLaunchDir();
@@ -165,6 +185,7 @@ function App() {
 
   onCleanup(() => {
     stopPermissionPolling();
+    window.removeEventListener('keydown', handleKeyDown, true);
   });
 
   const handleSubmit = async (text: string) => {
@@ -217,6 +238,33 @@ function App() {
 
       case "processing":
         // User message being processed
+        break;
+
+      case "thinking_start":
+        // New thinking block starting - reset thinking content
+        setStreamingThinking("");
+        break;
+
+      case "thinking_delta":
+        // Append thinking chunk
+        setStreamingThinking(prev => prev + (event.thinking || ""));
+
+        // Also add to streamingBlocks for persistence in completed messages
+        setStreamingBlocks(prev => {
+          const blocks = [...prev];
+          // If last block is thinking, append to it
+          if (blocks.length > 0 && blocks[blocks.length - 1].type === "thinking") {
+            const lastBlock = blocks[blocks.length - 1] as { type: "thinking"; content: string };
+            blocks[blocks.length - 1] = {
+              type: "thinking",
+              content: lastBlock.content + (event.thinking || "")
+            };
+          } else {
+            // Create new thinking block
+            blocks.push({ type: "thinking", content: event.thinking || "" });
+          }
+          return blocks;
+        });
         break;
 
       case "text_delta":
@@ -631,6 +679,7 @@ function App() {
 
     // Step 3: NOW clear streaming state (safe because isLoading is false, so MessageList ignores these)
     setStreamingContent("");
+    setStreamingThinking("");
     setCurrentToolUses([]);
     setStreamingBlocks([]);
     currentToolInput = "";
@@ -707,6 +756,8 @@ function App() {
           streamingContent={isLoading() ? streamingContent() : undefined}
           streamingToolUses={isLoading() ? currentToolUses() : undefined}
           streamingBlocks={isLoading() ? streamingBlocks() : undefined}
+          streamingThinking={isLoading() ? streamingThinking() : undefined}
+          showThinking={showThinking()}
         />
       </main>
 

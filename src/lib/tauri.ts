@@ -7,6 +7,8 @@ export interface ClaudeEvent {
     | "ready"
     | "processing"
     | "text_delta"
+    | "thinking_start"
+    | "thinking_delta"
     | "tool_start"
     | "tool_input"
     | "tool_pending"
@@ -26,6 +28,9 @@ export interface ClaudeEvent {
   prompt?: string;
   // TextDelta
   text?: string;
+  // Thinking
+  thinking?: string;
+  index?: number;
   // ToolStart
   id?: string;
   name?: string;

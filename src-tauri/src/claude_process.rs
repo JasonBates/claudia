@@ -244,6 +244,21 @@ impl ClaudeProcess {
                 }
             }
 
+            "thinking_start" => {
+                let index = json.get("index")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
+                Some(ClaudeEvent::ThinkingStart { index })
+            }
+
+            "thinking_delta" => {
+                let thinking = json.get("thinking")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                Some(ClaudeEvent::ThinkingDelta { thinking })
+            }
+
             "tool_start" => {
                 let id = json.get("id")
                     .and_then(|v| v.as_str())

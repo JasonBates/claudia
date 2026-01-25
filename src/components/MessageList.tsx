@@ -1,6 +1,7 @@
-import { Component, For, Show, onMount, createEffect } from "solid-js";
+import { Component, For, Show, onMount, createEffect, createSignal } from "solid-js";
 import MessageContent from "./MessageContent";
 import ToolResult from "./ToolResult";
+import ThinkingPreview from "./ThinkingPreview";
 
 export interface ToolUse {
   id: string;
@@ -13,7 +14,8 @@ export interface ToolUse {
 // Content blocks allow interleaving text and tool uses in order
 export type ContentBlock =
   | { type: "text"; content: string }
-  | { type: "tool_use"; tool: ToolUse };
+  | { type: "tool_use"; tool: ToolUse }
+  | { type: "thinking"; content: string };
 
 export interface Message {
   id: string;
@@ -28,10 +30,31 @@ interface MessageListProps {
   streamingContent?: string;
   streamingToolUses?: ToolUse[];
   streamingBlocks?: ContentBlock[];  // New: ordered streaming blocks
+  streamingThinking?: string;  // Current thinking content being streamed
+  showThinking?: boolean;  // Whether to show thinking in expanded view (global toggle)
 }
 
 const MessageList: Component<MessageListProps> = (props) => {
   let containerRef: HTMLDivElement | undefined;
+
+  // Track individually expanded thinking blocks by message ID
+  const [expandedThinking, setExpandedThinking] = createSignal<Set<string>>(new Set());
+
+  const isThinkingExpanded = (messageId: string) => {
+    return props.showThinking || expandedThinking().has(messageId);
+  };
+
+  const toggleThinking = (messageId: string) => {
+    setExpandedThinking(prev => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  };
 
   const scrollToBottom = () => {
     if (containerRef) {
@@ -46,10 +69,12 @@ const MessageList: Component<MessageListProps> = (props) => {
     const msgs = props.messages;
     const streaming = props.streamingContent;
     const blocks = props.streamingBlocks;
+    const thinking = props.streamingThinking;
     // Force SolidJS to track these dependencies
     void msgs;
     void streaming;
     void blocks;
+    void thinking;
     scrollToBottom();
   });
 
@@ -93,7 +118,22 @@ const MessageList: Component<MessageListProps> = (props) => {
                   </Show>
                 </>
               }>
-                <For each={message.contentBlocks}>
+                {/* Show thinking blocks for completed messages - always visible with preview */}
+                <Show when={message.contentBlocks?.some(b => b.type === "thinking")}>
+                  <For each={message.contentBlocks?.filter(b => b.type === "thinking")}>
+                    {(block) => (
+                      <ThinkingPreview
+                        content={(block as { type: "thinking"; content: string }).content}
+                        expanded={isThinkingExpanded(message.id)}
+                        isStreaming={false}
+                        onToggle={() => toggleThinking(message.id)}
+                      />
+                    )}
+                  </For>
+                </Show>
+
+                {/* Render non-thinking blocks */}
+                <For each={message.contentBlocks?.filter(b => b.type !== "thinking")}>
                   {(block) => (
                     <Show when={block.type === "text"} fallback={
                       <div class="tool-uses">
@@ -116,10 +156,19 @@ const MessageList: Component<MessageListProps> = (props) => {
       </For>
 
       {/* Streaming message indicator */}
-      <Show when={props.streamingContent || (props.streamingToolUses && props.streamingToolUses.length > 0) || (props.streamingBlocks && props.streamingBlocks.length > 0)}>
+      <Show when={props.streamingContent || props.streamingThinking || (props.streamingToolUses && props.streamingToolUses.length > 0) || (props.streamingBlocks && props.streamingBlocks.length > 0)}>
         <div class="message message-assistant streaming">
           <div class="message-role-indicator">Claude</div>
           <div class="message-body">
+            {/* Show thinking preview/expanded above other content */}
+            <Show when={props.streamingThinking}>
+              <ThinkingPreview
+                content={props.streamingThinking!}
+                expanded={props.showThinking || false}
+                isStreaming={true}
+              />
+            </Show>
+
             {/* Use streamingBlocks if provided for proper ordering */}
             <Show when={props.streamingBlocks && props.streamingBlocks.length > 0} fallback={
               <>
@@ -143,7 +192,8 @@ const MessageList: Component<MessageListProps> = (props) => {
                 </Show>
               </>
             }>
-              <For each={props.streamingBlocks}>
+              {/* Filter out thinking blocks - they're shown via ThinkingPreview above */}
+              <For each={props.streamingBlocks?.filter(b => b.type !== "thinking")}>
                 {(block, index) => (
                   <Show when={block.type === "text"} fallback={
                     <div class="tool-uses">
@@ -157,7 +207,7 @@ const MessageList: Component<MessageListProps> = (props) => {
                   }>
                     <MessageContent content={(block as { type: "text"; content: string }).content} />
                     {/* Show cursor after last text block */}
-                    <Show when={index() === props.streamingBlocks!.length - 1 && block.type === "text"}>
+                    <Show when={index() === (props.streamingBlocks?.filter(b => b.type !== "thinking").length || 0) - 1 && block.type === "text"}>
                       <span class="cursor">|</span>
                     </Show>
                   </Show>
