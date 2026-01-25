@@ -6,7 +6,7 @@ import QuestionPanel from "./components/QuestionPanel";
 import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
-import { startSession, sendMessage, sendPermissionResponse, pollPermissionRequest, respondToPermission, getLaunchDir, ClaudeEvent, PermissionRequestFromHook } from "./lib/tauri";
+import { startSession, sendMessage, sendPermissionResponse, pollPermissionRequest, respondToPermission, getLaunchDir, syncPull, syncPush, isSyncAvailable, ClaudeEvent, PermissionRequestFromHook } from "./lib/tauri";
 import "./App.css";
 
 interface Todo {
@@ -122,6 +122,25 @@ function App() {
   // This is critical for Tauri channel callbacks, setTimeout, setInterval
   const owner = getOwner();
 
+  // Sync debounce timer - push every 5 minutes of activity
+  let syncPushTimer: number | null = null;
+  const SYNC_DEBOUNCE_MS = 5 * 60 * 1000; // 5 minutes
+
+  const scheduleSyncPush = () => {
+    if (syncPushTimer) {
+      window.clearTimeout(syncPushTimer);
+    }
+    syncPushTimer = window.setTimeout(async () => {
+      try {
+        console.log("[SYNC] Debounced push starting...");
+        const result = await syncPush();
+        console.log("[SYNC] Debounced push result:", result.success);
+      } catch (e) {
+        console.warn("[SYNC] Debounced push failed:", e);
+      }
+    }, SYNC_DEBOUNCE_MS);
+  };
+
   const cycleMode = () => {
     const current = currentMode();
     const currentIndex = MODES.indexOf(current);
@@ -196,6 +215,23 @@ function App() {
       console.log("[MOUNT] Launch directory:", launch);
       setLaunchDir(launch);
 
+      // Sync pull before starting session (non-blocking on failure)
+      try {
+        const syncAvailable = await isSyncAvailable();
+        if (syncAvailable) {
+          console.log("[SYNC] Pulling latest ~/.claude/ data...");
+          const pullResult = await syncPull();
+          console.log("[SYNC] Pull result:", pullResult.success);
+          if (!pullResult.success && pullResult.error) {
+            console.warn("[SYNC] Pull error:", pullResult.error);
+          }
+        } else {
+          console.log("[SYNC] ccms not configured, skipping pull");
+        }
+      } catch (e) {
+        console.warn("[SYNC] Pull failed (continuing anyway):", e);
+      }
+
       const dir = await startSession();
       console.log("[MOUNT] Session started successfully in:", dir);
       setWorkingDir(dir);
@@ -210,6 +246,10 @@ function App() {
   onCleanup(() => {
     stopPermissionPolling();
     window.removeEventListener('keydown', handleKeyDown, true);
+    // Clear sync debounce timer
+    if (syncPushTimer) {
+      window.clearTimeout(syncPushTimer);
+    }
   });
 
   const handleSubmit = async (text: string) => {
@@ -825,6 +865,9 @@ function App() {
         });
       }, 2000);
     }
+
+    // Schedule a debounced sync push after each message completes
+    scheduleSyncPush();
   };
 
   return (
