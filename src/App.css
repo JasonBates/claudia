@@ -558,10 +558,10 @@ del {
 
 /* Tool Results - Green/Violet tint */
 .tool-uses {
-  margin-top: 12px;
+  margin-top: 2px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
 }
 
 .tool-result {
