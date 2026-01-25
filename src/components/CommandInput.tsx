@@ -2,12 +2,17 @@ import { Component, createSignal, onMount, onCleanup, Show } from "solid-js";
 
 type Mode = "normal" | "plan" | "auto-accept";
 
+export interface CommandInputHandle {
+  focus: () => void;
+}
+
 interface CommandInputProps {
   onSubmit: (message: string) => void;
   disabled?: boolean;
   placeholder?: string;
   mode?: Mode;
   onModeChange?: () => void;
+  ref?: (handle: CommandInputHandle) => void;
 }
 
 const CommandInput: Component<CommandInputProps> = (props) => {
@@ -24,6 +29,8 @@ const CommandInput: Component<CommandInputProps> = (props) => {
   onMount(() => {
     focusInput();
     window.addEventListener("focus", focusInput);
+    // Expose focus method to parent via ref callback
+    props.ref?.({ focus: focusInput });
   });
 
   onCleanup(() => {

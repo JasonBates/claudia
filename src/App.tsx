@@ -1,6 +1,6 @@
 import { createSignal, onMount, onCleanup, Show, getOwner, runWithOwner, batch } from "solid-js";
 import MessageList, { Message, ToolUse, ContentBlock } from "./components/MessageList";
-import CommandInput from "./components/CommandInput";
+import CommandInput, { CommandInputHandle } from "./components/CommandInput";
 import TodoPanel from "./components/TodoPanel";
 import QuestionPanel from "./components/QuestionPanel";
 import PlanningBanner from "./components/PlanningBanner";
@@ -84,6 +84,9 @@ function App() {
   type Mode = "normal" | "plan" | "auto-accept";
   const MODES: Mode[] = ["normal", "plan", "auto-accept"];
   const [currentMode, setCurrentMode] = createSignal<Mode>("normal");
+
+  // Ref to CommandInput for focus management
+  let commandInputRef: CommandInputHandle | undefined;
 
   // Capture SolidJS owner for restoring reactive context in async callbacks
   // This is critical for Tauri channel callbacks, setTimeout, setInterval
@@ -530,6 +533,11 @@ function App() {
     setShowQuestionPanel(false);
     setPendingQuestions([]);
 
+    // Focus back to the input line
+    requestAnimationFrame(() => {
+      commandInputRef?.focus();
+    });
+
     // Format the answer and send as a follow-up message
     const answerText = Object.entries(answers)
       .map(([q, a]) => a)
@@ -683,6 +691,7 @@ function App() {
 
       <footer class="app-footer">
         <CommandInput
+          ref={(handle) => commandInputRef = handle}
           onSubmit={handleSubmit}
           disabled={isLoading() || !sessionActive()}
           placeholder={
