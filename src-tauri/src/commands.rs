@@ -40,7 +40,14 @@ impl AppState {
 
 #[tauri::command]
 pub fn get_launch_dir(state: State<'_, AppState>) -> String {
-    state.launch_dir.clone()
+    // Only return launch dir if it's a git worktree
+    let launch_path = std::path::Path::new(&state.launch_dir);
+    let git_dir = launch_path.join(".git");
+    if git_dir.exists() {
+        state.launch_dir.clone()
+    } else {
+        String::new()
+    }
 }
 
 #[tauri::command]

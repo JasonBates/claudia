@@ -93,9 +93,14 @@ async function main() {
     "--model", "opus",
     "--verbose",
     "--dangerously-skip-permissions",
+    "--settings", JSON.stringify({ alwaysThinkingEnabled: true }),
     "--append-system-prompt", `User's timezone: ${userTimezone}`
   ], {
-    stdio: ["pipe", "pipe", "pipe"]
+    stdio: ["pipe", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      MAX_THINKING_TOKENS: "10000"
+    }
   });
 
   // Parse Claude's output
