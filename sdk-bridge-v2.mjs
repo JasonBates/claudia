@@ -195,21 +195,22 @@ async function main() {
           // Extract token usage
           const usage = msg.usage || {};
           // Total context = input_tokens + cache tokens (all contribute to context window)
-          const totalInput = (usage.input_tokens || 0) +
+          const inputTokens = (usage.input_tokens || 0) +
                               (usage.cache_creation_input_tokens || 0) +
                               (usage.cache_read_input_tokens || 0);
-          const totalOutput = usage.output_tokens || 0;
+          const outputTokens = usage.output_tokens || 0;
 
+          // Note: Rust expects camelCase, then serializes to TypeScript as snake_case
           sendEvent("result", {
             content: msg.result?.slice(0, 1000),
             cost: msg.total_cost_usd,
             duration: msg.duration_ms,
             turns: msg.num_turns,
-            is_error: msg.is_error,
-            input_tokens: totalInput,
-            output_tokens: totalOutput,
-            cache_read: usage.cache_read_input_tokens || 0,
-            cache_write: usage.cache_creation_input_tokens || 0
+            isError: msg.is_error,
+            inputTokens,
+            outputTokens,
+            cacheRead: usage.cache_read_input_tokens || 0,
+            cacheWrite: usage.cache_creation_input_tokens || 0
           });
           sendEvent("done", {});
           break;
