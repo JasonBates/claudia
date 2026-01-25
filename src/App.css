@@ -331,6 +331,10 @@ body {
   opacity: 0.7;
 }
 
+.message-compaction .compaction-icon.loading {
+  animation: spin 1s linear infinite;
+}
+
 .message-compaction .compaction-label {
   font-weight: 500;
   text-transform: uppercase;

@@ -39,6 +39,7 @@ function App() {
     model?: string;
     totalContext?: number;  // Total context used (all input tokens)
     outputTokens?: number;
+    baseContext?: number;   // System prompt size (for estimating post-compaction context)
   }>({});
 
   const CONTEXT_LIMIT = 200_000;
@@ -253,39 +254,66 @@ function App() {
       case "status":
         // Show status messages inline in the message list
         if (event.message) {
-          // If this is "Compacting...", capture current context as the "before" value
+          // If this is "Compacting...", show compaction block immediately with loading state
           if (event.message.includes("Compacting")) {
             const currentContext = sessionInfo().totalContext || 0;
             setLastCompactionPreTokens(currentContext);
-            // Don't show the "Compacting..." status message - it's just noise
-            break;
-          }
 
-          // Handle compaction completion - show as compact tool-like block
-          if (event.is_compaction) {
-            const preTokens = lastCompactionPreTokens() || event.pre_tokens || 0;
-            const postTokens = event.post_tokens || 0;
-
-            // Update context immediately if we have post_tokens
-            if (postTokens > 0) {
-              setSessionInfo((prev) => ({
-                ...prev,
-                totalContext: postTokens,
-              }));
-            }
-
-            // Build compact display: "145k → 26k"
-            const preK = Math.round(preTokens / 1000);
-            const postK = postTokens > 0 ? Math.round(postTokens / 1000) : '?';
-            const content = `${preK}k → ${postK}k`;
+            // Create compaction message with loading state (content = "loading")
+            const msgId = `compaction-${Date.now()}`;
+            setCompactionMessageId(msgId);
+            const preK = Math.round(currentContext / 1000);
 
             const compactionMsg: Message = {
-              id: `compaction-${Date.now()}`,
+              id: msgId,
               role: "system",
-              content,
+              content: `${preK}k → ...`,  // Loading indicator
               variant: "compaction",
             };
             setMessages((prev) => [...prev, compactionMsg]);
+            break;
+          }
+
+          // Handle compaction completion - update the existing compaction block
+          if (event.is_compaction) {
+            const preTokens = lastCompactionPreTokens() || event.pre_tokens || 0;
+            const summaryTokens = event.post_tokens || 0;
+
+            // Estimate full context: baseContext (system prompt) + summary tokens
+            // post_tokens from CLI is just the summary, not including system prompt
+            const baseContext = sessionInfo().baseContext || 0;
+            const estimatedContext = baseContext + summaryTokens;
+
+            // Update context with estimated value
+            if (estimatedContext > 0) {
+              setSessionInfo((prev) => ({
+                ...prev,
+                totalContext: estimatedContext,
+              }));
+            }
+
+            // Build compact display: "145k → 34k"
+            const preK = Math.round(preTokens / 1000);
+            const postK = estimatedContext > 0 ? Math.round(estimatedContext / 1000) : '?';
+            const content = `${preK}k → ${postK}k`;
+
+            // Update existing compaction message or create new one
+            const existingMsgId = compactionMessageId();
+            if (existingMsgId) {
+              setMessages((prev) => prev.map((msg) =>
+                msg.id === existingMsgId
+                  ? { ...msg, content }
+                  : msg
+              ));
+            } else {
+              const compactionMsg: Message = {
+                id: `compaction-${Date.now()}`,
+                role: "system",
+                content,
+                variant: "compaction",
+              };
+              setMessages((prev) => [...prev, compactionMsg]);
+            }
 
             // Clear compaction tracking
             setLastCompactionPreTokens(null);
@@ -638,9 +666,15 @@ function App() {
         // Total = raw_input + cache_read + cache_write (all represent context window usage)
         const contextTotal = event.input_tokens || 0;
         if (contextTotal > 0) {
+          // Track baseContext (system prompt size) for post-compaction estimation
+          // It's the larger of cache_read or cache_write (cache_write on first msg, cache_read after)
+          const cacheSize = Math.max(event.cache_read || 0, event.cache_write || 0);
           setSessionInfo((prev) => ({
             ...prev,
             totalContext: contextTotal,
+            // Only set baseContext if not already set, or if this is larger
+            // (catches the initial system prompt caching)
+            baseContext: prev.baseContext ? prev.baseContext : cacheSize,
           }));
         }
         break;

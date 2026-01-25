@@ -101,8 +101,12 @@ const MessageList: Component<MessageListProps> = (props) => {
             <div class="message-body">
               {/* Special rendering for compaction variant - looks like a tool block */}
               <Show when={message.variant === "compaction"}>
-                <span class="compaction-icon">⚡</span>
-                <span class="compaction-label">compacted</span>
+                <span class={`compaction-icon${message.content.endsWith('...') ? ' loading' : ''}`}>
+                  {message.content.endsWith('...') ? '◐' : '⚡'}
+                </span>
+                <span class="compaction-label">
+                  {message.content.endsWith('...') ? 'compacting' : 'compacted'}
+                </span>
                 <span class="compaction-tokens">{message.content}</span>
               </Show>
 
