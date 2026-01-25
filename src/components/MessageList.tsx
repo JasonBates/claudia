@@ -181,11 +181,9 @@ const MessageList: Component<MessageListProps> = (props) => {
               {/* Render ALL blocks in natural order (thinking, text, tool_use) */}
               <For each={props.streamingBlocks}>
                 {(block, index) => {
-                  // Find indices for cursor/streaming state logic
+                  // Find last thinking block index for streaming indicator
                   const blocks = props.streamingBlocks || [];
                   const lastThinkingIndex = blocks.map((b, i) => b.type === "thinking" ? i : -1).filter(i => i >= 0).pop() ?? -1;
-                  // Only show cursor if the very last block is text (meaning text is actively streaming)
-                  const isTextStreamingAtEnd = blocks.length > 0 && blocks[blocks.length - 1].type === "text";
 
                   return (
                     <Show when={block.type === "thinking"} fallback={
@@ -200,10 +198,6 @@ const MessageList: Component<MessageListProps> = (props) => {
                         </div>
                       }>
                         <MessageContent content={(block as { type: "text"; content: string }).content} />
-                        {/* Show cursor only when this is the last block AND it's text (actively streaming) */}
-                        <Show when={isTextStreamingAtEnd && index() === blocks.length - 1}>
-                          <span class="cursor">|</span>
-                        </Show>
                       </Show>
                     }>
                       <ThinkingPreview
@@ -216,6 +210,10 @@ const MessageList: Component<MessageListProps> = (props) => {
                   );
                 }}
               </For>
+              {/* Single cursor AFTER all blocks - only shows when last block is text */}
+              <Show when={props.streamingBlocks && props.streamingBlocks.length > 0 && props.streamingBlocks[props.streamingBlocks.length - 1].type === "text"}>
+                <span class="cursor">|</span>
+              </Show>
             </Show>
           </div>
         </div>
