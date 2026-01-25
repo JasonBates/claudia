@@ -104,22 +104,31 @@ pub async fn send_message(
     let process_arc = state.process.clone();
 
     // Drain any stale events from previous response before sending new message
+    // BUT forward Status events - they're important feedback (e.g., "Compacted")
     {
         let mut process_guard = process_arc.lock().await;
         if let Some(process) = process_guard.as_mut() {
             cmd_debug_log("DRAIN", "Draining stale events...");
             let mut drained = 0;
+            let mut forwarded = 0;
             loop {
                 match timeout(Duration::from_millis(10), process.recv_event()).await {
                     Ok(Some(event)) => {
-                        cmd_debug_log("DRAIN", &format!("Drained: {:?}", event));
-                        drained += 1;
+                        // Forward Status events to frontend instead of draining
+                        if matches!(&event, ClaudeEvent::Status { .. }) {
+                            cmd_debug_log("DRAIN", &format!("Forwarding Status: {:?}", event));
+                            let _ = channel.send(event);
+                            forwarded += 1;
+                        } else {
+                            cmd_debug_log("DRAIN", &format!("Drained: {:?}", event));
+                            drained += 1;
+                        }
                     }
                     _ => break,
                 }
             }
-            if drained > 0 {
-                cmd_debug_log("DRAIN", &format!("Drained {} stale events", drained));
+            if drained > 0 || forwarded > 0 {
+                cmd_debug_log("DRAIN", &format!("Drained {} events, forwarded {} Status events", drained, forwarded));
             }
         }
     }
@@ -143,6 +152,7 @@ pub async fn send_message(
     let mut event_count = 0;
     let mut got_first_content = false;
     let mut tool_pending = false; // Track if a tool is executing on server (e.g., WebSearch)
+    let mut compacting = false; // Track if compaction is in progress (can take 60+ seconds)
 
     cmd_debug_log("LOOP", "Starting event receive loop");
 
@@ -156,10 +166,10 @@ pub async fn send_message(
             }
         };
 
-        // Use longer timeout when tool is executing on server (WebSearch can take 10+ seconds)
-        // Use shorter timeout once content is streaming (text comes fast)
-        let current_timeout = if tool_pending { 5000 } else if got_first_content { 2000 } else { 500 };
-        let current_max_idle = if tool_pending { 24 } else if got_first_content { 3 } else { max_idle }; // 2 min for tools
+        // Use longer timeout when tool/compaction is executing
+        // Compaction can take 60+ seconds for large contexts
+        let current_timeout = if compacting { 5000 } else if tool_pending { 5000 } else if got_first_content { 2000 } else { 500 };
+        let current_max_idle = if compacting { 30 } else if tool_pending { 24 } else if got_first_content { 3 } else { max_idle }; // 2.5 min for compaction
 
         // Try to receive with timeout
         match timeout(Duration::from_millis(current_timeout), process.recv_event()).await {
@@ -193,6 +203,18 @@ pub async fn send_message(
                     tool_pending = false;
                 }
 
+                // Track compaction state (can take 60+ seconds)
+                if let ClaudeEvent::Status { ref message, ref is_compaction, .. } = event {
+                    if message.contains("Compacting") {
+                        compacting = true;
+                        cmd_debug_log("COMPACT", "Compaction started - using extended timeout");
+                    }
+                    if is_compaction.unwrap_or(false) || message.contains("Compacted") {
+                        compacting = false;
+                        cmd_debug_log("COMPACT", "Compaction completed");
+                    }
+                }
+
                 cmd_debug_log("EVENT", &format!("#{} Received: {:?}", event_count, event));
 
                 // Check if this is a "done" signal
@@ -207,7 +229,28 @@ pub async fn send_message(
                 }
 
                 if is_done {
-                    cmd_debug_log("LOOP", "Got Done event, breaking");
+                    cmd_debug_log("LOOP", "Got Done event, collecting trailing events...");
+                    // Collect any trailing events that arrived just before/after Done
+                    // (Status events from /compact can arrive within ms of Done)
+                    drop(process_guard); // Release lock for trailing event collection
+                    let mut trailing_count = 0;
+                    for _ in 0..5 {
+                        let mut pg = process_arc.lock().await;
+                        if let Some(p) = pg.as_mut() {
+                            match timeout(Duration::from_millis(20), p.recv_event()).await {
+                                Ok(Some(trailing_event)) => {
+                                    trailing_count += 1;
+                                    cmd_debug_log("TRAILING", &format!("#{} {:?}", trailing_count, trailing_event));
+                                    let _ = channel.send(trailing_event);
+                                }
+                                _ => break,
+                            }
+                        }
+                    }
+                    if trailing_count > 0 {
+                        cmd_debug_log("LOOP", &format!("Collected {} trailing events", trailing_count));
+                    }
+                    cmd_debug_log("LOOP", "Breaking after Done");
                     break;
                 }
             }

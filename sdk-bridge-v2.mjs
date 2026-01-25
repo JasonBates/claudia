@@ -103,6 +103,9 @@ async function main() {
     }
   });
 
+  // Track session ID for message sending
+  let currentSessionId = null;
+
   // Parse Claude's output
   const claudeRl = readline.createInterface({ input: claude.stdout });
 
@@ -118,10 +121,26 @@ async function main() {
       switch (msg.type) {
         case "system":
           if (msg.subtype === "init") {
+            // Store session ID for subsequent messages
+            currentSessionId = msg.session_id;
+            debugLog("SESSION_ID", currentSessionId);
             sendEvent("ready", {
               sessionId: msg.session_id,
               model: msg.model,
               tools: msg.tools?.length || 0
+            });
+          } else if (msg.subtype === "status") {
+            // Forward status updates (e.g., "compacting")
+            if (msg.status) {
+              sendEvent("status", { message: msg.status === "compacting" ? "Compacting conversation..." : msg.status });
+            }
+          } else if (msg.subtype === "compact_boundary") {
+            // Compaction completed - send notification with pre-compaction token count
+            const preTokens = msg.compact_metadata?.pre_tokens || 0;
+            sendEvent("status", {
+              message: `Compacted from ${Math.round(preTokens / 1000)}k`,
+              isCompaction: true,
+              preTokens: preTokens
             });
           }
           break;
@@ -194,10 +213,11 @@ async function main() {
         case "result":
           // Extract token usage
           const usage = msg.usage || {};
-          // Total context = input_tokens + cache tokens (all contribute to context window)
+          // Context = input + cache_read + cache_creation (consistent with message_start)
+          // Note: Frontend uses context_update for display, this is just for consistency
           const inputTokens = (usage.input_tokens || 0) +
-                              (usage.cache_creation_input_tokens || 0) +
-                              (usage.cache_read_input_tokens || 0);
+                              (usage.cache_read_input_tokens || 0) +
+                              (usage.cache_creation_input_tokens || 0);
           const outputTokens = usage.output_tokens || 0;
 
           // Note: Rust expects camelCase, then serializes to TypeScript as snake_case
@@ -262,6 +282,32 @@ async function main() {
           sendEvent("tool_pending", {});
         }
         break;
+
+      case "message_start":
+        // Extract token usage from message_start - fires at START of each response
+        // This gives us real-time context size before any streaming content
+        if (event.message?.usage) {
+          const usage = event.message.usage;
+          // Context = input + cache_read + cache_creation
+          // cache_creation = tokens being cached for first time (not yet in cache_read)
+          // On subsequent requests, these move from cache_creation to cache_read
+          const inputTokens = (usage.input_tokens || 0) +
+                              (usage.cache_read_input_tokens || 0) +
+                              (usage.cache_creation_input_tokens || 0);
+          debugLog("MESSAGE_START_USAGE", {
+            input_tokens: usage.input_tokens,
+            cache_creation: usage.cache_creation_input_tokens,
+            cache_read: usage.cache_read_input_tokens,
+            total: inputTokens
+          });
+          sendEvent("context_update", {
+            inputTokens: inputTokens,
+            rawInputTokens: usage.input_tokens || 0,
+            cacheRead: usage.cache_read_input_tokens || 0,
+            cacheWrite: usage.cache_creation_input_tokens || 0
+          });
+        }
+        break;
     }
   }
 
@@ -309,11 +355,12 @@ async function main() {
       }
     }
 
-    // Handle slash commands locally
+    // Handle slash commands
     if (input.startsWith("/")) {
       const [cmd, ...args] = input.slice(1).split(" ");
       debugLog("SLASH_CMD", { cmd, args });
 
+      // Local-only commands (don't forward to CLI)
       switch (cmd.toLowerCase()) {
         case "exit":
         case "quit":
@@ -321,22 +368,25 @@ async function main() {
           claude.kill();
           process.exit(0);
           return;
-        case "clear":
-          // Send clear command to CLI
-          const clearMsg = JSON.stringify({ type: "command", command: "clear" }) + "\n";
-          claude.stdin.write(clearMsg);
-          sendEvent("status", { message: "Conversation cleared" });
-          return;
         case "help":
-          sendEvent("status", { message: "Commands: /exit, /clear, /help. Other messages are sent to Claude." });
-          return;
-        default:
-          // Try sending as command, fall through to user message if not recognized
-          const cmdMsg = JSON.stringify({ type: "command", command: input }) + "\n";
-          debugLog("CLAUDE_CMD", cmdMsg);
-          claude.stdin.write(cmdMsg);
+          sendEvent("status", {
+            message: "Commands: /compact, /clear, /cost, /model, /status, /config, /memory, /review, /doctor, /exit"
+          });
           return;
       }
+
+      // All other slash commands: send as user message to CLI
+      // This works for: /compact, /clear, /cost, /model, /status, /config, /memory, /review, /doctor, etc.
+      debugLog("SLASH_CMD_FORWARD", input);
+      const slashMsg = JSON.stringify({
+        type: "user",
+        message: { role: "user", content: input },
+        session_id: currentSessionId,
+        parent_tool_use_id: null
+      }) + "\n";
+      debugLog("CLAUDE_SLASH", slashMsg);
+      claude.stdin.write(slashMsg);
+      return;
     }
 
     sendEvent("processing", { prompt: input });
@@ -347,7 +397,9 @@ async function main() {
 
     const msg = JSON.stringify({
       type: "user",
-      message: { role: "user", content: contextualInput }
+      message: { role: "user", content: contextualInput },
+      session_id: currentSessionId,
+      parent_tool_use_id: null
     }) + "\n";
 
     debugLog("CLAUDE_STDIN", msg);

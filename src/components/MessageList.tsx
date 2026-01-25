@@ -23,6 +23,7 @@ export interface Message {
   content: string;  // Legacy: plain text content
   toolUses?: ToolUse[];  // Legacy: tool uses at end
   contentBlocks?: ContentBlock[];  // New: ordered blocks
+  variant?: "divider" | "status";  // Optional styling variant
 }
 
 interface MessageListProps {
@@ -86,14 +87,14 @@ const MessageList: Component<MessageListProps> = (props) => {
     <div class="message-list" ref={containerRef}>
       <For each={props.messages}>
         {(message) => (
-          <div class={`message message-${message.role}`}>
+          <div class={`message message-${message.role}${message.variant ? ` message-${message.variant}` : ''}`}>
             <Show when={message.role === "user"}>
               <div class="message-role-indicator">You</div>
             </Show>
             <Show when={message.role === "assistant"}>
               <div class="message-role-indicator">Claude</div>
             </Show>
-            <Show when={message.role === "system"}>
+            <Show when={message.role === "system" && !message.variant}>
               <div class="message-role-indicator">System</div>
             </Show>
 

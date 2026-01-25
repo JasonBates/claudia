@@ -67,6 +67,18 @@ body {
   max-height: 100vh;
 }
 
+/* Fixed top bar background - prevents scroll overlap */
+.top-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 40;
+}
+
 /* Drag region for window title bar */
 .drag-region {
   position: fixed;
@@ -82,18 +94,17 @@ body {
 /* Floating Status Indicator */
 .status-indicator {
   position: fixed;
-  top: 6px;
-  right: 10px;
+  top: 0;
+  right: 12px;
+  height: 32px;  /* Match top-bar height */
   display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 6px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  align-items: center;  /* Vertically center content */
+  gap: 6px;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
   z-index: 50;
   font-size: 11px;
-  opacity: 0.7;
 }
 
 .status-indicator:hover {
@@ -116,9 +127,10 @@ body {
 }
 
 .context-mini.warning {
-  color: rgba(181, 137, 0, 0.9);  /* Solarized yellow */
+  color: rgba(203, 75, 22, 0.9);  /* Solarized orange */
 }
 
+.context-mini.critical,
 .context-mini.danger {
   color: rgba(220, 50, 47, 0.9);  /* Solarized red */
 }
@@ -244,6 +256,55 @@ body {
 .message-system .message-body {
   background: rgba(181, 137, 0, 0.1);  /* Solarized yellow */
   border: 1px solid rgba(181, 137, 0, 0.3);
+}
+
+/* Status messages - compact inline style */
+.message-status {
+  margin: 4px 0;
+}
+
+.message-status .message-body {
+  background: transparent;
+  border: none;
+  padding: 4px 16px;
+  color: var(--base01);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Divider - horizontal rule with centered text */
+.message-divider {
+  display: flex;
+  align-items: center;
+  margin: 16px 0;
+  padding: 0 16px;
+}
+
+.message-divider .message-body {
+  background: transparent;
+  border: none;
+  padding: 0;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--base01);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.message-divider::before,
+.message-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.message-divider::before {
+  margin-right: 12px;
+}
+
+.message-divider::after {
+  margin-left: 12px;
 }
 
 .streaming .message-body {
@@ -1744,4 +1805,117 @@ del {
   font-size: 10px;
   color: var(--base01);
   opacity: 0.6;
+}
+
+/* Context Warning - inline with title bar */
+.context-warning {
+  position: fixed;
+  top: 0;
+  left: 80px;  /* After traffic lights */
+  right: 200px;  /* Before status pill */
+  height: 32px;  /* Match title bar */
+  display: flex;
+  align-items: center;
+  justify-content: center;  /* Center horizontally */
+  gap: 6px;
+  font-size: 11px;
+  z-index: 60;  /* Above drag region */
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+  -webkit-app-region: no-drag;  /* Allow clicking */
+}
+
+.context-warning:hover {
+  opacity: 1;
+}
+
+.context-warning.warning {
+  color: var(--orange);
+}
+
+.context-warning.critical {
+  color: var(--red);
+}
+
+.warning-icon {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.warning-text {
+  flex: 1;
+  font-weight: 500;
+}
+
+.compact-btn {
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.compact-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dismiss-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.6;
+  padding: 0 4px;
+  transition: opacity 0.15s;
+}
+
+.dismiss-btn:hover {
+  opacity: 1;
+}
+
+/* Toast Notification */
+.toast-notification {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--fg);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  z-index: 300;
+  animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@keyframes toastOut {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
 }

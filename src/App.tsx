@@ -91,6 +91,29 @@ function App() {
   const MODES: Mode[] = ["normal", "plan", "auto-accept"];
   const [currentMode, setCurrentMode] = createSignal<Mode>("normal");
 
+  // Context warning state
+  const [warningDismissed, setWarningDismissed] = createSignal(false);
+  const [toastMessage, setToastMessage] = createSignal<string | null>(null);
+
+  // Track compaction for before/after token display
+  const [lastCompactionPreTokens, setLastCompactionPreTokens] = createSignal<number | null>(null);
+  const [compactionMessageId, setCompactionMessageId] = createSignal<string | null>(null);
+
+  // Compute context threshold level
+  const contextThreshold = () => {
+    const used = sessionInfo().totalContext || 0;
+    const percent = (used / CONTEXT_LIMIT) * 100;
+    if (percent >= 75) return 'critical';
+    if (percent >= 60) return 'warning';
+    return 'ok';
+  };
+
+  // Show toast notification
+  const showToast = (message: string, duration = 3000) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), duration);
+  };
+
   // Ref to CommandInput for focus management
   let commandInputRef: CommandInputHandle | undefined;
 
@@ -228,12 +251,55 @@ function App() {
 
     switch (event.type) {
       case "status":
-        // Bridge status - could show in UI
+        // Show status messages inline in the message list
+        if (event.message) {
+          const msgId = `status-${Date.now()}`;
+
+          // If this is "Compacting...", capture current context as the "before" value
+          if (event.message.includes("Compacting")) {
+            const currentContext = sessionInfo().totalContext || 0;
+            setLastCompactionPreTokens(currentContext);
+          }
+
+          // Build message content - use actual totalContext for compaction completion
+          let content = event.message;
+          if (event.is_compaction) {
+            const preTokens = lastCompactionPreTokens() || 0;
+            content = `Compacted from ${Math.round(preTokens / 1000)}k`;
+            // Track this message ID for updating with "after" count
+            setCompactionMessageId(msgId);
+          }
+
+          const statusMsg: Message = {
+            id: msgId,
+            role: "system",
+            content,
+            variant: "status",
+          };
+          setMessages((prev) => [...prev, statusMsg]);
+
+          // If this is a compaction boundary, add divider
+          if (event.is_compaction) {
+            const dividerMsg: Message = {
+              id: `divider-${Date.now()}`,
+              role: "system",
+              content: "new conversation",
+              variant: "divider",
+            };
+            setMessages((prev) => [...prev, dividerMsg]);
+          }
+        }
         break;
 
       case "ready":
         setSessionActive(true);
-        setSessionInfo({ model: event.model });
+        // Preserve existing totalContext if we have it (ready can fire multiple times)
+        setSessionInfo((prev) => ({
+          ...prev,
+          model: event.model,
+          // Only reset totalContext if we don't have a value yet
+          totalContext: prev.totalContext || 0,
+        }));
         break;
 
       case "processing":
@@ -552,15 +618,44 @@ function App() {
         // Content block ended - nothing special needed
         break;
 
+      case "context_update":
+        // Real-time context size from message_start event
+        // This fires at the START of each response with current token usage
+        // Total = raw_input + cache_read + cache_write (all represent context window usage)
+        const contextTotal = event.input_tokens || 0;
+        if (contextTotal > 0) {
+          setSessionInfo((prev) => ({
+            ...prev,
+            totalContext: contextTotal,
+          }));
+
+          // If we were waiting to update compaction message, do it now
+          const compPreTokens = lastCompactionPreTokens();
+          const compMsgId = compactionMessageId();
+          if (compPreTokens && compMsgId) {
+            const preK = Math.round(compPreTokens / 1000);
+            const postK = Math.round(contextTotal / 1000);
+            setMessages((prev) => prev.map((msg) =>
+              msg.id === compMsgId
+                ? { ...msg, content: `Compacted: ${preK}k → ${postK}k` }
+                : msg
+            ));
+            setLastCompactionPreTokens(null);
+            setCompactionMessageId(null);
+            setWarningDismissed(false);
+          }
+        }
+        break;
+
       case "result":
         console.log("[EVENT] *** RESULT EVENT RECEIVED ***", event);
-        // Final result with metadata - track total context usage
-        // Total context = input_tokens (which already includes cache_read + cache_creation from bridge)
-        const turnContext = event.input_tokens || 0;
+        // Only add output tokens to context - input context handled by context_update
+        // result's input_tokens has different semantics (CLI aggregates differently)
+        const newOutputTokens = event.output_tokens || 0;
         setSessionInfo((prev) => ({
           ...prev,
-          totalContext: turnContext, // This is the current context size, not cumulative
-          outputTokens: (prev.outputTokens || 0) + (event.output_tokens || 0),
+          totalContext: (prev.totalContext || 0) + newOutputTokens,
+          outputTokens: (prev.outputTokens || 0) + newOutputTokens,
         }));
         console.log("[EVENT] Calling finishStreaming from result");
         finishStreaming();
@@ -703,6 +798,8 @@ function App() {
 
   return (
     <div class="app">
+      {/* Fixed top bar background */}
+      <div class="top-bar"></div>
       {/* Drag region for window */}
       <div class="drag-region" data-tauri-drag-region="true"></div>
 
@@ -724,17 +821,15 @@ function App() {
         <Show when={sessionActive()} fallback={<span class="status-icon">⊘</span>}>
           <span class="status-icon">⚡</span>
         </Show>
-        <Show when={sessionInfo().totalContext}>
-          {(() => {
-            const used = sessionInfo().totalContext || 0;
-            const percent = Math.min((used / CONTEXT_LIMIT) * 100, 100);
-            const usedK = (used / 1000).toFixed(0);
-            return (
-              <span class="context-mini" classList={{ warning: percent > 70, danger: percent > 90 }}>
-                {usedK}k
-              </span>
-            );
-          })()}
+        <Show when={sessionActive()}>
+          <span class="context-mini" classList={{
+            warning: contextThreshold() === 'warning',
+            critical: contextThreshold() === 'critical'
+          }}>
+            {sessionInfo().totalContext
+              ? `${Math.round(sessionInfo().totalContext / 1000)}k`
+              : '—'}
+          </span>
         </Show>
       </div>
 
@@ -747,6 +842,21 @@ function App() {
         <div class="error-banner">
           {error()}
           <button onClick={() => setError(null)}>Dismiss</button>
+        </div>
+      </Show>
+
+      {/* Context Warning - clickable text in title bar */}
+      <Show when={contextThreshold() !== 'ok' && !warningDismissed()}>
+        <div
+          class={`context-warning ${contextThreshold()}`}
+          onClick={() => handleSubmit("/compact")}
+          title="Click to compact conversation"
+        >
+          <span class="warning-icon">⚠</span>
+          <span class="warning-text">
+            {contextThreshold() === 'critical' && "Context 75%+ — click to compact"}
+            {contextThreshold() === 'warning' && "Context 60%+ — click to compact"}
+          </span>
         </div>
       </Show>
 
@@ -812,6 +922,13 @@ function App() {
             onAllow={handlePermissionAllow}
             onDeny={handlePermissionDeny}
           />
+        </div>
+      </Show>
+
+      {/* Toast Notification */}
+      <Show when={toastMessage()}>
+        <div class="toast-notification">
+          {toastMessage()}
         </div>
       </Show>
     </div>

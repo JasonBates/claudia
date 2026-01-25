@@ -206,7 +206,11 @@ impl ClaudeProcess {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                Some(ClaudeEvent::Status { message })
+                let is_compaction = json.get("isCompaction")
+                    .and_then(|v| v.as_bool());
+                let pre_tokens = json.get("preTokens")
+                    .and_then(|v| v.as_u64());
+                Some(ClaudeEvent::Status { message, is_compaction, pre_tokens })
             }
 
             "ready" => {
@@ -369,6 +373,25 @@ impl ClaudeProcess {
                     .unwrap_or("Unknown error")
                     .to_string();
                 Some(ClaudeEvent::Error { message })
+            }
+
+            "context_update" => {
+                // Real-time context size from message_start event
+                let input_tokens = json.get("inputTokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let raw_input_tokens = json.get("rawInputTokens")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let cache_read = json.get("cacheRead")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let cache_write = json.get("cacheWrite")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                rust_debug_log("CONTEXT_UPDATE", &format!("total={}, raw={}, cache_read={}, cache_write={}",
+                    input_tokens, raw_input_tokens, cache_read, cache_write));
+                Some(ClaudeEvent::ContextUpdate { input_tokens, raw_input_tokens, cache_read, cache_write })
             }
 
             _ => None,

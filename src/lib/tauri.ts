@@ -15,12 +15,15 @@ export interface ClaudeEvent {
     | "permission_request"
     | "tool_result"
     | "block_end"
+    | "context_update"
     | "result"
     | "done"
     | "closed"
     | "error";
   // Status/Ready
   message?: string;
+  is_compaction?: boolean;
+  pre_tokens?: number;
   session_id?: string;
   model?: string;
   tools?: number;
@@ -46,6 +49,8 @@ export interface ClaudeEvent {
   stdout?: string;
   stderr?: string;
   is_error?: boolean;
+  // ContextUpdate (real-time context from message_start)
+  raw_input_tokens?: number;
   // Result
   content?: string;
   cost?: number;

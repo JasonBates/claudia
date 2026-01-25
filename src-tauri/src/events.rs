@@ -5,7 +5,13 @@ use serde::Serialize;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClaudeEvent {
     /// Bridge status message
-    Status { message: String },
+    Status {
+        message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        is_compaction: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pre_tokens: Option<u64>,
+    },
 
     /// Session ready with metadata
     Ready {
@@ -53,6 +59,15 @@ pub enum ClaudeEvent {
 
     /// Content block ended
     BlockEnd,
+
+    /// Real-time context size update (from message_start event)
+    /// Fires at the START of each response with current token usage
+    ContextUpdate {
+        input_tokens: u64,
+        raw_input_tokens: u64,
+        cache_read: u64,
+        cache_write: u64,
+    },
 
     /// Final result with metadata
     Result {
