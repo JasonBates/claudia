@@ -31,7 +31,7 @@ const ThinkingPreview: Component<ThinkingPreviewProps> = (props) => {
       <div class="thinking-header">
         <span class="thinking-icon">...</span>
         <span class="thinking-label">Thinking</span>
-        <Show when={props.onToggle && !props.isStreaming}>
+        <Show when={props.onToggle}>
           <button
             class="thinking-toggle-btn"
             onClick={(e) => {

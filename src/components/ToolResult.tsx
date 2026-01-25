@@ -1,4 +1,4 @@
-import { Component, createSignal, Show, For } from "solid-js";
+import { Component, createSignal, createMemo, Show, For } from "solid-js";
 import MessageContent from "./MessageContent";
 
 interface ToolResultProps {
@@ -39,14 +39,18 @@ const TodoList: Component<{ todos: Todo[] }> = (props) => {
 const ToolResult: Component<ToolResultProps> = (props) => {
   const [expanded, setExpanded] = createSignal(false);
 
-  const toggleExpanded = () => setExpanded(!expanded());
+  const toggleExpanded = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setExpanded(!expanded());
+  };
 
   const inputPreview = () => {
     if (!props.input) return "";
     const str = JSON.stringify(props.input);
     // Don't show empty objects or raw empty strings
     if (str === "{}" || str === '{"raw":""}') return "";
-    return str.length > 50 ? str.slice(0, 50) + "..." : str;
+    return str.length > 60 ? str.slice(0, 60) + "..." : str;
   };
 
   const hasInput = () => {
@@ -67,15 +71,39 @@ const ToolResult: Component<ToolResultProps> = (props) => {
     return input?.todos || [];
   };
 
+  // Get result lines for preview
+  const resultLines = createMemo(() => {
+    if (!props.result) return [];
+    return props.result.split('\n');
+  });
+
+  // Preview shows first 2 lines
+  const previewContent = createMemo(() => {
+    const lines = resultLines();
+    if (lines.length <= 2) return props.result || "";
+    return lines.slice(0, 2).join('\n');
+  });
+
+  const hasMoreLines = () => resultLines().length > 2;
+  const extraLineCount = () => resultLines().length - 2;
+
   return (
-    <div class="tool-result">
-      <div class="tool-header" onClick={toggleExpanded}>
-        <span class="tool-icon">{props.isLoading ? "◐" : "›"}</span>
+    <div class="tool-result" classList={{ expanded: expanded(), loading: props.isLoading }}>
+      <div class="tool-header">
+        <span class="tool-icon">{props.isLoading ? "◐" : "⚡"}</span>
         <span class="tool-name">{props.name}</span>
-        <Show when={hasInput() && !expanded() && !isTodoWrite()}>
+        <Show when={hasInput()}>
           <span class="tool-input-preview">{inputPreview()}</span>
         </Show>
-        <span class="tool-expand">{expanded() ? "−" : "+"}</span>
+        <Show when={!props.isLoading && (hasInput() || props.result)}>
+          <button
+            class="tool-toggle-btn"
+            onClick={toggleExpanded}
+            title={expanded() ? "Collapse" : "Expand"}
+          >
+            {expanded() ? "−" : "+"}
+          </button>
+        </Show>
       </div>
 
       {/* Special rendering for TodoWrite - always show todo list */}
@@ -83,25 +111,22 @@ const ToolResult: Component<ToolResultProps> = (props) => {
         <TodoList todos={getTodos()} />
       </Show>
 
-      <Show when={expanded() && !isTodoWrite()}>
-        <div class="tool-details">
-          <Show when={hasInput()}>
-            <div class="tool-section">
-              <div class="tool-section-label">Input:</div>
-              <pre class="tool-json">
-                {JSON.stringify(props.input, null, 2)}
-              </pre>
-            </div>
-          </Show>
+      {/* Result content - only visible when expanded */}
+      <Show when={props.result && !isTodoWrite() && expanded()}>
+        <div class="tool-result-preview">
+          <div class="tool-result-content">
+            <MessageContent content={props.result!} />
+          </div>
+        </div>
+      </Show>
 
-          <Show when={props.result}>
-            <div class="tool-section">
-              <div class="tool-section-label">Result:</div>
-              <div class="tool-result-content">
-                <MessageContent content={props.result!} />
-              </div>
-            </div>
-          </Show>
+      {/* Expanded input details */}
+      <Show when={expanded() && hasInput() && !isTodoWrite()}>
+        <div class="tool-input-details">
+          <div class="tool-section-label">Input:</div>
+          <pre class="tool-json">
+            {JSON.stringify(props.input, null, 2)}
+          </pre>
         </div>
       </Show>
     </div>

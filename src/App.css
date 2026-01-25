@@ -556,7 +556,7 @@ del {
   margin: 0;
 }
 
-/* Tool Results */
+/* Tool Results - Green/Violet tint */
 .tool-uses {
   margin-top: 12px;
   display: flex;
@@ -565,85 +565,162 @@ del {
 }
 
 .tool-result {
-  border-left: 2px solid var(--border);
-  padding-left: 12px;
+  margin-bottom: 8px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(133, 153, 0, 0.08);  /* Solarized green, very subtle */
+  border-left: 2px solid var(--green);
+  transition: all 0.15s ease;
+}
+
+.tool-result.expanded {
+  background: rgba(133, 153, 0, 0.12);
+  border-left-color: var(--violet);
+}
+
+.tool-result.loading {
+  border-left-color: var(--yellow);
+  animation: toolPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes toolPulse {
+  0%, 100% { background: rgba(133, 153, 0, 0.08); }
+  50% { background: rgba(181, 137, 0, 0.12); }
 }
 
 .tool-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
-  padding: 4px 0;
-  opacity: 0.7;
-  transition: opacity 0.15s;
-}
-
-.tool-header:hover {
-  opacity: 1;
+  padding: 2px 0;
 }
 
 .tool-icon {
-  font-family: monospace;
-  color: var(--accent);
+  font-size: 12px;
+  color: var(--green);
+}
+
+.tool-result.loading .tool-icon {
+  color: var(--yellow);
+  animation: spin 1s linear infinite;
 }
 
 .tool-name {
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 12px;
   color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .tool-input-preview {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--fg-muted);
-  font-family: monospace;
+  font-family: "SF Mono", "JetBrains Mono", monospace;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  opacity: 0.8;
 }
 
-.tool-expand {
-  font-family: monospace;
-  font-size: 11px;
-  color: var(--fg-muted);
+.tool-toggle-btn {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--green);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--green);
+  font-size: 14px;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
 }
 
-.tool-details {
+.tool-toggle-btn:hover {
+  background: var(--green);
+  color: var(--bg);
+}
+
+.tool-result.expanded .tool-toggle-btn {
+  border-color: var(--violet);
+  color: var(--violet);
+}
+
+.tool-result.expanded .tool-toggle-btn:hover {
+  background: var(--violet);
+  color: var(--bg);
+}
+
+/* Tool result preview */
+.tool-result-preview {
   margin-top: 8px;
-  padding: 8px;
-  background: var(--bg-tertiary);
-  border-radius: 4px;
+  position: relative;
 }
 
-.tool-section {
-  margin-bottom: 8px;
+.tool-result-preview.collapsed {
+  max-height: 60px;  /* ~2 lines */
+  overflow: hidden;
 }
 
-.tool-section:last-child {
-  margin-bottom: 0;
+.tool-result-content {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tool-result-fade {
+  position: absolute;
+  bottom: 20px;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(
+    to top,
+    rgba(133, 153, 0, 0.15) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.tool-result-more {
+  font-size: 11px;
+  color: var(--green);
+  font-weight: 500;
+  padding-top: 4px;
+  opacity: 0.8;
+}
+
+/* Tool input details (shown when expanded) */
+.tool-input-details {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(133, 153, 0, 0.2);
 }
 
 .tool-section-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
+  letter-spacing: 0.05em;
   color: var(--fg-muted);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .tool-json {
   font-family: "SF Mono", "JetBrains Mono", monospace;
-  font-size: 12px;
+  font-size: 11px;
   background: var(--code-bg);
   padding: 8px;
   border-radius: 4px;
   overflow-x: auto;
   color: var(--fg);
-}
-
-.tool-result-content {
-  font-size: 13px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 /* Todo List */
@@ -1506,8 +1583,8 @@ del {
   margin-bottom: 12px;
   padding: 10px 14px;
   border-radius: 6px;
-  background: rgba(7, 54, 66, 0.4);  /* Solarized base02 subdued */
-  border-left: 2px solid var(--fg-muted);
+  background: rgba(108, 113, 196, 0.12);  /* Solarized violet tint */
+  border-left: 2px solid var(--violet);
 }
 
 .thinking-block.preview {
@@ -1557,10 +1634,10 @@ del {
   margin-left: auto;
   width: 20px;
   height: 20px;
-  border: 1px solid var(--fg-muted);
+  border: 1px solid var(--violet);
   border-radius: 3px;
   background: transparent;
-  color: var(--fg-muted);
+  color: var(--violet);
   font-size: 14px;
   font-weight: bold;
   line-height: 1;
@@ -1572,9 +1649,8 @@ del {
 }
 
 .thinking-toggle-btn:hover {
-  background: var(--fg-muted);
+  background: var(--violet);
   color: var(--bg);
-  border-color: var(--fg-muted);
 }
 
 .thinking-content {
@@ -1601,8 +1677,7 @@ del {
   height: 40px;
   background: linear-gradient(
     to top,
-    rgba(7, 54, 66, 0.95) 0%,
-    rgba(7, 54, 66, 0.7) 40%,
+    rgba(108, 113, 196, 0.2) 0%,
     transparent 100%
   );
   pointer-events: none;
@@ -1619,8 +1694,14 @@ del {
   50.01%, 100% { opacity: 0; }
 }
 
+.thinking-block.streaming {
+  background: rgba(108, 113, 196, 0.15);  /* Slightly brighter violet when streaming */
+  border-left-color: var(--violet);
+}
+
 .thinking-block.streaming .thinking-icon {
   animation: spin 1s linear infinite;
+  color: var(--violet);
 }
 
 @keyframes spin {
@@ -1628,14 +1709,15 @@ del {
   to { transform: rotate(360deg); }
 }
 
-/* When expanded, show with normal styling */
+/* When expanded, keep same background but enhance text readability */
+.thinking-block.expanded {
+  background: rgba(108, 113, 196, 0.12);  /* Same violet tint as collapsed */
+  border-left-color: var(--violet);
+}
+
 .thinking-block.expanded .thinking-content {
   font-style: normal;
   color: var(--fg);
-}
-
-.thinking-block.expanded {
-  border-left-color: var(--cyan);
 }
 
 /* Collapsed thinking indicator - shows "Thinking" label when not expanded */

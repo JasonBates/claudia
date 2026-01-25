@@ -37,20 +37,20 @@ interface MessageListProps {
 const MessageList: Component<MessageListProps> = (props) => {
   let containerRef: HTMLDivElement | undefined;
 
-  // Track individually expanded thinking blocks by message ID
+  // Track individually expanded thinking blocks by unique key (messageId:blockIndex)
   const [expandedThinking, setExpandedThinking] = createSignal<Set<string>>(new Set());
 
-  const isThinkingExpanded = (messageId: string) => {
-    return props.showThinking || expandedThinking().has(messageId);
+  const isThinkingExpanded = (blockKey: string) => {
+    return props.showThinking || expandedThinking().has(blockKey);
   };
 
-  const toggleThinking = (messageId: string) => {
+  const toggleThinking = (blockKey: string) => {
     setExpandedThinking(prev => {
       const next = new Set(prev);
-      if (next.has(messageId)) {
-        next.delete(messageId);
+      if (next.has(blockKey)) {
+        next.delete(blockKey);
       } else {
-        next.add(messageId);
+        next.add(blockKey);
       }
       return next;
     });
@@ -118,34 +118,29 @@ const MessageList: Component<MessageListProps> = (props) => {
                   </Show>
                 </>
               }>
-                {/* Show thinking blocks for completed messages - always visible with preview */}
-                <Show when={message.contentBlocks?.some(b => b.type === "thinking")}>
-                  <For each={message.contentBlocks?.filter(b => b.type === "thinking")}>
-                    {(block) => (
+                  {/* Render ALL blocks in natural order (thinking, text, tool_use) */}
+                <For each={message.contentBlocks}>
+                  {(block, index) => (
+                    <Show when={block.type === "thinking"} fallback={
+                      <Show when={block.type === "text"} fallback={
+                        <div class="tool-uses">
+                          <ToolResult
+                            name={(block as { type: "tool_use"; tool: ToolUse }).tool.name}
+                            input={(block as { type: "tool_use"; tool: ToolUse }).tool.input}
+                            result={(block as { type: "tool_use"; tool: ToolUse }).tool.result}
+                            isLoading={(block as { type: "tool_use"; tool: ToolUse }).tool.isLoading}
+                          />
+                        </div>
+                      }>
+                        <MessageContent content={(block as { type: "text"; content: string }).content} />
+                      </Show>
+                    }>
                       <ThinkingPreview
                         content={(block as { type: "thinking"; content: string }).content}
-                        expanded={isThinkingExpanded(message.id)}
+                        expanded={isThinkingExpanded(`${message.id}:${index()}`)}
                         isStreaming={false}
-                        onToggle={() => toggleThinking(message.id)}
+                        onToggle={() => toggleThinking(`${message.id}:${index()}`)}
                       />
-                    )}
-                  </For>
-                </Show>
-
-                {/* Render non-thinking blocks */}
-                <For each={message.contentBlocks?.filter(b => b.type !== "thinking")}>
-                  {(block) => (
-                    <Show when={block.type === "text"} fallback={
-                      <div class="tool-uses">
-                        <ToolResult
-                          name={(block as { type: "tool_use"; tool: ToolUse }).tool.name}
-                          input={(block as { type: "tool_use"; tool: ToolUse }).tool.input}
-                          result={(block as { type: "tool_use"; tool: ToolUse }).tool.result}
-                          isLoading={(block as { type: "tool_use"; tool: ToolUse }).tool.isLoading}
-                        />
-                      </div>
-                    }>
-                      <MessageContent content={(block as { type: "text"; content: string }).content} />
                     </Show>
                   )}
                 </For>
@@ -160,15 +155,6 @@ const MessageList: Component<MessageListProps> = (props) => {
         <div class="message message-assistant streaming">
           <div class="message-role-indicator">Claude</div>
           <div class="message-body">
-            {/* Show thinking preview/expanded above other content */}
-            <Show when={props.streamingThinking}>
-              <ThinkingPreview
-                content={props.streamingThinking!}
-                expanded={props.showThinking || false}
-                isStreaming={true}
-              />
-            </Show>
-
             {/* Use streamingBlocks if provided for proper ordering */}
             <Show when={props.streamingBlocks && props.streamingBlocks.length > 0} fallback={
               <>
@@ -192,26 +178,42 @@ const MessageList: Component<MessageListProps> = (props) => {
                 </Show>
               </>
             }>
-              {/* Filter out thinking blocks - they're shown via ThinkingPreview above */}
-              <For each={props.streamingBlocks?.filter(b => b.type !== "thinking")}>
-                {(block, index) => (
-                  <Show when={block.type === "text"} fallback={
-                    <div class="tool-uses">
-                      <ToolResult
-                        name={(block as { type: "tool_use"; tool: ToolUse }).tool.name}
-                        input={(block as { type: "tool_use"; tool: ToolUse }).tool.input}
-                        result={(block as { type: "tool_use"; tool: ToolUse }).tool.result}
-                        isLoading={(block as { type: "tool_use"; tool: ToolUse }).tool.isLoading}
+              {/* Render ALL blocks in natural order (thinking, text, tool_use) */}
+              <For each={props.streamingBlocks}>
+                {(block, index) => {
+                  // Find indices for cursor/streaming state logic
+                  const blocks = props.streamingBlocks || [];
+                  const lastThinkingIndex = blocks.map((b, i) => b.type === "thinking" ? i : -1).filter(i => i >= 0).pop() ?? -1;
+                  const lastTextIndex = blocks.map((b, i) => b.type === "text" ? i : -1).filter(i => i >= 0).pop() ?? -1;
+
+                  return (
+                    <Show when={block.type === "thinking"} fallback={
+                      <Show when={block.type === "text"} fallback={
+                        <div class="tool-uses">
+                          <ToolResult
+                            name={(block as { type: "tool_use"; tool: ToolUse }).tool.name}
+                            input={(block as { type: "tool_use"; tool: ToolUse }).tool.input}
+                            result={(block as { type: "tool_use"; tool: ToolUse }).tool.result}
+                            isLoading={(block as { type: "tool_use"; tool: ToolUse }).tool.isLoading}
+                          />
+                        </div>
+                      }>
+                        <MessageContent content={(block as { type: "text"; content: string }).content} />
+                        {/* Show cursor after last text block */}
+                        <Show when={index() === lastTextIndex}>
+                          <span class="cursor">|</span>
+                        </Show>
+                      </Show>
+                    }>
+                      <ThinkingPreview
+                        content={(block as { type: "thinking"; content: string }).content}
+                        expanded={isThinkingExpanded(`streaming:${index()}`)}
+                        isStreaming={index() === lastThinkingIndex && !!props.streamingThinking}
+                        onToggle={() => toggleThinking(`streaming:${index()}`)}
                       />
-                    </div>
-                  }>
-                    <MessageContent content={(block as { type: "text"; content: string }).content} />
-                    {/* Show cursor after last text block */}
-                    <Show when={index() === (props.streamingBlocks?.filter(b => b.type !== "thinking").length || 0) - 1 && block.type === "text"}>
-                      <span class="cursor">|</span>
                     </Show>
-                  </Show>
-                )}
+                  );
+                }}
               </For>
             </Show>
           </div>
