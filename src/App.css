@@ -565,17 +565,18 @@ del {
 }
 
 .tool-result {
-  margin-bottom: 8px;
-  padding: 10px 14px;
-  border-radius: 6px;
-  background: rgba(133, 153, 0, 0.08);  /* Solarized green, very subtle */
-  border-left: 2px solid var(--green);
+  margin-bottom: 4px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(133, 153, 0, 0.04);  /* Very subtle green tint */
+  border-left: 1px solid var(--base01);
   transition: all 0.15s ease;
 }
 
 .tool-result.expanded {
-  background: rgba(133, 153, 0, 0.12);
-  border-left-color: var(--violet);
+  padding: 8px 12px;
+  background: rgba(133, 153, 0, 0.08);
+  border-left-color: var(--green);
 }
 
 .tool-result.loading {
@@ -584,55 +585,62 @@ del {
 }
 
 @keyframes toolPulse {
-  0%, 100% { background: rgba(133, 153, 0, 0.08); }
-  50% { background: rgba(181, 137, 0, 0.12); }
+  0%, 100% { background: rgba(133, 153, 0, 0.04); }
+  50% { background: rgba(181, 137, 0, 0.08); }
 }
 
 .tool-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 0;
+  gap: 6px;
+  padding: 0;
 }
 
 .tool-icon {
-  font-size: 12px;
-  color: var(--green);
+  font-size: 10px;
+  color: var(--base01);
+  opacity: 0.7;
 }
 
 .tool-result.loading .tool-icon {
   color: var(--yellow);
+  opacity: 1;
   animation: spin 1s linear infinite;
 }
 
 .tool-name {
-  font-weight: 600;
-  font-size: 12px;
-  color: var(--fg);
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--base01);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
+}
+
+.tool-result.expanded .tool-name {
+  color: var(--fg);
+  font-weight: 600;
 }
 
 .tool-input-preview {
-  font-size: 11px;
-  color: var(--fg-muted);
+  font-size: 10px;
+  color: var(--base01);
   font-family: "SF Mono", "JetBrains Mono", monospace;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0.8;
+  opacity: 0.6;
 }
 
 .tool-toggle-btn {
   margin-left: auto;
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--green);
-  border-radius: 3px;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--base01);
+  border-radius: 2px;
   background: transparent;
-  color: var(--green);
-  font-size: 14px;
+  color: var(--base01);
+  font-size: 11px;
   font-weight: bold;
   line-height: 1;
   cursor: pointer;
@@ -640,20 +648,23 @@ del {
   align-items: center;
   justify-content: center;
   transition: all 0.15s ease;
+  opacity: 0.6;
 }
 
 .tool-toggle-btn:hover {
-  background: var(--green);
-  color: var(--bg);
+  opacity: 1;
+  border-color: var(--green);
+  color: var(--green);
 }
 
 .tool-result.expanded .tool-toggle-btn {
-  border-color: var(--violet);
-  color: var(--violet);
+  opacity: 1;
+  border-color: var(--green);
+  color: var(--green);
 }
 
 .tool-result.expanded .tool-toggle-btn:hover {
-  background: var(--violet);
+  background: var(--green);
   color: var(--bg);
 }
 
