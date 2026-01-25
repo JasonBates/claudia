@@ -307,6 +307,42 @@ body {
   margin-left: 12px;
 }
 
+/* Compaction - styled like a collapsed tool block */
+.message-compaction {
+  margin: 4px 0;
+  padding: 0;
+}
+
+.message-compaction .message-body {
+  background: rgba(133, 153, 0, 0.04);  /* Same green tint as tool-result */
+  border: none;
+  border-left: 1px solid var(--base01);
+  border-radius: 4px;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--base01);
+}
+
+.message-compaction .compaction-icon {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.message-compaction .compaction-label {
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.message-compaction .compaction-tokens {
+  font-family: "SF Mono", monospace;
+  color: var(--green);
+  opacity: 0.8;
+}
+
 .streaming .message-body {
   border-left: 2px solid var(--accent);
   padding-left: 14px;

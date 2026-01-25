@@ -210,7 +210,9 @@ impl ClaudeProcess {
                     .and_then(|v| v.as_bool());
                 let pre_tokens = json.get("preTokens")
                     .and_then(|v| v.as_u64());
-                Some(ClaudeEvent::Status { message, is_compaction, pre_tokens })
+                let post_tokens = json.get("postTokens")
+                    .and_then(|v| v.as_u64());
+                Some(ClaudeEvent::Status { message, is_compaction, pre_tokens, post_tokens })
             }
 
             "ready" => {

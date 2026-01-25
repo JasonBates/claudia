@@ -11,6 +11,8 @@ pub enum ClaudeEvent {
         is_compaction: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pre_tokens: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        post_tokens: Option<u64>,
     },
 
     /// Session ready with metadata

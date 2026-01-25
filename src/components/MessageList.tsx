@@ -23,7 +23,7 @@ export interface Message {
   content: string;  // Legacy: plain text content
   toolUses?: ToolUse[];  // Legacy: tool uses at end
   contentBlocks?: ContentBlock[];  // New: ordered blocks
-  variant?: "divider" | "status";  // Optional styling variant
+  variant?: "divider" | "status" | "compaction";  // Optional styling variant
 }
 
 interface MessageListProps {
@@ -99,52 +99,62 @@ const MessageList: Component<MessageListProps> = (props) => {
             </Show>
 
             <div class="message-body">
-              {/* Render ordered content blocks if present */}
-              <Show when={message.contentBlocks && message.contentBlocks.length > 0} fallback={
-                <>
-                  <MessageContent content={message.content} />
-                  <Show when={message.toolUses && message.toolUses.length > 0}>
-                    <div class="tool-uses">
-                      <For each={message.toolUses}>
-                        {(tool) => (
-                          <ToolResult
-                            name={tool.name}
-                            input={tool.input}
-                            result={tool.result}
-                            isLoading={tool.isLoading}
-                          />
-                        )}
-                      </For>
-                    </div>
-                  </Show>
-                </>
-              }>
-                  {/* Render ALL blocks in natural order (thinking, text, tool_use) */}
-                <For each={message.contentBlocks}>
-                  {(block, index) => (
-                    <Show when={block.type === "thinking"} fallback={
-                      <Show when={block.type === "text"} fallback={
-                        <div class="tool-uses">
-                          <ToolResult
-                            name={(block as { type: "tool_use"; tool: ToolUse }).tool.name}
-                            input={(block as { type: "tool_use"; tool: ToolUse }).tool.input}
-                            result={(block as { type: "tool_use"; tool: ToolUse }).tool.result}
-                            isLoading={(block as { type: "tool_use"; tool: ToolUse }).tool.isLoading}
-                          />
-                        </div>
-                      }>
-                        <MessageContent content={(block as { type: "text"; content: string }).content} />
-                      </Show>
-                    }>
-                      <ThinkingPreview
-                        content={(block as { type: "thinking"; content: string }).content}
-                        expanded={isThinkingExpanded(`${message.id}:${index()}`)}
-                        isStreaming={false}
-                        onToggle={() => toggleThinking(`${message.id}:${index()}`)}
-                      />
+              {/* Special rendering for compaction variant - looks like a tool block */}
+              <Show when={message.variant === "compaction"}>
+                <span class="compaction-icon">⚡</span>
+                <span class="compaction-label">compacted</span>
+                <span class="compaction-tokens">{message.content}</span>
+              </Show>
+
+              {/* Regular message content rendering */}
+              <Show when={message.variant !== "compaction"}>
+                {/* Render ordered content blocks if present */}
+                <Show when={message.contentBlocks && message.contentBlocks.length > 0} fallback={
+                  <>
+                    <MessageContent content={message.content} />
+                    <Show when={message.toolUses && message.toolUses.length > 0}>
+                      <div class="tool-uses">
+                        <For each={message.toolUses}>
+                          {(tool) => (
+                            <ToolResult
+                              name={tool.name}
+                              input={tool.input}
+                              result={tool.result}
+                              isLoading={tool.isLoading}
+                            />
+                          )}
+                        </For>
+                      </div>
                     </Show>
-                  )}
-                </For>
+                  </>
+                }>
+                  {/* Render ALL blocks in natural order (thinking, text, tool_use) */}
+                  <For each={message.contentBlocks}>
+                    {(block, index) => (
+                      <Show when={block.type === "thinking"} fallback={
+                        <Show when={block.type === "text"} fallback={
+                          <div class="tool-uses">
+                            <ToolResult
+                              name={(block as { type: "tool_use"; tool: ToolUse }).tool.name}
+                              input={(block as { type: "tool_use"; tool: ToolUse }).tool.input}
+                              result={(block as { type: "tool_use"; tool: ToolUse }).tool.result}
+                              isLoading={(block as { type: "tool_use"; tool: ToolUse }).tool.isLoading}
+                            />
+                          </div>
+                        }>
+                          <MessageContent content={(block as { type: "text"; content: string }).content} />
+                        </Show>
+                      }>
+                        <ThinkingPreview
+                          content={(block as { type: "thinking"; content: string }).content}
+                          expanded={isThinkingExpanded(`${message.id}:${index()}`)}
+                          isStreaming={false}
+                          onToggle={() => toggleThinking(`${message.id}:${index()}`)}
+                        />
+                      </Show>
+                    )}
+                  </For>
+                </Show>
               </Show>
             </div>
           </div>

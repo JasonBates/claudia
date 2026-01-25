@@ -253,41 +253,55 @@ function App() {
       case "status":
         // Show status messages inline in the message list
         if (event.message) {
-          const msgId = `status-${Date.now()}`;
-
           // If this is "Compacting...", capture current context as the "before" value
           if (event.message.includes("Compacting")) {
             const currentContext = sessionInfo().totalContext || 0;
             setLastCompactionPreTokens(currentContext);
+            // Don't show the "Compacting..." status message - it's just noise
+            break;
           }
 
-          // Build message content - use actual totalContext for compaction completion
-          let content = event.message;
+          // Handle compaction completion - show as compact tool-like block
           if (event.is_compaction) {
-            const preTokens = lastCompactionPreTokens() || 0;
-            content = `Compacted from ${Math.round(preTokens / 1000)}k`;
-            // Track this message ID for updating with "after" count
-            setCompactionMessageId(msgId);
+            const preTokens = lastCompactionPreTokens() || event.pre_tokens || 0;
+            const postTokens = event.post_tokens || 0;
+
+            // Update context immediately if we have post_tokens
+            if (postTokens > 0) {
+              setSessionInfo((prev) => ({
+                ...prev,
+                totalContext: postTokens,
+              }));
+            }
+
+            // Build compact display: "145k → 26k"
+            const preK = Math.round(preTokens / 1000);
+            const postK = postTokens > 0 ? Math.round(postTokens / 1000) : '?';
+            const content = `${preK}k → ${postK}k`;
+
+            const compactionMsg: Message = {
+              id: `compaction-${Date.now()}`,
+              role: "system",
+              content,
+              variant: "compaction",
+            };
+            setMessages((prev) => [...prev, compactionMsg]);
+
+            // Clear compaction tracking
+            setLastCompactionPreTokens(null);
+            setCompactionMessageId(null);
+            setWarningDismissed(false);
+            break;
           }
 
+          // Regular status messages
           const statusMsg: Message = {
-            id: msgId,
+            id: `status-${Date.now()}`,
             role: "system",
-            content,
+            content: event.message,
             variant: "status",
           };
           setMessages((prev) => [...prev, statusMsg]);
-
-          // If this is a compaction boundary, add divider
-          if (event.is_compaction) {
-            const dividerMsg: Message = {
-              id: `divider-${Date.now()}`,
-              role: "system",
-              content: "new conversation",
-              variant: "divider",
-            };
-            setMessages((prev) => [...prev, dividerMsg]);
-          }
         }
         break;
 
@@ -628,22 +642,6 @@ function App() {
             ...prev,
             totalContext: contextTotal,
           }));
-
-          // If we were waiting to update compaction message, do it now
-          const compPreTokens = lastCompactionPreTokens();
-          const compMsgId = compactionMessageId();
-          if (compPreTokens && compMsgId) {
-            const preK = Math.round(compPreTokens / 1000);
-            const postK = Math.round(contextTotal / 1000);
-            setMessages((prev) => prev.map((msg) =>
-              msg.id === compMsgId
-                ? { ...msg, content: `Compacted: ${preK}k → ${postK}k` }
-                : msg
-            ));
-            setLastCompactionPreTokens(null);
-            setCompactionMessageId(null);
-            setWarningDismissed(false);
-          }
         }
         break;
 

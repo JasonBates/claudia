@@ -135,12 +135,16 @@ async function main() {
               sendEvent("status", { message: msg.status === "compacting" ? "Compacting conversation..." : msg.status });
             }
           } else if (msg.subtype === "compact_boundary") {
-            // Compaction completed - send notification with pre-compaction token count
-            const preTokens = msg.compact_metadata?.pre_tokens || 0;
+            // Compaction completed - send notification with token counts
+            const metadata = msg.compact_metadata || {};
+            debugLog("COMPACT_BOUNDARY", metadata);
+            const preTokens = metadata.pre_tokens || 0;
+            const postTokens = metadata.post_tokens || metadata.summary_tokens || 0;
             sendEvent("status", {
-              message: `Compacted from ${Math.round(preTokens / 1000)}k`,
+              message: "compaction_complete",
               isCompaction: true,
-              preTokens: preTokens
+              preTokens: preTokens,
+              postTokens: postTokens
             });
           }
           break;

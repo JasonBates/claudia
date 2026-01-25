@@ -24,6 +24,7 @@ export interface ClaudeEvent {
   message?: string;
   is_compaction?: boolean;
   pre_tokens?: number;
+  post_tokens?: number;
   session_id?: string;
   model?: string;
   tools?: number;
