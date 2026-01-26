@@ -80,7 +80,7 @@ pub async fn send_message(
     let max_idle = 60; // Wait up to 30 seconds (60 x 500ms) for initial response
     let mut event_count = 0;
     let mut got_first_content = false;
-    let mut tool_pending = false; // Track if a tool is executing on server (e.g., WebSearch)
+    let mut pending_tool_count: usize = 0; // Count of tools awaiting results (for parallel tool support)
     let mut compacting = false; // Track if compaction is in progress (can take 60+ seconds)
 
     cmd_debug_log("LOOP", "Starting event receive loop");
@@ -97,7 +97,8 @@ pub async fn send_message(
 
         // Use longer timeout when tool/compaction is executing
         // Compaction can take 60+ seconds for large contexts
-        let current_timeout = if compacting || tool_pending {
+        let tools_pending = pending_tool_count > 0;
+        let current_timeout = if compacting || tools_pending {
             5000
         } else if got_first_content {
             2000
@@ -106,7 +107,7 @@ pub async fn send_message(
         };
         let current_max_idle = if compacting {
             30
-        } else if tool_pending {
+        } else if tools_pending {
             24
         } else if got_first_content {
             3
@@ -133,12 +134,14 @@ pub async fn send_message(
                     got_first_content = true;
                 }
 
-                // Track tool pending state
-                if matches!(event, ClaudeEvent::ToolPending) {
-                    tool_pending = true;
-                    cmd_debug_log("TOOL", "Tool pending - waiting for server execution");
+                // Track pending tools count for parallel tool support
+                // Increment on ToolStart, decrement on ToolResult (only with tool_use_id to avoid duplicates)
+                if matches!(event, ClaudeEvent::ToolStart { .. }) {
+                    pending_tool_count += 1;
+                    cmd_debug_log("TOOL", &format!("Tool started - pending count: {}", pending_tool_count));
                 }
-                // Tool result or new text means tool finished
+
+                // Tool result decrements count (only if it has a tool_use_id - duplicates don't have one)
                 if let ClaudeEvent::ToolResult {
                     ref tool_use_id,
                     ref stdout,
@@ -153,16 +156,17 @@ pub async fn send_message(
                             tool_use_id, stdout_len
                         ),
                     );
-                    if tool_pending {
-                        cmd_debug_log("TOOL", "Tool completed");
+                    // Only decrement for results with tool_use_id (not duplicates)
+                    if tool_use_id.is_some() && pending_tool_count > 0 {
+                        pending_tool_count -= 1;
+                        cmd_debug_log("TOOL", &format!("Tool completed - pending count: {}", pending_tool_count));
                     }
-                    tool_pending = false;
                 }
-                if matches!(event, ClaudeEvent::TextDelta { .. }) {
-                    if tool_pending {
-                        cmd_debug_log("TOOL", "Tool completed (via text)");
-                    }
-                    tool_pending = false;
+
+                // Text after tools means all tools are done
+                if matches!(event, ClaudeEvent::TextDelta { .. }) && pending_tool_count > 0 {
+                    cmd_debug_log("TOOL", &format!("All tools completed (via text) - was pending: {}", pending_tool_count));
+                    pending_tool_count = 0;
                 }
 
                 // Track compaction state (can take 60+ seconds)
@@ -244,8 +248,8 @@ pub async fn send_message(
                 cmd_debug_log(
                     "TIMEOUT",
                     &format!(
-                        "Idle count: {}/{} (got_content: {}, tool_pending: {})",
-                        idle_count, current_max_idle, got_first_content, tool_pending
+                        "Idle count: {}/{} (got_content: {}, pending_tools: {})",
+                        idle_count, current_max_idle, got_first_content, pending_tool_count
                     ),
                 );
                 if idle_count >= current_max_idle {

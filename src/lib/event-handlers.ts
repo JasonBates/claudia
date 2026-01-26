@@ -458,6 +458,7 @@ export function handleToolResultEvent(
   // Check if tool exists yet - if not, store result for later (race condition handling)
   const currentTools = deps.getCurrentToolUses();
   const toolExists = currentTools.some((t) => t.id === targetToolId);
+
   if (!toolExists) {
     deps.pendingResultsRef.current.set(targetToolId, {
       result: resultData.result,
