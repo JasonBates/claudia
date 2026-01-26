@@ -313,6 +313,45 @@ The streaming in native Claude Code isn't from JSON events—it's from the React
 
 ---
 
+### /clear Command Doesn't Actually Clear Context
+
+**Symptom**: After typing `/clear`, the UI shows "context cleared" divider, but Claude still remembers the previous conversation.
+
+**Cause**: In `--input-format stream-json` mode, the Claude CLI maintains its own internal conversation state. This cannot be cleared by:
+- Changing the `session_id` in messages (CLI generates its own, ignores yours)
+- Sending `/clear` as message content (treated as literal text, not a command)
+- Sending control messages (protocol only supports `user` and `control` types, no reset command)
+
+The only way to truly clear context is to **restart the CLI process**.
+
+**Solution**: The `clearSession` Tauri command kills the bridge process and spawns a new one:
+
+```rust
+// In src-tauri/src/commands/session.rs
+pub async fn clear_session(...) {
+    // Kill existing process
+    *process_guard = None;  // Drop triggers shutdown
+
+    // Spawn new process
+    let process = ClaudeProcess::spawn(&dir)?;
+    *process_guard = Some(process);
+
+    // Send done event immediately (don't wait for Ready)
+    channel.send(ClaudeEvent::Done)?;
+}
+```
+
+**Key insight**: Don't wait for the bridge's Ready event during clear—it takes several seconds for MCP servers to reconnect. The bridge will be ready by the time the user sends their next message.
+
+**Files**:
+- `src-tauri/src/commands/session.rs` - `clear_session` command
+- `src/hooks/useLocalCommands.ts` - `handleClear` function
+- `src/lib/tauri.ts` - `clearSession` TypeScript binding
+
+**Lesson**: When integrating with external CLI tools in streaming mode, understand what state they maintain internally vs. what you control. Process restart is sometimes the only reliable reset mechanism.
+
+---
+
 ## Adding New Troubleshooting Entries
 
 When you solve a non-trivial bug:
