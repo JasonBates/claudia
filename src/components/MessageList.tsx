@@ -68,7 +68,7 @@ const MessageList: Component<MessageListProps> = (props) => {
     <div class="message-list" ref={containerRef}>
       <For each={props.messages}>
         {(message) => (
-          <div class={`message message-${message.role}${message.variant ? ` message-${message.variant}` : ''}`}>
+          <div class={`message message-${message.role}${message.variant ? ` message-${message.variant}` : ''}${message.faded ? ' message-faded' : ''}`}>
             <Show when={message.role === "user"}>
               <div class="message-role-indicator">You</div>
             </Show>
@@ -91,8 +91,14 @@ const MessageList: Component<MessageListProps> = (props) => {
                 <span class="compaction-tokens">{message.content}</span>
               </Show>
 
+              {/* Special rendering for cleared variant - just shows "context cleared" */}
+              <Show when={message.variant === "cleared"}>
+                <span class="compaction-icon">⚡</span>
+                <span class="compaction-label">context cleared</span>
+              </Show>
+
               {/* Regular message content rendering */}
-              <Show when={message.variant !== "compaction"}>
+              <Show when={message.variant !== "compaction" && message.variant !== "cleared"}>
                 {/* Render ordered content blocks if present */}
                 <Show when={message.contentBlocks && message.contentBlocks.length > 0} fallback={
                   <>

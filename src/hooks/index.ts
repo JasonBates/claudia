@@ -16,3 +16,6 @@ export type { UseTodoPanelReturn, UseTodoPanelOptions } from "./useTodoPanel";
 
 export { useQuestionPanel } from "./useQuestionPanel";
 export type { UseQuestionPanelReturn, UseQuestionPanelOptions } from "./useQuestionPanel";
+
+export { useLocalCommands } from "./useLocalCommands";
+export type { UseLocalCommandsReturn, UseLocalCommandsOptions, Command } from "./useLocalCommands";

@@ -347,6 +347,11 @@ body {
   opacity: 0.8;
 }
 
+/* Faded messages - above a clear point, no longer in context */
+.message-faded {
+  opacity: 0.4;
+}
+
 .streaming .message-body {
   border-left: 2px solid var(--accent);
   padding-left: 14px;

@@ -6,7 +6,7 @@ import QuestionPanel from "./components/QuestionPanel";
 import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
-import { sendMessage, runStreamingCommand, CommandEvent } from "./lib/tauri";
+import { sendMessage } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { createEventHandler } from "./lib/event-handlers";
@@ -17,6 +17,7 @@ import {
   usePermissions,
   useTodoPanel,
   useQuestionPanel,
+  useLocalCommands,
 } from "./hooks";
 import "./App.css";
 
@@ -64,6 +65,13 @@ function App() {
   const permissions = usePermissions({
     owner,
     getCurrentMode: currentMode,
+  });
+
+  // Local commands (slash commands + keyboard shortcuts)
+  const localCommands = useLocalCommands({
+    streaming,
+    session,
+    owner,
   });
 
   // ============================================================================
@@ -167,122 +175,10 @@ function App() {
     setCurrentMode(getNextMode(currentMode()));
   };
 
-  // Handle /sync command locally with tool-style UI
-  const handleSyncCommand = async () => {
-    const syncMsgId = `sync-${Date.now()}`;
-    const syncToolId = `sync-tool-${Date.now()}`;
-
-    // Helper to update the sync tool result
-    const updateSyncResult = (text: string, loading: boolean = true) => {
-      streaming.setMessages((prev) =>
-        prev.map((m) =>
-          m.id === syncMsgId
-            ? {
-                ...m,
-                toolUses: m.toolUses?.map((t) =>
-                  t.id === syncToolId
-                    ? {
-                        ...t,
-                        isLoading: loading,
-                        result: text,
-                        autoExpanded: !loading ? true : t.autoExpanded,
-                      }
-                    : t
-                ),
-              }
-            : m
-        )
-      );
-    };
-
-    // Block input while syncing
-    streaming.setIsLoading(true);
-
-    // Add message with loading state
-    streaming.setMessages((prev) => [
-      ...prev,
-      {
-        id: syncMsgId,
-        role: "assistant",
-        content: "",
-        toolUses: [
-          {
-            id: syncToolId,
-            name: "Sync",
-            input: { operation: "pull & push" },
-            isLoading: true,
-            result: "",
-          },
-        ],
-      },
-    ]);
-
-    let output = "";
-
-    try {
-      console.log("[SYNC] Starting streaming sync...");
-
-      // Pull phase with streaming
-      output = "▶ Pulling from remote...\n";
-      updateSyncResult(output);
-
-      await runStreamingCommand(
-        "ccms",
-        ["--force", "--fast", "--verbose", "pull"],
-        (event: CommandEvent) => {
-          if (event.type === "stdout" || event.type === "stderr") {
-            output += (event.line || "") + "\n";
-            updateSyncResult(output);
-          } else if (event.type === "completed") {
-            output += event.success ? "✓ Pull complete\n" : "✗ Pull failed\n";
-            updateSyncResult(output);
-          } else if (event.type === "error") {
-            output += `✗ Pull error: ${event.message}\n`;
-            updateSyncResult(output);
-          }
-        },
-        undefined,
-        owner
-      );
-
-      // Push phase with streaming
-      output += "\n▶ Pushing to remote...\n";
-      updateSyncResult(output);
-
-      await runStreamingCommand(
-        "ccms",
-        ["--force", "--fast", "--verbose", "push"],
-        (event: CommandEvent) => {
-          if (event.type === "stdout" || event.type === "stderr") {
-            output += (event.line || "") + "\n";
-            updateSyncResult(output);
-          } else if (event.type === "completed") {
-            output += event.success ? "✓ Push complete\n" : "✗ Push failed\n";
-            updateSyncResult(output, false);
-          } else if (event.type === "error") {
-            output += `✗ Push error: ${event.message}\n`;
-            updateSyncResult(output, false);
-          }
-        },
-        undefined,
-        owner
-      );
-
-      console.log("[SYNC] Streaming sync complete");
-    } catch (e) {
-      console.error("[SYNC] Streaming sync error:", e);
-      output += `\n✗ Error: ${e}`;
-      updateSyncResult(output, false);
-    } finally {
-      streaming.setIsLoading(false);
-    }
-  };
-
   // Main message submission handler
   const handleSubmit = async (text: string) => {
-    // Handle /sync command locally
-    if (text.trim().toLowerCase() === "/sync") {
-      await handleSyncCommand();
+    // Handle local commands (slash commands like /sync, /clear, etc.)
+    if (await localCommands.dispatch(text)) {
       return;
     }
 
@@ -316,13 +212,9 @@ function App() {
   // Keyboard Handler
   // ============================================================================
 
-  // Keyboard handler for Opt+T (thinking toggle)
+  // Keyboard handler - delegates to localCommands for all shortcuts
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.altKey && (e.key === "t" || e.key === "T" || e.key === "†" || e.code === "KeyT")) {
-      e.preventDefault();
-      e.stopPropagation();
-      streaming.setShowThinking((prev) => !prev);
-    }
+    localCommands.handleKeyDown(e);
   };
 
   // ============================================================================
@@ -332,7 +224,7 @@ function App() {
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
 
-    // Add keyboard listener for thinking toggle
+    // Add keyboard listener for local commands
     window.addEventListener("keydown", handleKeyDown, true);
 
     try {

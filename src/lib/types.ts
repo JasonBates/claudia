@@ -77,7 +77,8 @@ export interface Message {
   content: string;  // Legacy: plain text content
   toolUses?: ToolUse[];  // Legacy: tool uses at end
   contentBlocks?: ContentBlock[];  // New: ordered blocks
-  variant?: "divider" | "status" | "compaction";  // Optional styling variant
+  variant?: "divider" | "status" | "compaction" | "cleared";  // Optional styling variant
+  faded?: boolean;  // Messages above a clear point (40% opacity)
 }
 
 // ============================================================================

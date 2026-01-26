@@ -171,6 +171,7 @@ Claude continues (or aborts if denied)
 | `usePermissions` | Permission polling and allow/deny handlers |
 | `useTodoPanel` | Todo panel state with auto-hide timer |
 | `useQuestionPanel` | AskUserQuestion panel state and answer handling |
+| `useLocalCommands` | Local slash commands (/clear, /sync) and keyboard shortcuts (Alt+T) |
 
 ### Backend (src-tauri/src/)
 
@@ -476,7 +477,7 @@ New developers understand the app's capabilities by listing the hooks directory.
 |-------|-------|-------|
 | **Rust backend** | 75 tests | events, streaming, sync, timeouts, response_state |
 | **Frontend utilities** | 116 tests | context-utils, event-handlers, json-streamer, mode-utils, solid-utils |
-| **Frontend hooks** | ⚠️ 0 tests | useSession, useStreamingMessages, usePlanningMode, usePermissions, useTodoPanel, useQuestionPanel |
+| **Frontend hooks** | ⚠️ 0 tests | useSession, useStreamingMessages, usePlanningMode, usePermissions, useTodoPanel, useQuestionPanel, useLocalCommands |
 | **Components** | ⚠️ 0 tests | MessageList, ToolResult, PermissionDialog, CommandInput |
 
 ### Running Tests
