@@ -3,6 +3,8 @@ import solid from "vite-plugin-solid";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+// @ts-expect-error process is a nodejs global
+const port = parseInt(process.env.CT_PORT || "1420", 10);
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -13,15 +15,16 @@ export default defineConfig(async () => ({
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
+  // Use CT_PORT env var to run multiple instances (default: 1420)
   server: {
-    port: 1420,
+    port: port,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: port + 1,
         }
       : undefined,
     watch: {
