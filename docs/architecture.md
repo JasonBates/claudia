@@ -382,6 +382,165 @@ Uses Claude CLI's `--permission-prompt-tool` flag:
 
 **Important**: The `updatedInput` field is required for allow responses.
 
+## Benefits of the Hooks Architecture
+
+The refactoring from monolithic App.tsx (650+ lines) to custom hooks provides concrete benefits:
+
+### Adding New Features
+
+New features follow a simple 3-step pattern:
+
+1. **Create a focused hook** in `src/hooks/useNewFeature.ts`
+2. **Wire it into App.tsx** (5-10 lines in the composition layer)
+3. **Connect to event handler** if it needs to respond to Claude events
+
+Example: Adding a "conversation bookmarks" feature would mean creating `useBookmarks.ts` with bookmark state and handlers, without needing to understand permissions, planning mode, or streaming logic.
+
+### Testing in Isolation
+
+Each hook can be tested independently with minimal mocking:
+
+```typescript
+// Test useSession without loading the entire app
+test("startSession sets sessionActive on success", async () => {
+  vi.mock("../lib/tauri", () => ({
+    startSession: vi.fn().mockResolvedValue("/path/to/dir"),
+    getLaunchDir: vi.fn().mockResolvedValue("/launch"),
+  }));
+
+  let session: ReturnType<typeof useSession>;
+  createRoot((dispose) => {
+    session = useSession();
+    onCleanup(dispose);
+  });
+
+  await session.startSession();
+  expect(session.sessionActive()).toBe(true);
+});
+```
+
+| Aspect | Before (Monolithic) | After (Hooks) |
+|--------|---------------------|---------------|
+| Test scope | Entire app | Single hook |
+| Mocking complexity | 20+ dependencies | 2-3 dependencies |
+| Test isolation | Impossible | Natural |
+| Debugging failures | "Something in App.tsx" | "usePermissions line 47" |
+
+### Dependency Injection
+
+Hooks receive dependencies via options objects, enabling flexibility:
+
+```typescript
+// Hooks don't import each other - they receive callbacks
+const planning = usePlanningMode({
+  submitMessage: async (msg) => handleSubmit(msg),  // Easily mocked
+});
+```
+
+Benefits:
+- Swap implementations for testing
+- No circular import issues
+- Clear contracts between modules
+
+### Bug Isolation
+
+Symptoms map directly to files:
+
+| Symptom | Where to Look |
+|---------|---------------|
+| Session won't start | `useSession.ts` |
+| Permissions not appearing | `usePermissions.ts` |
+| Todo panel won't hide | `useTodoPanel.ts` |
+| Streaming content stuck | `useStreamingMessages.ts` |
+| Plan approval broken | `usePlanningMode.ts` |
+
+### Screaming Architecture
+
+The folder structure reveals the app's features:
+
+```
+src/hooks/
+  useSession.ts        → "This app has sessions"
+  usePermissions.ts    → "This app handles permissions"
+  usePlanningMode.ts   → "This app has a planning mode"
+  useTodoPanel.ts      → "This app shows todos"
+```
+
+New developers understand the app's capabilities by listing the hooks directory.
+
+## Testing
+
+### Current Test Coverage
+
+| Layer | Tests | Files |
+|-------|-------|-------|
+| **Rust backend** | 75 tests | events, streaming, sync, timeouts, response_state |
+| **Frontend utilities** | 116 tests | context-utils, event-handlers, json-streamer, mode-utils, solid-utils |
+| **Frontend hooks** | ⚠️ 0 tests | useSession, useStreamingMessages, usePlanningMode, usePermissions, useTodoPanel, useQuestionPanel |
+| **Components** | ⚠️ 0 tests | MessageList, ToolResult, PermissionDialog, CommandInput |
+
+### Running Tests
+
+```bash
+# Run all tests
+npm run test:all
+
+# Frontend only
+npm run test:run
+
+# Rust only
+npm run test:rust
+
+# Watch mode (during development)
+npm run test
+```
+
+### Test Architecture
+
+Tests are in `src/__tests__/` with Vitest:
+
+```
+src/__tests__/
+  setup.ts              # Global mocks (Tauri APIs, matchMedia)
+  context-utils.test.ts # Context threshold calculations
+  event-handlers.test.ts # Event processing logic (37 tests)
+  json-streamer.test.ts  # JSON streaming parser (32 tests)
+  mode-utils.test.ts     # Mode cycling logic
+  solid-utils.test.ts    # Reactive context helpers
+```
+
+### Testing Hooks
+
+Hooks require a SolidJS reactive root. Use this pattern:
+
+```typescript
+import { createRoot } from "solid-js";
+import { vi, describe, it, expect } from "vitest";
+
+describe("useMyHook", () => {
+  it("should do something", async () => {
+    // Mock external dependencies
+    vi.mock("../lib/tauri", () => ({ ... }));
+
+    let hook: ReturnType<typeof useMyHook>;
+
+    // Create reactive root (required for signals)
+    createRoot((dispose) => {
+      hook = useMyHook({ ...options });
+      // dispose() will be called when test ends
+    });
+
+    // Test the hook
+    await hook.someAction();
+    expect(hook.someSignal()).toBe(expectedValue);
+  });
+});
+```
+
+### Recommended Test Priorities
+
+See [testing-plan.md](testing-plan.md) for detailed test plan with maximum coverage benefit.
+
 ## Building
 
 ```bash
