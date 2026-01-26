@@ -107,6 +107,36 @@ export async function stopSession(): Promise<void> {
   await invoke("stop_session");
 }
 
+/**
+ * Clear the session by restarting the Claude process.
+ * This is the only way to actually clear context in stream-json mode,
+ * as slash commands don't work when sent as message content.
+ */
+export async function clearSession(
+  onEvent: (event: ClaudeEvent) => void,
+  owner?: Owner | null
+): Promise<void> {
+  const channel = new Channel<ClaudeEvent>();
+
+  channel.onmessage = (event) => {
+    console.log("[TAURI CHANNEL] Clear session event:", event.type);
+
+    if (owner) {
+      runWithOwner(owner, () => {
+        batch(() => {
+          onEvent(event);
+        });
+      });
+    } else {
+      onEvent(event);
+    }
+  };
+
+  console.log("[TAURI] Calling invoke clear_session");
+  await invoke("clear_session", { channel });
+  console.log("[TAURI] invoke clear_session returned");
+}
+
 export async function getConfig(): Promise<Config> {
   return await invoke("get_config");
 }

@@ -1,9 +1,11 @@
 //! Session lifecycle commands
 
-use tauri::State;
+use tauri::{ipc::Channel, State};
+use tokio::time::{timeout, Duration};
 
 use super::{cmd_debug_log, AppState};
 use crate::claude_process::ClaudeProcess;
+use crate::events::ClaudeEvent;
 
 /// Get the directory from which the app was launched (if it's a git worktree)
 #[tauri::command]
@@ -89,4 +91,64 @@ pub async fn send_interrupt(state: State<'_, AppState>) -> Result<(), String> {
 pub async fn is_session_active(state: State<'_, AppState>) -> Result<bool, String> {
     let process_guard = state.process.lock().await;
     Ok(process_guard.is_some())
+}
+
+/// Clear the session by restarting the Claude process
+///
+/// This is the only way to actually clear context in stream-json mode,
+/// as slash commands like /clear don't work when sent as message content.
+/// See: https://github.com/anthropics/claude-code/issues/4184
+#[tauri::command]
+pub async fn clear_session(
+    channel: Channel<ClaudeEvent>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    cmd_debug_log("CLEAR", "clear_session called - restarting Claude process");
+
+    // Get working directory before killing process
+    let config = state.config.lock().await;
+    let working_dir = config.working_dir();
+    drop(config);
+
+    // Kill existing process
+    {
+        let mut process_guard = state.process.lock().await;
+        if process_guard.is_some() {
+            cmd_debug_log("CLEAR", "Dropping existing process");
+            *process_guard = None;
+        }
+    }
+
+    // Small delay to ensure clean shutdown
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Spawn new Claude process
+    let dir = working_dir.clone();
+    let process = tokio::task::spawn_blocking(move || ClaudeProcess::spawn(&dir))
+        .await
+        .map_err(|e| {
+            cmd_debug_log("CLEAR", &format!("Task join error: {}", e));
+            format!("Task join error: {}", e)
+        })??;
+
+    cmd_debug_log("CLEAR", "New process spawned successfully");
+
+    // Store the new process
+    let process_arc = state.process.clone();
+    {
+        let mut process_guard = process_arc.lock().await;
+        *process_guard = Some(process);
+    }
+
+    // Don't wait for ready - the bridge will be ready when needed
+    // Just send the done event immediately so UI can update
+    cmd_debug_log("CLEAR", "New process spawned, sending done event immediately");
+
+    // Send done event - the bridge will be ready by the time user sends next message
+    channel
+        .send(ClaudeEvent::Done)
+        .map_err(|e| e.to_string())?;
+
+    cmd_debug_log("CLEAR", "Session cleared successfully");
+    Ok(())
 }

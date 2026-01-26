@@ -347,6 +347,37 @@ body {
   opacity: 0.8;
 }
 
+/* Cleared - bright, distinct from compaction */
+.message-cleared {
+  margin: 4px 0;
+  padding: 0;
+}
+
+.message-cleared .message-body {
+  background: rgba(38, 139, 210, 0.08);  /* Blue tint */
+  border: none;
+  border-left: 2px solid var(--blue);
+  border-radius: 4px;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--base1);  /* Brighter text */
+}
+
+.message-cleared .cleared-icon {
+  font-size: 12px;
+  color: var(--blue);
+}
+
+.message-cleared .cleared-label {
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--blue);
+}
+
 /* Faded messages - above a clear point, no longer in context */
 .message-faded {
   opacity: 0.4;

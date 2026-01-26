@@ -93,8 +93,8 @@ const MessageList: Component<MessageListProps> = (props) => {
 
               {/* Special rendering for cleared variant - just shows "context cleared" */}
               <Show when={message.variant === "cleared"}>
-                <span class="compaction-icon">⚡</span>
-                <span class="compaction-label">context cleared</span>
+                <span class="cleared-icon">○</span>
+                <span class="cleared-label">context cleared</span>
               </Show>
 
               {/* Regular message content rendering */}

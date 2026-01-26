@@ -23,6 +23,7 @@ pub fn run() {
             commands::session::send_interrupt,
             commands::session::is_session_active,
             commands::session::get_launch_dir,
+            commands::session::clear_session,
             // Messaging
             commands::messaging::send_message,
             // Configuration

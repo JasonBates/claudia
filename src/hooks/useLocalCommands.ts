@@ -1,7 +1,7 @@
 import { Accessor, Owner } from "solid-js";
 import type { UseStreamingMessagesReturn } from "./useStreamingMessages";
 import type { UseSessionReturn } from "./useSession";
-import { runStreamingCommand, CommandEvent, ClaudeEvent, sendMessage } from "../lib/tauri";
+import { runStreamingCommand, CommandEvent, ClaudeEvent, clearSession } from "../lib/tauri";
 import type { Message } from "../lib/types";
 
 // ============================================================================
@@ -129,41 +129,38 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
   // ==========================================================================
 
   /**
-   * Handle /clear command - clear conversation and show divider with context sizes
+   * Handle /clear command - clear conversation by generating new session ID
+   *
+   * This is a hybrid approach that mirrors Claude Code's instant /clear:
+   * - The bridge generates a new session_id without restarting the process
+   * - Subsequent messages are treated as a new conversation
+   * - System prompt, MCP servers, and tools remain loaded (instant response)
    *
    * Flow:
-   * 1. Capture pre-clear context size
-   * 2. Show synthetic "Clearing..." tool UI with spinner
-   * 3. Send /clear to CLI
-   * 4. On completion, clear frontend messages and show divider
+   * 1. Call clearSession() which kills and respawns the Claude process
+   * 2. Wait for ready event from new process
+   * 3. UI fades existing messages and shows divider
    */
   const handleClear = async () => {
-    console.log(`[CLEAR] Starting clear`);
+    console.log(`[CLEAR] Starting clear (process restart)`);
 
     // Block input while clearing
     streaming.setIsLoading(true);
 
-    // Track post-clear context and completion state
-    let postContext = 0;
+    // Track completion state
     let completed = false;
 
     try {
-      // Send /clear to CLI and process events
-      await sendMessage(
-        "/clear",
+      // Clear session by restarting the Claude process
+      await clearSession(
         (event: ClaudeEvent) => {
           console.log(`[CLEAR] Event: ${event.type}`, event);
 
-          // Track context updates
-          if (event.type === "context_update" && event.input_tokens) {
-            postContext = event.input_tokens;
-          }
-
           // On completion, fade existing messages and show divider (only once)
-          if ((event.type === "result" || event.type === "done") && !completed) {
+          if (event.type === "done" && !completed) {
             completed = true;
 
-            // Create divider message (no content needed, just shows "context cleared")
+            // Create divider message
             const dividerMsg: Message = {
               id: `clear-divider-${Date.now()}`,
               role: "system",
@@ -177,17 +174,16 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
               dividerMsg
             ]);
 
-            // Reset context to base context (system prompt + tools)
-            // After clear, conversation history is gone, only base context remains
+            // Reset context display - conversation history is cleared
             session.setSessionInfo((prev) => ({
               ...prev,
-              totalContext: postContext > 0 ? postContext : (prev.baseContext || 0),
+              totalContext: prev.baseContext || 0,
             }));
 
-            console.log(`[CLEAR] Complete`);
+            console.log(`[CLEAR] Complete - process restarted`);
           }
 
-          // Also forward to main event handler for other processing
+          // Forward to main event handler for other processing
           onCliEvent?.(event);
         },
         owner
@@ -362,13 +358,17 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     const trimmed = text.trim().toLowerCase();
     if (!trimmed.startsWith("/")) return false;
 
-    const commandName = trimmed.slice(1).split(" ")[0]; // Get command name without args
-
+    const commandName = trimmed.slice(1).split(" ")[0];
     const command = commands.find((c) => c.name === commandName);
     if (!command) return false;
 
     console.log(`[COMMANDS] Dispatching /${command.name}`);
-    await command.handler();
+    try {
+      await command.handler();
+    } catch (e) {
+      console.error(`[COMMANDS] Handler error for /${command.name}:`, e);
+      streaming.setError(`Command error: ${e}`);
+    }
     return true;
   };
 

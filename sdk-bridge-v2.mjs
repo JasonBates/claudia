@@ -76,8 +76,6 @@ async function main() {
   });
 
   // Spawn Claude CLI with streaming
-  sendEvent("status", { message: "Starting Claude..." });
-
   const claudePath = findBinary("claude");
 
   // Detect timezone once at startup
@@ -377,10 +375,25 @@ async function main() {
             message: "Commands: /compact, /clear, /cost, /model, /status, /config, /memory, /review, /doctor, /exit"
           });
           return;
+        case "clear":
+          // Handle /clear locally by generating a new session ID
+          // This makes the CLI treat subsequent messages as a new conversation
+          // without needing to restart the process
+          debugLog("CLEAR", "Generating new session ID to clear context");
+          currentSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          debugLog("CLEAR", `New session ID: ${currentSessionId}`);
+          sendEvent("status", { message: "Context cleared" });
+          sendEvent("ready", {
+            sessionId: currentSessionId,
+            model: "opus",
+            tools: 0  // Will be updated on next message
+          });
+          sendEvent("done", {});
+          return;
       }
 
       // All other slash commands: send as user message to CLI
-      // This works for: /compact, /clear, /cost, /model, /status, /config, /memory, /review, /doctor, etc.
+      // This works for: /compact, /cost, /model, /status, /config, /memory, /review, /doctor, etc.
       debugLog("SLASH_CMD_FORWARD", input);
       const slashMsg = JSON.stringify({
         type: "user",
