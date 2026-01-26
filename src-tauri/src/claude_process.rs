@@ -21,8 +21,10 @@ fn rust_debug_log(prefix: &str, msg: &str) {
 pub struct ClaudeProcess {
     stdin: Arc<Mutex<ChildStdin>>,
     event_rx: mpsc::Receiver<ClaudeEvent>,
-    _child: Child,
-    _reader_handle: thread::JoinHandle<()>,
+    /// The child process - kept for cleanup on drop
+    child: Child,
+    /// Reader thread handle - joined on drop to ensure clean shutdown
+    reader_handle: Option<thread::JoinHandle<()>>,
 }
 
 fn find_node_binary() -> Result<PathBuf, String> {
@@ -173,8 +175,8 @@ impl ClaudeProcess {
         Ok(Self {
             stdin,
             event_rx: rx,
-            _child: child,
-            _reader_handle: reader_handle,
+            child,
+            reader_handle: Some(reader_handle),
         })
     }
 
@@ -470,6 +472,46 @@ impl ClaudeProcess {
         // For the bridge, we could send a special message or use signals
         // For now, this is a placeholder
         Ok(())
+    }
+
+    /// Gracefully shutdown the process
+    /// Called by Drop, but can also be called manually
+    pub fn shutdown(&mut self) {
+        rust_debug_log("SHUTDOWN", "Beginning process shutdown");
+
+        // Kill the child process - this closes stdout which causes reader to exit
+        if let Err(e) = self.child.kill() {
+            // ESRCH (No such process) is fine - process already exited
+            if e.kind() != std::io::ErrorKind::NotFound {
+                rust_debug_log("SHUTDOWN", &format!("Kill error (may be ok): {}", e));
+            }
+        } else {
+            rust_debug_log("SHUTDOWN", "Child process killed");
+        }
+
+        // Wait for child to fully terminate
+        match self.child.wait() {
+            Ok(status) => rust_debug_log("SHUTDOWN", &format!("Child exited with: {:?}", status)),
+            Err(e) => rust_debug_log("SHUTDOWN", &format!("Wait error: {}", e)),
+        }
+
+        // Join the reader thread (should exit quickly now that stdout is closed)
+        if let Some(handle) = self.reader_handle.take() {
+            rust_debug_log("SHUTDOWN", "Joining reader thread...");
+            match handle.join() {
+                Ok(_) => rust_debug_log("SHUTDOWN", "Reader thread joined"),
+                Err(_) => rust_debug_log("SHUTDOWN", "Reader thread panicked"),
+            }
+        }
+
+        rust_debug_log("SHUTDOWN", "Process shutdown complete");
+    }
+}
+
+impl Drop for ClaudeProcess {
+    fn drop(&mut self) {
+        rust_debug_log("DROP", "ClaudeProcess being dropped, initiating shutdown");
+        self.shutdown();
     }
 }
 

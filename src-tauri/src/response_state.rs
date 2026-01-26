@@ -41,10 +41,11 @@ use crate::timeouts::{
 };
 
 /// The current state of response handling in the event loop
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ResponseState {
     /// Waiting for first content from Claude
     /// Uses short polling (500ms) with long total wait (30s)
+    #[default]
     AwaitingResponse,
 
     /// Actively receiving content from Claude
@@ -130,12 +131,6 @@ impl ResponseState {
     /// Check if this state is waiting for a long operation
     pub fn is_extended_wait(&self) -> bool {
         matches!(self, ResponseState::ToolPending | ResponseState::Compacting)
-    }
-}
-
-impl Default for ResponseState {
-    fn default() -> Self {
-        ResponseState::AwaitingResponse
     }
 }
 
