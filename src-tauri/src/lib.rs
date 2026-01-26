@@ -1,9 +1,12 @@
 mod claude_process;
 mod commands;
 mod config;
+pub mod error;
 mod events;
+pub mod response_state;
 mod streaming;
 mod sync;
+pub mod timeouts;
 
 use commands::AppState;
 
