@@ -38,6 +38,12 @@ function truncate(text: string, maxLength: number): string {
 }
 
 const SessionItem: Component<SessionItemProps> = (props) => {
+  const handleClick = (e: MouseEvent) => {
+    console.log("[SESSION_ITEM] Click detected!", props.session.sessionId);
+    e.stopPropagation();
+    props.onClick();
+  };
+
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();
     // Simple confirmation for delete
@@ -47,10 +53,11 @@ const SessionItem: Component<SessionItemProps> = (props) => {
   };
 
   return (
-    <div
+    <button
+      type="button"
       class="session-item"
       classList={{ active: props.isActive }}
-      onClick={props.onClick}
+      onClick={handleClick}
       onContextMenu={handleContextMenu}
       title={props.session.firstPrompt}
     >
@@ -66,7 +73,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
           {formatRelativeTime(props.session.modified)}
         </span>
       </div>
-    </div>
+    </button>
   );
 };
 

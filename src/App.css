@@ -169,13 +169,22 @@ body {
   gap: 4px;
 }
 
-/* Session item */
+/* Session item (button element for proper click handling) */
 .session-item {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
   padding: 10px 12px;
   border-radius: 6px;
   cursor: pointer;
   transition: background 0.1s ease;
+  border: none;
   border-left: 2px solid transparent;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
 }
 
 .session-item:hover {
