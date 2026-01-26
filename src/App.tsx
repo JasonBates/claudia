@@ -7,6 +7,8 @@ import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
 import { startSession, sendMessage, sendPermissionResponse, pollPermissionRequest, respondToPermission, getLaunchDir, syncPull, syncPush, isSyncAvailable, runStreamingCommand, ClaudeEvent, CommandEvent, PermissionRequestFromHook } from "./lib/tauri";
+import { getContextThreshold, formatTokenCount, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
+import { Mode, MODES, getNextMode } from "./lib/mode-utils";
 import "./App.css";
 
 interface Todo {
@@ -42,7 +44,7 @@ function App() {
     baseContext?: number;   // System prompt size (for estimating post-compaction context)
   }>({});
 
-  const CONTEXT_LIMIT = 200_000;
+  const CONTEXT_LIMIT = DEFAULT_CONTEXT_LIMIT;
 
   let messageIdCounter = 0;
   const generateId = () => `msg-${++messageIdCounter}`;
@@ -88,8 +90,7 @@ function App() {
   const [pendingPermission, setPendingPermission] = createSignal<PermissionRequest | null>(null);
 
   // Mode switching (like Claude Code's Shift+Tab)
-  type Mode = "normal" | "plan" | "auto-accept";
-  const MODES: Mode[] = ["normal", "plan", "auto-accept"];
+  // Mode and MODES imported from ./lib/mode-utils
   const [currentMode, setCurrentMode] = createSignal<Mode>("normal");
 
   // Context warning state
@@ -100,13 +101,10 @@ function App() {
   const [lastCompactionPreTokens, setLastCompactionPreTokens] = createSignal<number | null>(null);
   const [compactionMessageId, setCompactionMessageId] = createSignal<string | null>(null);
 
-  // Compute context threshold level
+  // Compute context threshold level (uses imported getContextThreshold)
   const contextThreshold = () => {
     const used = sessionInfo().totalContext || 0;
-    const percent = (used / CONTEXT_LIMIT) * 100;
-    if (percent >= 75) return 'critical';
-    if (percent >= 60) return 'warning';
-    return 'ok';
+    return getContextThreshold(used, CONTEXT_LIMIT);
   };
 
   // Show toast notification
@@ -123,10 +121,7 @@ function App() {
   const owner = getOwner();
 
   const cycleMode = () => {
-    const current = currentMode();
-    const currentIndex = MODES.indexOf(current);
-    const nextIndex = (currentIndex + 1) % MODES.length;
-    setCurrentMode(MODES[nextIndex]);
+    setCurrentMode(getNextMode(currentMode()));
   };
 
   // Poll for hook-based permission requests

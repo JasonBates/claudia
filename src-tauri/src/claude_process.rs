@@ -472,3 +472,387 @@ impl ClaudeProcess {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // Helper to call parse_bridge_message
+    fn parse(json: serde_json::Value) -> Option<ClaudeEvent> {
+        ClaudeProcess::parse_bridge_message(&json)
+    }
+
+    // ==================== text_delta ====================
+
+    #[test]
+    fn parse_text_delta_normal() {
+        let event = parse(json!({
+            "type": "text_delta",
+            "text": "Hello, world!"
+        }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::TextDelta { text }) if text == "Hello, world!"
+        ));
+    }
+
+    #[test]
+    fn parse_text_delta_empty_returns_none() {
+        // Empty text deltas are filtered out
+        let event = parse(json!({
+            "type": "text_delta",
+            "text": ""
+        }));
+        assert!(event.is_none());
+    }
+
+    // ==================== tool_start ====================
+
+    #[test]
+    fn parse_tool_start() {
+        let event = parse(json!({
+            "type": "tool_start",
+            "id": "tool_123",
+            "name": "Read"
+        }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::ToolStart { id, name })
+            if id == "tool_123" && name == "Read"
+        ));
+    }
+
+    // ==================== tool_input ====================
+
+    #[test]
+    fn parse_tool_input() {
+        let event = parse(json!({
+            "type": "tool_input",
+            "json": "{\"file_path\":\"/test.txt\"}"
+        }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::ToolInput { json })
+            if json == "{\"file_path\":\"/test.txt\"}"
+        ));
+    }
+
+    // ==================== tool_pending ====================
+
+    #[test]
+    fn parse_tool_pending() {
+        let event = parse(json!({ "type": "tool_pending" }));
+        assert!(matches!(event, Some(ClaudeEvent::ToolPending)));
+    }
+
+    // ==================== tool_result ====================
+
+    #[test]
+    fn parse_tool_result_with_all_fields() {
+        let event = parse(json!({
+            "type": "tool_result",
+            "tool_use_id": "tool_123",
+            "stdout": "file contents",
+            "stderr": "some warning",
+            "isError": false
+        }));
+        if let Some(ClaudeEvent::ToolResult { tool_use_id, stdout, stderr, is_error }) = event {
+            assert_eq!(tool_use_id, Some("tool_123".to_string()));
+            assert_eq!(stdout, Some("file contents".to_string()));
+            assert_eq!(stderr, Some("some warning".to_string()));
+            assert!(!is_error);
+        } else {
+            panic!("Expected ToolResult event");
+        }
+    }
+
+    #[test]
+    fn parse_tool_result_minimal() {
+        let event = parse(json!({
+            "type": "tool_result"
+        }));
+        if let Some(ClaudeEvent::ToolResult { tool_use_id, stdout, stderr, is_error }) = event {
+            assert!(tool_use_id.is_none());
+            assert!(stdout.is_none());
+            assert!(stderr.is_none());
+            assert!(!is_error); // defaults to false
+        } else {
+            panic!("Expected ToolResult event");
+        }
+    }
+
+    #[test]
+    fn parse_tool_result_error() {
+        let event = parse(json!({
+            "type": "tool_result",
+            "stderr": "Command failed",
+            "isError": true
+        }));
+        if let Some(ClaudeEvent::ToolResult { is_error, stderr, .. }) = event {
+            assert!(is_error);
+            assert_eq!(stderr, Some("Command failed".to_string()));
+        } else {
+            panic!("Expected ToolResult event");
+        }
+    }
+
+    // ==================== context_update ====================
+
+    #[test]
+    fn parse_context_update() {
+        let event = parse(json!({
+            "type": "context_update",
+            "inputTokens": 50000,
+            "rawInputTokens": 10000,
+            "cacheRead": 35000,
+            "cacheWrite": 5000
+        }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::ContextUpdate {
+                input_tokens: 50000,
+                raw_input_tokens: 10000,
+                cache_read: 35000,
+                cache_write: 5000
+            })
+        ));
+    }
+
+    // ==================== result ====================
+
+    #[test]
+    fn parse_result_with_all_fields() {
+        let event = parse(json!({
+            "type": "result",
+            "content": "Response text",
+            "cost": 0.025,
+            "duration": 1500,
+            "turns": 3,
+            "isError": false,
+            "inputTokens": 1000,
+            "outputTokens": 500,
+            "cacheRead": 800,
+            "cacheWrite": 200
+        }));
+        if let Some(ClaudeEvent::Result {
+            content, cost, duration, turns, is_error,
+            input_tokens, output_tokens, cache_read, cache_write
+        }) = event {
+            assert_eq!(content, "Response text");
+            assert!((cost - 0.025).abs() < 0.001);
+            assert_eq!(duration, 1500);
+            assert_eq!(turns, 3);
+            assert!(!is_error);
+            assert_eq!(input_tokens, 1000);
+            assert_eq!(output_tokens, 500);
+            assert_eq!(cache_read, 800);
+            assert_eq!(cache_write, 200);
+        } else {
+            panic!("Expected Result event");
+        }
+    }
+
+    // ==================== status ====================
+
+    #[test]
+    fn parse_status_simple() {
+        let event = parse(json!({
+            "type": "status",
+            "message": "Processing..."
+        }));
+        if let Some(ClaudeEvent::Status { message, is_compaction, pre_tokens, post_tokens }) = event {
+            assert_eq!(message, "Processing...");
+            assert!(is_compaction.is_none());
+            assert!(pre_tokens.is_none());
+            assert!(post_tokens.is_none());
+        } else {
+            panic!("Expected Status event");
+        }
+    }
+
+    #[test]
+    fn parse_status_with_compaction() {
+        let event = parse(json!({
+            "type": "status",
+            "message": "Compacted conversation",
+            "isCompaction": true,
+            "preTokens": 150000,
+            "postTokens": 45000
+        }));
+        if let Some(ClaudeEvent::Status { message, is_compaction, pre_tokens, post_tokens }) = event {
+            assert_eq!(message, "Compacted conversation");
+            assert_eq!(is_compaction, Some(true));
+            assert_eq!(pre_tokens, Some(150000));
+            assert_eq!(post_tokens, Some(45000));
+        } else {
+            panic!("Expected Status event");
+        }
+    }
+
+    // ==================== ready ====================
+
+    #[test]
+    fn parse_ready() {
+        let event = parse(json!({
+            "type": "ready",
+            "sessionId": "sess_abc123",
+            "model": "claude-opus-4-5-20251101",
+            "tools": 42
+        }));
+        if let Some(ClaudeEvent::Ready { session_id, model, tools }) = event {
+            assert_eq!(session_id, "sess_abc123");
+            assert_eq!(model, "claude-opus-4-5-20251101");
+            assert_eq!(tools, 42);
+        } else {
+            panic!("Expected Ready event");
+        }
+    }
+
+    // ==================== processing ====================
+
+    #[test]
+    fn parse_processing() {
+        let event = parse(json!({
+            "type": "processing",
+            "prompt": "User query here"
+        }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::Processing { prompt }) if prompt == "User query here"
+        ));
+    }
+
+    // ==================== thinking ====================
+
+    #[test]
+    fn parse_thinking_start_with_index() {
+        let event = parse(json!({
+            "type": "thinking_start",
+            "index": 0
+        }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::ThinkingStart { index: Some(0) })
+        ));
+    }
+
+    #[test]
+    fn parse_thinking_start_without_index() {
+        let event = parse(json!({ "type": "thinking_start" }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::ThinkingStart { index: None })
+        ));
+    }
+
+    #[test]
+    fn parse_thinking_delta() {
+        let event = parse(json!({
+            "type": "thinking_delta",
+            "thinking": "Let me analyze this..."
+        }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::ThinkingDelta { thinking })
+            if thinking == "Let me analyze this..."
+        ));
+    }
+
+    // ==================== permission_request ====================
+
+    #[test]
+    fn parse_permission_request() {
+        let event = parse(json!({
+            "type": "permission_request",
+            "requestId": "req_xyz",
+            "toolName": "Bash",
+            "toolInput": { "command": "ls -la" },
+            "description": "Run shell command"
+        }));
+        if let Some(ClaudeEvent::PermissionRequest { request_id, tool_name, tool_input, description }) = event {
+            assert_eq!(request_id, "req_xyz");
+            assert_eq!(tool_name, "Bash");
+            assert!(tool_input.is_some());
+            assert_eq!(description, "Run shell command");
+        } else {
+            panic!("Expected PermissionRequest event");
+        }
+    }
+
+    // ==================== block_end ====================
+
+    #[test]
+    fn parse_block_end() {
+        let event = parse(json!({ "type": "block_end" }));
+        assert!(matches!(event, Some(ClaudeEvent::BlockEnd)));
+    }
+
+    // ==================== done ====================
+
+    #[test]
+    fn parse_done() {
+        let event = parse(json!({ "type": "done" }));
+        assert!(matches!(event, Some(ClaudeEvent::Done)));
+    }
+
+    // ==================== closed ====================
+
+    #[test]
+    fn parse_closed() {
+        let event = parse(json!({
+            "type": "closed",
+            "code": 0
+        }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::Closed { code: 0 })
+        ));
+    }
+
+    #[test]
+    fn parse_closed_with_error_code() {
+        let event = parse(json!({
+            "type": "closed",
+            "code": 1
+        }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::Closed { code: 1 })
+        ));
+    }
+
+    // ==================== error ====================
+
+    #[test]
+    fn parse_error() {
+        let event = parse(json!({
+            "type": "error",
+            "message": "Something went wrong"
+        }));
+        assert!(matches!(
+            event,
+            Some(ClaudeEvent::Error { message })
+            if message == "Something went wrong"
+        ));
+    }
+
+    // ==================== unknown type ====================
+
+    #[test]
+    fn parse_unknown_type_returns_none() {
+        let event = parse(json!({
+            "type": "unknown_future_event",
+            "data": "something"
+        }));
+        assert!(event.is_none());
+    }
+
+    #[test]
+    fn parse_missing_type_returns_none() {
+        let event = parse(json!({
+            "message": "no type field"
+        }));
+        assert!(event.is_none());
+    }
+}

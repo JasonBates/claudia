@@ -129,3 +129,88 @@ pub enum CommandEvent {
         message: String,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== ClaudeEvent serialization ====================
+
+    #[test]
+    fn claude_event_serializes_with_snake_case_type() {
+        let event = ClaudeEvent::TextDelta { text: "hello".to_string() };
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert!(json.contains("\"type\":\"text_delta\""));
+        assert!(json.contains("\"text\":\"hello\""));
+    }
+
+    #[test]
+    fn claude_event_status_skips_none_fields() {
+        let event = ClaudeEvent::Status {
+            message: "test".to_string(),
+            is_compaction: None,
+            pre_tokens: None,
+            post_tokens: None,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+
+        // None fields should not appear in output
+        assert!(!json.contains("is_compaction"));
+        assert!(!json.contains("pre_tokens"));
+        assert!(!json.contains("post_tokens"));
+        assert!(json.contains("\"message\":\"test\""));
+    }
+
+    #[test]
+    fn claude_event_status_includes_some_fields() {
+        let event = ClaudeEvent::Status {
+            message: "Compacted".to_string(),
+            is_compaction: Some(true),
+            pre_tokens: Some(100000),
+            post_tokens: Some(30000),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert!(json.contains("\"is_compaction\":true"));
+        assert!(json.contains("\"pre_tokens\":100000"));
+        assert!(json.contains("\"post_tokens\":30000"));
+    }
+
+    #[test]
+    fn claude_event_unit_variant_serializes_correctly() {
+        let event = ClaudeEvent::Done;
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert_eq!(json, "{\"type\":\"done\"}");
+    }
+
+    // ==================== CommandEvent serialization ====================
+
+    #[test]
+    fn command_event_started_serializes() {
+        let event = CommandEvent::Started {
+            command_id: "cmd_123".to_string(),
+            command: "ls -la".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert!(json.contains("\"type\":\"started\""));
+        assert!(json.contains("\"command_id\":\"cmd_123\""));
+        assert!(json.contains("\"command\":\"ls -la\""));
+    }
+
+    #[test]
+    fn command_event_completed_serializes() {
+        let event = CommandEvent::Completed {
+            command_id: "cmd_123".to_string(),
+            exit_code: 0,
+            success: true,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert!(json.contains("\"type\":\"completed\""));
+        assert!(json.contains("\"exit_code\":0"));
+        assert!(json.contains("\"success\":true"));
+    }
+}

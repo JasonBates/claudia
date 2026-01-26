@@ -203,4 +203,29 @@ mod tests {
         assert_eq!(cmd.program, "echo");
         assert_eq!(cmd.args, vec!["hello"]);
     }
+
+    #[test]
+    fn test_streaming_command_with_working_dir() {
+        let cmd = StreamingCommand {
+            program: "ls".to_string(),
+            args: vec!["-la".to_string()],
+            working_dir: Some("/tmp".to_string()),
+        };
+        assert_eq!(cmd.program, "ls");
+        assert_eq!(cmd.working_dir, Some("/tmp".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_program_absolute_path() {
+        // Absolute paths should be returned unchanged
+        let result = resolve_program("/usr/bin/ls");
+        assert_eq!(result, "/usr/bin/ls");
+    }
+
+    #[test]
+    fn test_resolve_program_not_found_returns_original() {
+        // If binary not found, returns original name (for PATH lookup)
+        let result = resolve_program("nonexistent_binary_xyz");
+        assert_eq!(result, "nonexistent_binary_xyz");
+    }
 }

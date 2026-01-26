@@ -67,3 +67,82 @@ impl Config {
             .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn serde_default_provides_dark_theme() {
+        // Note: Config::default() uses Rust's Default trait (empty string)
+        // The "dark" default only applies during serde deserialization
+        let json = "{}";
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(config.theme, "dark");
+    }
+
+    #[test]
+    fn working_dir_expands_tilde() {
+        let config = Config {
+            default_working_dir: Some("~/Code/repos".to_string()),
+            ..Default::default()
+        };
+
+        let dir = config.working_dir();
+
+        // Should not start with ~
+        assert!(!dir.to_string_lossy().starts_with("~"));
+        // Should contain the rest of the path
+        assert!(dir.to_string_lossy().contains("Code/repos"));
+    }
+
+    #[test]
+    fn working_dir_handles_absolute_path() {
+        let config = Config {
+            default_working_dir: Some("/tmp/test".to_string()),
+            ..Default::default()
+        };
+
+        let dir = config.working_dir();
+
+        assert_eq!(dir, PathBuf::from("/tmp/test"));
+    }
+
+    #[test]
+    fn working_dir_defaults_when_none() {
+        let config = Config {
+            default_working_dir: None,
+            ..Default::default()
+        };
+
+        let dir = config.working_dir();
+
+        // Should return home directory or "."
+        assert!(dir.exists() || dir == PathBuf::from("."));
+    }
+
+    #[test]
+    fn config_serializes_correctly() {
+        let config = Config {
+            anthropic_api_key: Some("test-key".to_string()),
+            default_working_dir: Some("/test".to_string()),
+            theme: "light".to_string(),
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+
+        assert!(json.contains("\"anthropic_api_key\":\"test-key\""));
+        assert!(json.contains("\"default_working_dir\":\"/test\""));
+        assert!(json.contains("\"theme\":\"light\""));
+    }
+
+    #[test]
+    fn config_deserializes_with_defaults() {
+        let json = "{}";
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert!(config.anthropic_api_key.is_none());
+        assert!(config.default_working_dir.is_none());
+        assert_eq!(config.theme, "dark"); // default value
+    }
+}

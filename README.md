@@ -142,6 +142,37 @@ npm run tauri build
 cp -R src-tauri/target/release/bundle/macos/CT.app /Applications/
 ```
 
+### Testing
+
+The project has comprehensive tests for both Rust backend and TypeScript frontend:
+
+```bash
+# Run all tests (Rust + TypeScript)
+npm run test:all
+
+# Run TypeScript tests only
+npm run test:run
+
+# Run Rust tests only
+npm run test:rust
+
+# Run TypeScript tests in watch mode (development)
+npm test
+```
+
+**Test Coverage:**
+
+| Component | Tests | Focus |
+|-----------|-------|-------|
+| `claude_process.rs` | 25 | Bridge message parsing for all 15 event types |
+| `events.rs` | 7 | serde serialization with `#[serde(tag)]` |
+| `config.rs` | 6 | Tilde expansion, serde defaults, paths |
+| `streaming.rs` | 4 | Binary resolution, program paths |
+| `context-utils.ts` | 14 | Token thresholds, formatting |
+| `mode-utils.ts` | 17 | Mode cycling, validation |
+
+Tests run automatically on push/PR via GitHub Actions (`.github/workflows/test.yml`).
+
 ## Lessons Learned
 
 ### 1. Always Rebuild After Code Changes
@@ -267,21 +298,31 @@ claude-terminal/
 ├── src/                      # Frontend (SolidJS)
 │   ├── App.tsx              # Main app, event handling
 │   ├── App.css              # Styles
+│   ├── __tests__/           # TypeScript tests
+│   │   ├── setup.ts         # Tauri API mocks
+│   │   ├── context-utils.test.ts
+│   │   └── mode-utils.test.ts
 │   ├── components/
 │   │   ├── MessageList.tsx  # Message rendering
 │   │   ├── CommandInput.tsx # Input with type-ahead
 │   │   └── ToolResult.tsx   # Collapsible tool results
 │   └── lib/
-│       └── tauri.ts         # Tauri IPC bindings + streaming command API
+│       ├── tauri.ts         # Tauri IPC bindings + streaming command API
+│       ├── context-utils.ts # Token tracking utilities (pure functions)
+│       └── mode-utils.ts    # Mode cycling utilities (pure functions)
 ├── src-tauri/               # Backend (Rust)
 │   ├── src/
 │   │   ├── main.rs          # App entry
 │   │   ├── commands.rs      # Tauri commands
-│   │   ├── claude_process.rs # CLI process management
-│   │   ├── events.rs        # Event type definitions (ClaudeEvent + CommandEvent)
-│   │   ├── streaming.rs     # General-purpose streaming command runner
+│   │   ├── claude_process.rs # CLI process management (+ tests)
+│   │   ├── events.rs        # Event type definitions (+ tests)
+│   │   ├── config.rs        # Config management (+ tests)
+│   │   ├── streaming.rs     # Streaming command runner (+ tests)
 │   │   └── sync.rs          # CCMS sync integration
 │   └── tauri.conf.json      # Tauri config
+├── .github/workflows/       # CI/CD
+│   └── test.yml             # Runs Rust + TS tests on push/PR
+├── vitest.config.ts         # Vitest configuration
 └── sdk-bridge-v2.mjs        # Node.js bridge script
 ```
 
