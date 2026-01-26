@@ -1,15 +1,17 @@
-# CT (Claude Terminal)
+# Claudia (Claude Terminal)
 
 A native macOS desktop app that wraps Claude Code CLI, providing a streamlined terminal-like interface for interacting with Claude.
 
 ## Features
 
 - **Native macOS app** - Built with Tauri + SolidJS for fast, lightweight performance
+- **CLI launcher** - Launch from terminal with `claudia` to use project-specific `.claude` configs
+- **Multi-instance support** - Run multiple Claudia windows, each in different project directories
 - **Real-time streaming** - Text and tool outputs stream as they're generated
 - **Tool visualization** - Collapsible tool use blocks with syntax-highlighted results
 - **Type-ahead input** - Continue typing while waiting for responses
 - **Automatic permissions** - Uses `--dangerously-skip-permissions` for uninterrupted workflow
-- **MCP integration** - Loads MCP servers from your global `~/.claude/` config
+- **MCP integration** - Loads MCP servers from project or global `~/.claude/` config
 
 ## Documentation
 
@@ -24,7 +26,7 @@ A native macOS desktop app that wraps Claude Code CLI, providing a streamlined t
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        CT.app (Tauri)                           │
+│                      Claudia.app (Tauri)                        │
 ├─────────────────────────────────────────────────────────────────┤
 │  Frontend (SolidJS)          │  Backend (Rust)                  │
 │  ├─ App.tsx                  │  ├─ commands.rs                  │
@@ -139,8 +141,31 @@ npm run tauri dev
 ### Build
 ```bash
 npm run tauri build
-cp -R src-tauri/target/release/bundle/macos/CT.app /Applications/
+cp -R src-tauri/target/release/bundle/macos/Claudia.app /Applications/
 ```
+
+### CLI Launcher
+
+Install the `claudia` CLI launcher to open the app from any directory:
+
+```bash
+cp claudia ~/.local/bin/
+chmod +x ~/.local/bin/claudia
+```
+
+Then from any project directory:
+
+```bash
+cd ~/Code/repos/my-project
+claudia
+```
+
+This opens Claudia with that directory as the working directory, allowing Claude to pick up:
+- Project-specific `.claude/settings.json`
+- Project-specific MCP servers
+- Project-specific skills and plugins
+
+Multiple instances can run simultaneously (`-n` flag), each in their own project.
 
 ### Testing
 

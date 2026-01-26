@@ -91,14 +91,15 @@ body {
   cursor: grab;
 }
 
-/* Floating Status Indicator */
-.status-indicator {
+/* Centered Directory Indicator */
+.dir-indicator {
   position: fixed;
   top: 0;
-  right: 12px;
-  height: 32px;  /* Match top-bar height */
+  left: 50%;
+  transform: translateX(-50%);
+  height: 32px;
   display: flex;
-  align-items: center;  /* Vertically center content */
+  align-items: center;
   gap: 6px;
   padding: 0 10px;
   background: transparent;
@@ -107,31 +108,46 @@ body {
   font-size: 11px;
 }
 
-.status-indicator:hover {
-  opacity: 1;
-}
-
-.status-indicator.connected .status-icon {
+.dir-indicator.connected .status-icon {
   color: rgba(133, 153, 0, 0.7);  /* Solarized green */
 }
 
-.status-indicator.disconnected .status-icon {
+.dir-indicator.disconnected .status-icon {
   color: rgba(220, 50, 47, 0.7);  /* Solarized red */
 }
 
-.context-mini {
+/* Right-aligned Token Indicator */
+.token-indicator {
+  position: fixed;
+  top: 0;
+  right: 12px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  z-index: 50;
   font-family: "SF Mono", monospace;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fg);
+  font-size: 11px;
+  color: var(--fg-muted);
 }
 
-.context-mini.warning {
+.token-indicator .token-icon {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.token-indicator .token-count {
+  font-weight: 600;
+}
+
+.token-indicator.warning {
   color: rgba(203, 75, 22, 0.9);  /* Solarized orange */
 }
 
-.context-mini.critical,
-.context-mini.danger {
+.token-indicator.critical {
   color: rgba(220, 50, 47, 0.9);  /* Solarized red */
 }
 

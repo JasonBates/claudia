@@ -258,41 +258,38 @@ function App() {
       {/* Drag region for window */}
       <div class="drag-region" data-tauri-drag-region="true"></div>
 
-      {/* Floating status indicator */}
+      {/* Centered directory indicator */}
       <div
-        class="status-indicator"
+        class="dir-indicator"
         classList={{ connected: session.sessionActive(), disconnected: !session.sessionActive() }}
       >
-        <Show when={session.launchDir()}>
-          <span class="launch-dir" title={session.launchDir()!}>
-            {session.launchDir()!.split("/").pop() || session.launchDir()}
-          </span>
-        </Show>
-        <Show when={session.launchDir() && session.workingDir()}>
-          <span class="dir-separator">:</span>
-        </Show>
-        <Show when={session.workingDir()}>
-          <span class="working-dir" title={session.workingDir()!}>
-            {session.workingDir()}
-          </span>
-        </Show>
         <Show when={session.sessionActive()} fallback={<span class="status-icon">⊘</span>}>
           <span class="status-icon">⚡</span>
         </Show>
-        <Show when={session.sessionActive()}>
-          <span
-            class="context-mini"
-            classList={{
-              warning: contextThreshold() === "warning",
-              critical: contextThreshold() === "critical",
-            }}
-          >
+        <Show when={session.workingDir()}>
+          <span class="working-dir" title={session.workingDir()!}>
+            {session.workingDir()!.split("/").pop() || session.workingDir()}
+          </span>
+        </Show>
+      </div>
+
+      {/* Right-aligned token usage */}
+      <Show when={session.sessionActive()}>
+        <div
+          class="token-indicator"
+          classList={{
+            warning: contextThreshold() === "warning",
+            critical: contextThreshold() === "critical",
+          }}
+        >
+          <span class="token-icon">◈</span>
+          <span class="token-count">
             {session.sessionInfo().totalContext
               ? `${Math.round(session.sessionInfo().totalContext! / 1000)}k`
               : "—"}
           </span>
-        </Show>
-      </div>
+        </div>
+      </Show>
 
       {/* Planning Mode Banner */}
       <Show when={planning.isPlanning()}>

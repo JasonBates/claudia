@@ -63,7 +63,8 @@ export function useSession(): UseSessionReturn {
       setLaunchDir(launch);
 
       // Start session with timeout so we don't hang forever on failures
-      const dir = await withTimeout(tauriStartSession(), 15000, "startSession");
+      // Pass launch directory so Claude spawns in the correct working directory
+      const dir = await withTimeout(tauriStartSession(launch), 15000, "startSession");
       console.log("[useSession] Session started successfully in:", dir);
       setWorkingDir(dir);
       setSessionActive(true);

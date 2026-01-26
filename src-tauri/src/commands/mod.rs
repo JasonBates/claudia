@@ -36,11 +36,17 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    /// Create new AppState with optional CLI-provided directory
+    pub fn new(cli_dir: Option<String>) -> Self {
         let config = Config::load().unwrap_or_default();
-        let launch_dir = std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| ".".to_string());
+        // Use CLI directory if provided, otherwise fall back to current_dir
+        let launch_dir = cli_dir
+            .or_else(|| {
+                std::env::current_dir()
+                    .ok()
+                    .map(|p| p.to_string_lossy().to_string())
+            })
+            .unwrap_or_else(|| ".".to_string());
         Self {
             process: Arc::new(Mutex::new(None)),
             config: Arc::new(Mutex::new(config)),
@@ -51,7 +57,7 @@ impl AppState {
 
 impl Default for AppState {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 

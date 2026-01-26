@@ -9,13 +9,32 @@ mod sync;
 pub mod timeouts;
 
 use commands::AppState;
+use tauri::Manager;
+use tauri_plugin_cli::CliExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        .manage(AppState::new())
+        .plugin(tauri_plugin_cli::init())
+        .setup(|app| {
+            // Parse CLI arguments to get optional directory
+            let cli_dir = app
+                .cli()
+                .matches()
+                .ok()
+                .and_then(|matches| {
+                    matches
+                        .args
+                        .get("directory")
+                        .and_then(|arg| arg.value.as_str().map(|s| s.to_string()))
+                });
+
+            // Create and manage AppState with CLI directory
+            app.manage(AppState::new(cli_dir));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Session commands
             commands::session::start_session,

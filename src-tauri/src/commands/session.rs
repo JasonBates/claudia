@@ -1,22 +1,16 @@
 //! Session lifecycle commands
 
 use tauri::{ipc::Channel, State};
-use tokio::time::{timeout, Duration};
+use tokio::time::Duration;
 
 use super::{cmd_debug_log, AppState};
 use crate::claude_process::ClaudeProcess;
 use crate::events::ClaudeEvent;
 
-/// Get the directory from which the app was launched (if it's a git worktree)
+/// Get the directory from which the app was launched
 #[tauri::command]
 pub fn get_launch_dir(state: State<'_, AppState>) -> String {
-    let launch_path = std::path::Path::new(&state.launch_dir);
-    let git_dir = launch_path.join(".git");
-    if git_dir.exists() {
-        state.launch_dir.clone()
-    } else {
-        String::new()
-    }
+    state.launch_dir.clone()
 }
 
 /// Start a new Claude session
@@ -105,10 +99,8 @@ pub async fn clear_session(
 ) -> Result<(), String> {
     cmd_debug_log("CLEAR", "clear_session called - restarting Claude process");
 
-    // Get working directory before killing process
-    let config = state.config.lock().await;
-    let working_dir = config.working_dir();
-    drop(config);
+    // Use the launch directory (from CLI args or current_dir at startup)
+    let working_dir = std::path::PathBuf::from(&state.launch_dir);
 
     // Kill existing process
     {
