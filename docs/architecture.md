@@ -153,12 +153,24 @@ Claude continues (or aborts if denied)
 
 | File | Purpose |
 |------|---------|
-| `App.tsx` | Main component, state management, event handling |
+| `App.tsx` | Main component, composition layer, event handler wiring |
 | `lib/tauri.ts` | Tauri command invocations and type definitions |
+| `lib/event-handlers.ts` | Event processing logic extracted from App.tsx |
 | `components/MessageList.tsx` | Renders conversation messages |
 | `components/ToolResult.tsx` | Renders tool invocations (collapsed/expanded) |
 | `components/PermissionDialog.tsx` | Allow/Deny dialog for tool permissions |
 | `components/CommandInput.tsx` | User input with mode switching |
+
+### Custom Hooks (src/hooks/)
+
+| Hook | Purpose |
+|------|---------|
+| `useSession` | Session lifecycle (start, stop, directories, session info) |
+| `useStreamingMessages` | Message state, streaming content, tool uses, thinking |
+| `usePlanningMode` | Plan mode workflow (approve, reject, cancel) |
+| `usePermissions` | Permission polling and allow/deny handlers |
+| `useTodoPanel` | Todo panel state with auto-hide timer |
+| `useQuestionPanel` | AskUserQuestion panel state and answer handling |
 
 ### Backend (src-tauri/src/)
 
@@ -286,21 +298,60 @@ The CLI auto-compacts around 75% to preserve working memory for reasoning.
 
 ## State Management
 
-The frontend uses SolidJS signals for reactive state:
+The frontend uses SolidJS signals organized into custom hooks for modularity and testability.
+
+### Hook Architecture
+
+State is distributed across specialized hooks, with `App.tsx` acting as the composition layer:
 
 ```typescript
-// Core state
-messages: Message[]           // Completed messages
-streamingContent: string      // Current streaming text
-streamingBlocks: ContentBlock[] // Ordered text + tool blocks
-currentToolUses: ToolUse[]    // Active tool invocations
-isLoading: boolean            // Currently processing
+// App.tsx wires hooks together via dependency injection
+const session = useSession();
+const streaming = useStreamingMessages({ onFinish: () => todoPanel.startHideTimer() });
+const planning = usePlanningMode({ submitMessage: handleSubmit });
+const permissions = usePermissions({ owner, getCurrentMode: currentMode });
+const todoPanel = useTodoPanel({ owner });
+const questionPanel = useQuestionPanel({ submitMessage: handleSubmit, focusInput: () => ... });
+```
 
-// UI state
-pendingPermission: PermissionRequest | null
-showTodoPanel: boolean
-isPlanning: boolean
-currentMode: "normal" | "plan" | "auto-accept"
+### State by Hook
+
+| Hook | State Signals | Purpose |
+|------|---------------|---------|
+| `useSession` | `sessionActive`, `launchDir`, `workingDir`, `sessionInfo` | Connection and session lifecycle |
+| `useStreamingMessages` | `messages`, `streamingContent`, `streamingBlocks`, `currentToolUses`, `isLoading`, `error`, `streamingThinking`, `showThinking` | Message display and streaming |
+| `usePlanningMode` | `isPlanning`, `planFilePath`, `showPlanApproval`, `planContent` | Plan mode workflow |
+| `usePermissions` | `pendingPermission` | Permission request handling |
+| `useTodoPanel` | `currentTodos`, `showTodoPanel`, `todoPanelHiding` | Todo panel display |
+| `useQuestionPanel` | `pendingQuestions`, `showQuestionPanel` | AskUserQuestion responses |
+
+### Dependency Injection Pattern
+
+Hooks receive dependencies via options objects, enabling composition without circular imports:
+
+```typescript
+// Hook accepts callbacks instead of importing other hooks directly
+export function usePlanningMode(options: {
+  submitMessage: (msg: string) => Promise<void>;
+}) {
+  // Can call submitMessage without importing App.tsx
+  const handlePlanApprove = async () => {
+    await options.submitMessage("go");
+  };
+}
+```
+
+### Reactive Context Restoration
+
+Async callbacks (Tauri channels, intervals) run outside SolidJS tracking. Use `runWithOwner()`:
+
+```typescript
+const owner = getOwner();  // Capture in synchronous context
+
+// Later, in async callback:
+runWithOwner(owner, () => batch(() => {
+  setMessages(...);  // Now tracked by SolidJS
+}));
 ```
 
 ## ContentBlock System

@@ -168,15 +168,61 @@ setTools(prev => prev.map(t =>
 
 **Cause**: Server-side tools execute on Anthropic's servers and can take 10+ seconds. The default timeout is too short.
 
-**Solution**: The backend tracks `tool_pending` state to use extended timeouts:
+**Solution**: The backend tracks `pending_tool_count` to use extended timeouts:
 
 ```rust
-// In src-tauri/src/commands.rs
-let current_timeout = if tool_pending { 5000 } else { 2000 };
-let current_max_idle = if tool_pending { 24 } else { 3 };
+// In src-tauri/src/commands/messaging.rs
+let current_timeout = if pending_tool_count > 0 { 5000 } else { 2000 };
+let current_max_idle = if pending_tool_count > 0 { 24 } else { 3 };
 ```
 
-**File**: `src-tauri/src/commands.rs`
+**File**: `src-tauri/src/commands/messaging.rs`
+
+---
+
+### Parallel Tools Stuck at "Running..." (Only First Tool Completes)
+
+**Symptom**: When Claude runs multiple tools in parallel (e.g., 3 Grep + 3 Glob calls), only one or two show results. The rest remain stuck showing "Running..." forever.
+
+**Cause**: The Rust backend was using a **boolean** `tool_pending` flag instead of a **count**. When the first `tool_result` event arrived, it set `tool_pending = false`, causing the event loop to use the short timeout. Subsequent tool results arrived after "Max idle reached, sending Done".
+
+```
+Timeline (broken):
+  ToolStart (grep1) → tool_pending = true
+  ToolStart (grep2) → tool_pending = true (already true)
+  ToolStart (glob1) → tool_pending = true (already true)
+  ToolResult (grep1) → tool_pending = false  ← BUG: resets too early!
+  [timeout with short interval]
+  [Done sent before glob1 results arrive]
+```
+
+**Solution**: Track pending tools with a **count**, not a boolean. Increment on `ToolStart`, decrement on `ToolResult` (only for results with a `tool_use_id` to avoid duplicates):
+
+```rust
+// In src-tauri/src/commands/messaging.rs
+let mut pending_tool_count: usize = 0;
+
+// On ToolStart
+if matches!(event, ClaudeEvent::ToolStart { .. }) {
+    pending_tool_count += 1;
+}
+
+// On ToolResult (only decrement for results with ID)
+if let ClaudeEvent::ToolResult { ref tool_use_id, .. } = event {
+    if tool_use_id.is_some() && pending_tool_count > 0 {
+        pending_tool_count -= 1;
+    }
+}
+
+// Additionally, text after tools means all tools completed
+if matches!(event, ClaudeEvent::TextDelta { .. }) && pending_tool_count > 0 {
+    pending_tool_count = 0;
+}
+```
+
+**File**: `src-tauri/src/commands/messaging.rs`
+
+**Lesson**: When tracking multiple concurrent operations, always use a count rather than a boolean. This applies to any scenario where N events start and N events complete.
 
 ---
 
