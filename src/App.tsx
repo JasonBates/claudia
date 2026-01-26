@@ -6,7 +6,7 @@ import QuestionPanel from "./components/QuestionPanel";
 import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
-import { startSession, sendMessage, sendPermissionResponse, pollPermissionRequest, respondToPermission, getLaunchDir, syncPull, syncPush, isSyncAvailable, ClaudeEvent, PermissionRequestFromHook } from "./lib/tauri";
+import { startSession, sendMessage, sendPermissionResponse, pollPermissionRequest, respondToPermission, getLaunchDir, syncPull, syncPush, isSyncAvailable, runStreamingCommand, ClaudeEvent, CommandEvent, PermissionRequestFromHook } from "./lib/tauri";
 import "./App.css";
 
 interface Todo {
@@ -122,25 +122,6 @@ function App() {
   // This is critical for Tauri channel callbacks, setTimeout, setInterval
   const owner = getOwner();
 
-  // Sync debounce timer - push every 5 minutes of activity
-  let syncPushTimer: number | null = null;
-  const SYNC_DEBOUNCE_MS = 5 * 60 * 1000; // 5 minutes
-
-  const scheduleSyncPush = () => {
-    if (syncPushTimer) {
-      window.clearTimeout(syncPushTimer);
-    }
-    syncPushTimer = window.setTimeout(async () => {
-      try {
-        console.log("[SYNC] Debounced push starting...");
-        const result = await syncPush();
-        console.log("[SYNC] Debounced push result:", result.success);
-      } catch (e) {
-        console.warn("[SYNC] Debounced push failed:", e);
-      }
-    }, SYNC_DEBOUNCE_MS);
-  };
-
   const cycleMode = () => {
     const current = currentMode();
     const currentIndex = MODES.indexOf(current);
@@ -203,6 +184,16 @@ function App() {
     }
   };
 
+  // Helper to add timeout to a promise
+  const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+      )
+    ]);
+  };
+
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
 
@@ -215,24 +206,8 @@ function App() {
       console.log("[MOUNT] Launch directory:", launch);
       setLaunchDir(launch);
 
-      // Sync pull before starting session (non-blocking on failure)
-      try {
-        const syncAvailable = await isSyncAvailable();
-        if (syncAvailable) {
-          console.log("[SYNC] Pulling latest ~/.claude/ data...");
-          const pullResult = await syncPull();
-          console.log("[SYNC] Pull result:", pullResult.success);
-          if (!pullResult.success && pullResult.error) {
-            console.warn("[SYNC] Pull error:", pullResult.error);
-          }
-        } else {
-          console.log("[SYNC] ccms not configured, skipping pull");
-        }
-      } catch (e) {
-        console.warn("[SYNC] Pull failed (continuing anyway):", e);
-      }
-
-      const dir = await startSession();
+      // Start session with timeout so we don't hang forever on failures
+      const dir = await withTimeout(startSession(), 15000, "startSession");
       console.log("[MOUNT] Session started successfully in:", dir);
       setWorkingDir(dir);
       setSessionActive(true);
@@ -246,13 +221,120 @@ function App() {
   onCleanup(() => {
     stopPermissionPolling();
     window.removeEventListener('keydown', handleKeyDown, true);
-    // Clear sync debounce timer
-    if (syncPushTimer) {
-      window.clearTimeout(syncPushTimer);
-    }
   });
 
+  // Handle /sync command locally with tool-style UI
+  const handleSyncCommand = async () => {
+    const syncMsgId = `sync-${Date.now()}`;
+    const syncToolId = `sync-tool-${Date.now()}`;
+
+    // Helper to update the sync tool result
+    const updateSyncResult = (text: string, loading: boolean = true) => {
+      setMessages(prev => prev.map(m =>
+        m.id === syncMsgId
+          ? {
+              ...m,
+              toolUses: m.toolUses?.map(t =>
+                t.id === syncToolId
+                  ? {
+                      ...t,
+                      isLoading: loading,
+                      result: text,
+                      // Auto-expand when loading completes (survives component recreation)
+                      autoExpanded: !loading ? true : t.autoExpanded
+                    }
+                  : t
+              )
+            }
+          : m
+      ));
+    };
+
+    // Block input while syncing
+    setIsLoading(true);
+
+    // Add message with loading state (tool-style display)
+    setMessages(prev => [...prev, {
+      id: syncMsgId,
+      role: "assistant",
+      content: "",
+      toolUses: [{
+        id: syncToolId,
+        name: "Sync",
+        input: { operation: "pull & push" },
+        isLoading: true,
+        result: ""
+      }]
+    }]);
+
+    let output = "";
+
+    try {
+      console.log("[SYNC] Starting streaming sync...");
+
+      // Pull phase with streaming
+      output = "▶ Pulling from remote...\n";
+      updateSyncResult(output);
+
+      await runStreamingCommand(
+        "ccms",
+        ["--force", "--fast", "--verbose", "pull"],
+        (event: CommandEvent) => {
+          if (event.type === "stdout" || event.type === "stderr") {
+            output += (event.line || "") + "\n";
+            updateSyncResult(output);
+          } else if (event.type === "completed") {
+            output += event.success ? "✓ Pull complete\n" : "✗ Pull failed\n";
+            updateSyncResult(output);
+          } else if (event.type === "error") {
+            output += `✗ Pull error: ${event.message}\n`;
+            updateSyncResult(output);
+          }
+        },
+        undefined,
+        owner
+      );
+
+      // Push phase with streaming
+      output += "\n▶ Pushing to remote...\n";
+      updateSyncResult(output);
+
+      await runStreamingCommand(
+        "ccms",
+        ["--force", "--fast", "--verbose", "push"],
+        (event: CommandEvent) => {
+          if (event.type === "stdout" || event.type === "stderr") {
+            output += (event.line || "") + "\n";
+            updateSyncResult(output);
+          } else if (event.type === "completed") {
+            output += event.success ? "✓ Push complete\n" : "✗ Push failed\n";
+            updateSyncResult(output, false); // Done loading
+          } else if (event.type === "error") {
+            output += `✗ Push error: ${event.message}\n`;
+            updateSyncResult(output, false);
+          }
+        },
+        undefined,
+        owner
+      );
+
+      console.log("[SYNC] Streaming sync complete");
+    } catch (e) {
+      console.error("[SYNC] Streaming sync error:", e);
+      output += `\n✗ Error: ${e}`;
+      updateSyncResult(output, false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (text: string) => {
+    // Handle /sync command locally
+    if (text.trim().toLowerCase() === "/sync") {
+      await handleSyncCommand();
+      return;
+    }
+
     if (isLoading()) return;
 
     setError(null);
@@ -866,8 +948,6 @@ function App() {
       }, 2000);
     }
 
-    // Schedule a debounced sync push after each message completes
-    scheduleSyncPush();
   };
 
   return (

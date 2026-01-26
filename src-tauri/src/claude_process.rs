@@ -28,8 +28,12 @@ pub struct ClaudeProcess {
 fn find_node_binary() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
 
-    // Check nvm versions first (most common)
+    rust_debug_log("NODE", &format!("Looking for node, home={:?}", home));
+
+    // Check nvm versions first (most common for macOS dev)
     let nvm_dir = home.join(".nvm/versions/node");
+    rust_debug_log("NODE", &format!("Checking nvm dir: {:?} exists={}", nvm_dir, nvm_dir.exists()));
+
     if nvm_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
             let mut versions: Vec<_> = entries
@@ -38,56 +42,82 @@ fn find_node_binary() -> Result<PathBuf, String> {
                 .filter(|p| p.is_dir())
                 .collect();
             versions.sort();
+            rust_debug_log("NODE", &format!("Found nvm versions: {:?}", versions));
+
             if let Some(latest) = versions.last() {
                 let node_path = latest.join("bin/node");
+                rust_debug_log("NODE", &format!("Checking nvm node: {:?} exists={}", node_path, node_path.exists()));
                 if node_path.exists() {
+                    rust_debug_log("NODE", &format!("Using nvm node: {:?}", node_path));
                     return Ok(node_path);
                 }
             }
         }
     }
 
-    // Check common locations
-    let candidates = vec![
-        PathBuf::from("/usr/local/bin/node"),
-        PathBuf::from("/opt/homebrew/bin/node"),
+    // Check common absolute paths (no PATH dependency!)
+    let candidates = [
         home.join(".local/bin/node"),
+        PathBuf::from("/opt/homebrew/bin/node"),
+        PathBuf::from("/usr/local/bin/node"),
+        PathBuf::from("/usr/bin/node"),
     ];
 
     for path in &candidates {
+        rust_debug_log("NODE", &format!("Checking: {:?} exists={}", path, path.exists()));
         if path.exists() {
+            rust_debug_log("NODE", &format!("Using: {:?}", path));
             return Ok(path.clone());
         }
     }
 
-    // Fall back to hoping it's in PATH
-    Ok(PathBuf::from("node"))
+    // Don't fall back to PATH - return error instead
+    rust_debug_log("NODE", "ERROR: Could not find node binary anywhere!");
+    Err("Could not find node binary. Install Node.js via nvm or Homebrew.".to_string())
 }
 
 fn get_bridge_script_path() -> Result<PathBuf, String> {
-    // The bridge script should be bundled with the app
-    // For development, look relative to the project root
-    let possible_paths = vec![
-        // When running in dev mode - look in project root for sdk-bridge-v2.mjs
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .map(|p| p.join("sdk-bridge-v2.mjs"))
-            .unwrap_or_default(),
-        // Fallback to old bridge name
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("claude-bridge.mjs"),
-        // When bundled (Resources directory on macOS)
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.join("../Resources/sdk-bridge-v2.mjs")))
-            .unwrap_or_default(),
-    ];
+    rust_debug_log("BRIDGE", "Looking for sdk-bridge-v2.mjs");
 
-    for path in &possible_paths {
-        if path.exists() {
-            return Ok(path.clone());
+    // Priority 1: Bundled in app (production) - check this FIRST
+    if let Ok(exe) = std::env::current_exe() {
+        rust_debug_log("BRIDGE", &format!("Current exe: {:?}", exe));
+
+        // Tauri bundles with _up_ prefix due to ../ in resource path
+        if let Some(parent) = exe.parent() {
+            let bundled = parent.join("../Resources/_up_/sdk-bridge-v2.mjs");
+            let canonical = bundled.canonicalize().ok();
+            rust_debug_log("BRIDGE", &format!("Checking bundled: {:?} canonical={:?}", bundled, canonical));
+
+            if bundled.exists() {
+                rust_debug_log("BRIDGE", &format!("Using bundled: {:?}", bundled));
+                return Ok(bundled);
+            }
+
+            // Also check direct Resources path
+            let direct = parent.join("../Resources/sdk-bridge-v2.mjs");
+            rust_debug_log("BRIDGE", &format!("Checking direct: {:?} exists={}", direct, direct.exists()));
+            if direct.exists() {
+                rust_debug_log("BRIDGE", &format!("Using direct: {:?}", direct));
+                return Ok(direct);
+            }
         }
     }
 
+    // Priority 2: Dev mode (compile-time path from CARGO_MANIFEST_DIR)
+    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|p| p.join("sdk-bridge-v2.mjs"))
+        .unwrap_or_default();
+
+    rust_debug_log("BRIDGE", &format!("Checking dev path: {:?} exists={}", dev_path, dev_path.exists()));
+
+    if dev_path.exists() {
+        rust_debug_log("BRIDGE", &format!("Using dev: {:?}", dev_path));
+        return Ok(dev_path);
+    }
+
+    rust_debug_log("BRIDGE", "ERROR: Could not find sdk-bridge-v2.mjs anywhere!");
     Err("Could not find sdk-bridge-v2.mjs script".to_string())
 }
 
@@ -95,10 +125,16 @@ impl ClaudeProcess {
     pub fn spawn(working_dir: &Path) -> Result<Self, String> {
         rust_debug_log("SPAWN", &format!("Starting spawn in dir: {:?}", working_dir));
 
-        let node_path = find_node_binary()?;
+        let node_path = find_node_binary().map_err(|e| {
+            rust_debug_log("SPAWN_ERROR", &format!("Node binary not found: {}", e));
+            e
+        })?;
         rust_debug_log("SPAWN", &format!("Node path: {:?}", node_path));
 
-        let bridge_path = get_bridge_script_path()?;
+        let bridge_path = get_bridge_script_path().map_err(|e| {
+            rust_debug_log("SPAWN_ERROR", &format!("Bridge script not found: {}", e));
+            e
+        })?;
         rust_debug_log("SPAWN", &format!("Bridge path: {:?}", bridge_path));
 
         // Spawn the Node.js bridge script with unbuffered stdout

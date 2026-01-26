@@ -457,6 +457,7 @@ dependencies = [
  "tauri-plugin-fs",
  "tauri-plugin-opener",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

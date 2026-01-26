@@ -11,6 +11,15 @@ A native macOS desktop app that wraps Claude Code CLI, providing a streamlined t
 - **Automatic permissions** - Uses `--dangerously-skip-permissions` for uninterrupted workflow
 - **MCP integration** - Loads MCP servers from your global `~/.claude/` config
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| **README.md** (this file) | Overview, quick start, lessons learned |
+| **[docs/architecture.md](docs/architecture.md)** | Data flow, event types, state management, key files |
+| **[docs/streaming.md](docs/streaming.md)** | Streaming command runner pattern (reusable) |
+| **[docs/troubleshooting.md](docs/troubleshooting.md)** | Common issues, debugging techniques |
+
 ## Architecture
 
 ```
@@ -58,6 +67,18 @@ A native macOS desktop app that wraps Claude Code CLI, providing a streamlined t
 | `context_update` | Real-time token usage at response start |
 | `result` | Final response metadata (tokens, cost, duration) |
 | `done` | Response complete |
+
+### Streaming Command Events
+
+For external commands (sync, future test runners, etc.), a separate event type streams output:
+
+| Event | Description |
+|-------|-------------|
+| `started` | Command began execution |
+| `stdout` | Line of stdout output |
+| `stderr` | Line of stderr output |
+| `completed` | Command finished (includes exit code) |
+| `error` | Command failed to start |
 
 ### Context Window Tracking
 
@@ -204,6 +225,41 @@ Using `<Show when={value}>` with values that can be 0 or undefined causes flicke
 </Show>
 ```
 
+### 10. macOS Launch Services Doesn't Include User PATH
+When the app is launched from Finder or `open` command (vs running from terminal), macOS Launch Services spawns it with a minimal PATH that doesn't include:
+- `~/.local/bin` (pipx, uv tools)
+- `~/.nvm/versions/node/*/bin` (nvm-managed Node)
+- `~/.bun/bin` (Bun)
+- Homebrew paths (sometimes)
+
+**Solution**: The streaming module (`streaming.rs`) manually searches common binary locations:
+```rust
+fn find_binary(name: &str) -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    let candidates = [
+        home.join(".local/bin").join(name),
+        home.join(format!(".{}-repo/{}", name, name)), // e.g., ~/.ccms-repo/ccms
+        PathBuf::from("/opt/homebrew/bin").join(name),
+        PathBuf::from("/usr/local/bin").join(name),
+        PathBuf::from("/usr/bin").join(name),
+    ];
+    // Also searches nvm directories for node-based tools
+}
+```
+
+### 11. Tool Results Must Be Visible During Loading
+Tool results that show progress (like sync output) need special handling. Watch out for **short-circuit evaluation** with empty strings:
+
+```jsx
+// BAD - empty string "" is falsy, so isLoading check never runs!
+<Show when={props.result && (expanded() || props.isLoading)}>
+
+// GOOD - check isLoading first to show container even when result is empty
+<Show when={props.isLoading || (expanded() && props.result)}>
+```
+
+When `result` starts as `""` (empty string), the condition `"" && anything` short-circuits to `""` (falsy), hiding the loading state. The fix prioritizes `isLoading` so the result container shows immediately, allowing streaming output to appear as it arrives.
+
 ## File Structure
 
 ```
@@ -214,18 +270,55 @@ claude-terminal/
 │   ├── components/
 │   │   ├── MessageList.tsx  # Message rendering
 │   │   ├── CommandInput.tsx # Input with type-ahead
-│   │   └── ToolBlock.tsx    # Collapsible tool results
+│   │   └── ToolResult.tsx   # Collapsible tool results
 │   └── lib/
-│       └── tauri.ts         # Tauri IPC bindings
+│       └── tauri.ts         # Tauri IPC bindings + streaming command API
 ├── src-tauri/               # Backend (Rust)
 │   ├── src/
 │   │   ├── main.rs          # App entry
 │   │   ├── commands.rs      # Tauri commands
 │   │   ├── claude_process.rs # CLI process management
-│   │   └── events.rs        # Event type definitions
+│   │   ├── events.rs        # Event type definitions (ClaudeEvent + CommandEvent)
+│   │   ├── streaming.rs     # General-purpose streaming command runner
+│   │   └── sync.rs          # CCMS sync integration
 │   └── tauri.conf.json      # Tauri config
 └── sdk-bridge-v2.mjs        # Node.js bridge script
 ```
+
+## Maintaining Documentation
+
+This documentation is a living artifact. **Update it as you work:**
+
+### When to Update
+
+1. **After fixing a bug** — Add the root cause and solution to "Lessons Learned" (README) or "Common Issues" (ARCHITECTURE)
+2. **After adding a feature** — Update the architecture diagrams, file structure, and event types
+3. **After discovering a gotcha** — Platform quirks, framework behavior, API semantics
+4. **After refactoring** — Update file descriptions and data flow diagrams
+
+### What to Document
+
+- **Root causes**, not just symptoms — Future you needs to understand *why*
+- **Code patterns** with good/bad examples — Makes the lesson actionable
+- **Platform-specific issues** — macOS, Tauri, SolidJS quirks won't be obvious later
+- **Decisions and trade-offs** — Why this approach vs alternatives
+
+### Documentation Files
+
+| File | Purpose |
+|------|---------|
+| `README.md` | Quick start, architecture overview, lessons learned |
+| [`docs/architecture.md`](docs/architecture.md) | Deep dive: data flow, event types, state management |
+| [`docs/streaming.md`](docs/streaming.md) | Streaming command runner (reusable pattern) |
+| [`docs/troubleshooting.md`](docs/troubleshooting.md) | Common issues & solutions, debugging |
+
+### For AI Assistants
+
+When working on this codebase:
+1. Read `README.md` and relevant `docs/` files before making significant changes
+2. After solving a non-trivial bug, add it to "Lessons Learned" here or [`docs/troubleshooting.md`](docs/troubleshooting.md)
+3. After adding new modules/features, update the file structure and [`docs/architecture.md`](docs/architecture.md)
+4. Correct any documentation that becomes outdated due to your changes
 
 ## License
 

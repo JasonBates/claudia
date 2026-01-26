@@ -777,6 +777,11 @@ del {
   line-height: 1.5;
 }
 
+.tool-result-content .loading-text {
+  color: var(--base01);
+  font-style: italic;
+}
+
 .tool-result-fade {
   position: absolute;
   bottom: 20px;

@@ -1,4 +1,4 @@
-# Claude Terminal Architecture
+# Architecture
 
 A Tauri desktop application that wraps the Claude Code CLI, providing a native GUI for interacting with Claude.
 
@@ -165,10 +165,12 @@ Claude continues (or aborts if denied)
 | File | Purpose |
 |------|---------|
 | `main.rs` | Tauri app initialization |
-| `commands.rs` | Tauri command handlers (start_session, send_message, etc.) |
+| `commands.rs` | Tauri command handlers (start_session, send_message, run_streaming_command, etc.) |
 | `claude_process.rs` | Manages the bridge subprocess, event parsing |
-| `events.rs` | ClaudeEvent enum definition |
+| `events.rs` | ClaudeEvent + CommandEvent enum definitions |
 | `config.rs` | App configuration |
+| `streaming.rs` | General-purpose streaming command runner with binary finder |
+| `sync.rs` | CCMS sync integration (pull/push/status) |
 
 ### Bridge Layer
 
@@ -343,14 +345,14 @@ npm run build
 npx tauri build
 ```
 
-## Debugging
+## Keeping This Document Updated
 
-Log files in temp directory:
-- `claude-bridge-debug.log` - Bridge I/O
-- `claude-permission-mcp.log` - Permission server
-- `claude-commands-debug.log` - Rust command execution
+This architecture document should evolve with the codebase. When making changes:
 
-Frontend console shows:
-- `[EVENT]` - Event receipt
-- `[FINISH]` - Response finalization
-- `[PERMISSION]` - Permission flow
+1. **New modules** → Add to "Key Files" tables with purpose description
+2. **New event types** → Add to "Event Types" section with description
+3. **New data flows** → Update or add flow diagrams
+4. **Bug fixes with architectural insight** → Add to [troubleshooting.md](troubleshooting.md)
+5. **New integrations** → Create new doc or add section (like [streaming.md](streaming.md))
+
+See main [README.md](../README.md) "Maintaining Documentation" section for full guidelines.

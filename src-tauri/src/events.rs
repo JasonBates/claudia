@@ -93,3 +93,39 @@ pub enum ClaudeEvent {
     /// Error occurred
     Error { message: String },
 }
+
+/// Events for streaming command output (general-purpose)
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CommandEvent {
+    /// Command started
+    Started {
+        command_id: String,
+        command: String,
+    },
+
+    /// Line of stdout output
+    Stdout {
+        command_id: String,
+        line: String,
+    },
+
+    /// Line of stderr output
+    Stderr {
+        command_id: String,
+        line: String,
+    },
+
+    /// Command completed
+    Completed {
+        command_id: String,
+        exit_code: i32,
+        success: bool,
+    },
+
+    /// Command failed to start
+    Error {
+        command_id: String,
+        message: String,
+    },
+}

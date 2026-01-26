@@ -184,3 +184,60 @@ export async function syncStatus(): Promise<SyncResult> {
 export async function isSyncAvailable(): Promise<boolean> {
   return await invoke<boolean>("is_sync_available");
 }
+
+// ============================================================================
+// Streaming Command Runner
+// ============================================================================
+
+/**
+ * Events emitted during streaming command execution
+ */
+export interface CommandEvent {
+  type: "started" | "stdout" | "stderr" | "completed" | "error";
+  command_id: string;
+  command?: string; // for "started"
+  line?: string; // for "stdout" / "stderr"
+  exit_code?: number; // for "completed"
+  success?: boolean; // for "completed"
+  message?: string; // for "error"
+}
+
+/**
+ * Run an external command with streaming output
+ *
+ * @param program - The command to run (e.g., "ccms", "npm", "cargo")
+ * @param args - Command arguments
+ * @param onEvent - Callback for each event (stdout line, stderr line, completion)
+ * @param workingDir - Optional working directory
+ * @param owner - SolidJS owner for reactivity context
+ * @returns The command ID
+ */
+export async function runStreamingCommand(
+  program: string,
+  args: string[],
+  onEvent: (event: CommandEvent) => void,
+  workingDir?: string,
+  owner?: Owner | null
+): Promise<string> {
+  const channel = new Channel<CommandEvent>();
+
+  // Restore SolidJS reactive context for channel callbacks
+  channel.onmessage = (event) => {
+    if (owner) {
+      runWithOwner(owner, () => {
+        batch(() => {
+          onEvent(event);
+        });
+      });
+    } else {
+      onEvent(event);
+    }
+  };
+
+  return await invoke<string>("run_streaming_command", {
+    program,
+    args,
+    workingDir,
+    channel,
+  });
+}

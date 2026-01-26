@@ -9,6 +9,7 @@ export interface ToolUse {
   input?: unknown;
   result?: string;
   isLoading?: boolean;
+  autoExpanded?: boolean;  // Forces expanded state (survives component recreation)
 }
 
 // Content blocks allow interleaving text and tool uses in order
@@ -125,6 +126,7 @@ const MessageList: Component<MessageListProps> = (props) => {
                               input={tool.input}
                               result={tool.result}
                               isLoading={tool.isLoading}
+                              autoExpanded={tool.autoExpanded}
                             />
                           )}
                         </For>

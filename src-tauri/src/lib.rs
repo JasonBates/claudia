@@ -2,6 +2,7 @@ mod claude_process;
 mod commands;
 mod config;
 mod events;
+mod streaming;
 mod sync;
 
 use commands::AppState;
@@ -29,22 +30,9 @@ pub fn run() {
             commands::sync_push,
             commands::sync_status,
             commands::is_sync_available,
+            // Streaming command runner
+            commands::run_streaming_command,
         ])
-        .on_window_event(|_window, event| {
-            // Sync on window close to ensure latest changes are pushed
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                eprintln!("[SYNC] Window closing, performing final sync push...");
-                if sync::is_ccms_configured() {
-                    let result = sync::ccms_push();
-                    eprintln!("[SYNC] Final push result: success={}", result.success);
-                    if let Some(err) = result.error {
-                        eprintln!("[SYNC] Final push error: {}", err);
-                    }
-                } else {
-                    eprintln!("[SYNC] ccms not configured, skipping final push");
-                }
-            }
-        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -6,6 +6,7 @@ interface ToolResultProps {
   input?: unknown;
   result?: string;
   isLoading?: boolean;
+  autoExpanded?: boolean;  // Forces expanded state (survives component recreation)
 }
 
 interface Todo {
@@ -37,12 +38,21 @@ const TodoList: Component<{ todos: Todo[] }> = (props) => {
 };
 
 const ToolResult: Component<ToolResultProps> = (props) => {
-  const [expanded, setExpanded] = createSignal(false);
+  // Track user's explicit override (null = no override, use autoExpanded)
+  const [userOverride, setUserOverride] = createSignal<boolean | null>(null);
+
+  // Effective expanded state: user override takes priority, then autoExpanded, then default false
+  const isExpanded = () => {
+    const override = userOverride();
+    if (override !== null) return override;
+    return props.autoExpanded || false;
+  };
 
   const toggleExpanded = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setExpanded(!expanded());
+    // User explicitly toggles - set override to opposite of current state
+    setUserOverride(!isExpanded());
   };
 
   const inputPreview = () => {
@@ -88,7 +98,7 @@ const ToolResult: Component<ToolResultProps> = (props) => {
   const extraLineCount = () => resultLines().length - 2;
 
   return (
-    <div class="tool-result" classList={{ expanded: expanded(), loading: props.isLoading }}>
+    <div class="tool-result" classList={{ expanded: isExpanded(), loading: props.isLoading }}>
       <div class="tool-header">
         <span class="tool-icon">{props.isLoading ? "◐" : "⚡"}</span>
         <span class="tool-name">{props.name}</span>
@@ -99,9 +109,9 @@ const ToolResult: Component<ToolResultProps> = (props) => {
           <button
             class="tool-toggle-btn"
             onClick={toggleExpanded}
-            title={expanded() ? "Collapse" : "Expand"}
+            title={isExpanded() ? "Collapse" : "Expand"}
           >
-            {expanded() ? "−" : "+"}
+            {isExpanded() ? "−" : "+"}
           </button>
         </Show>
       </div>
@@ -111,17 +121,19 @@ const ToolResult: Component<ToolResultProps> = (props) => {
         <TodoList todos={getTodos()} />
       </Show>
 
-      {/* Result content - only visible when expanded */}
-      <Show when={props.result && !isTodoWrite() && expanded()}>
+      {/* Result content - visible when: loading or expanded (via autoExpanded or user toggle) */}
+      <Show when={!isTodoWrite() && (props.isLoading || isExpanded())}>
         <div class="tool-result-preview">
           <div class="tool-result-content">
-            <MessageContent content={props.result!} />
+            <Show when={props.result} fallback={<span class="loading-text">Running...</span>}>
+              <MessageContent content={props.result!} />
+            </Show>
           </div>
         </div>
       </Show>
 
       {/* Expanded input details */}
-      <Show when={expanded() && hasInput() && !isTodoWrite()}>
+      <Show when={isExpanded() && hasInput() && !isTodoWrite()}>
         <div class="tool-input-details">
           <div class="tool-section-label">Input:</div>
           <pre class="tool-json">
