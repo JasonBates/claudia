@@ -1033,7 +1033,7 @@ function App() {
           placeholder={
             sessionActive()
               ? "Type a message... (Enter to send, Shift+Tab to change mode)"
-              : "Starting session..."
+              : ""
           }
           mode={currentMode()}
           onModeChange={cycleMode}

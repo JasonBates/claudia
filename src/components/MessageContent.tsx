@@ -79,6 +79,50 @@ const calloutIcons: Record<string, string> = {
   question: '?',
 };
 
+// Transform ★ Insight blocks (backtick-bordered) into Obsidian callout format
+function processInsightBlocks(content: string): string {
+  const lines = content.split('\n');
+  const result: string[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Check for insight start: `★ Insight ───...`
+    const insightStartMatch = line.match(/^`★\s*Insight\s*─+`$/);
+    if (insightStartMatch) {
+      // Collect content until the closing border line
+      const contentLines: string[] = [];
+      let j = i + 1;
+
+      while (j < lines.length) {
+        const nextLine = lines[j];
+        // Check for closing border: `───...`
+        if (nextLine.match(/^`─+`$/)) {
+          j++; // Skip the closing border
+          break;
+        }
+        contentLines.push(nextLine);
+        j++;
+      }
+
+      // Convert to Obsidian callout format
+      result.push('> [!insight] Insight');
+      contentLines.forEach(cl => {
+        result.push(`> ${cl}`);
+      });
+
+      i = j;
+      continue;
+    }
+
+    result.push(line);
+    i++;
+  }
+
+  return result.join('\n');
+}
+
 function processCallouts(content: string): string {
   const lines = content.split('\n');
   const result: string[] = [];
@@ -130,7 +174,9 @@ function processCallouts(content: string): string {
 }
 
 function processMarkdownWithTables(content: string): string {
-  // Process callouts first
+  // Transform ★ Insight blocks to Obsidian callout format first
+  content = processInsightBlocks(content);
+  // Then process callouts (including the transformed insight blocks)
   content = processCallouts(content);
 
   const lines = content.split('\n');

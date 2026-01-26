@@ -245,6 +245,28 @@ env -i HOME=$HOME /bin/bash -c 'echo $PATH'
 ls -la ~/.local/bin/ccms
 ```
 
+## Known Limitations
+
+### Bash Tool Output Not Streaming in Real-Time
+
+**Symptom**: When Claude runs a Bash command, the output appears all at once after the command finishes, not line-by-line as it runs.
+
+**Cause**: This is a fundamental limitation of Claude Code's `--print` mode with `--output-format stream-json`. The app uses this mode to receive structured JSON events, but:
+
+- **Interactive mode** (native Claude Code terminal): Uses React/Ink with pipe data events → real-time display
+- **Print mode** (our bridge): `tool_result` event contains complete output only after command finishes
+
+The streaming in native Claude Code isn't from JSON events—it's from the React/Ink UI layer reading pipes and re-rendering. Our JSON-event-based bridge bypasses that layer entirely.
+
+**Why we don't fix it**: Implementing Bash streaming would require intercepting tool calls, running them ourselves, and feeding results back to Claude—significant complexity for a minor use case. The app is designed for knowledge work; use native Claude Code for dev work requiring streaming Bash output.
+
+**References**:
+- GitHub Issue #4346: Live Streaming Text Output (feature request)
+- GitHub Issue #2221: Added streaming in v1.0.53 for interactive mode only
+- Only Bash benefits; Read, WebFetch, and other tools are buffered in both modes
+
+---
+
 ## Adding New Troubleshooting Entries
 
 When you solve a non-trivial bug:
