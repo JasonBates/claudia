@@ -7,6 +7,59 @@ use super::{cmd_debug_log, AppState};
 use crate::claude_process::ClaudeProcess;
 use crate::events::ClaudeEvent;
 
+// =============================================================================
+// Timeout Configuration
+// =============================================================================
+// These constants control how long we wait for events in different phases.
+// The event loop uses adaptive timeouts to balance responsiveness with patience.
+
+/// Timeout when tools are executing or compaction is in progress (5 seconds)
+const TIMEOUT_TOOL_EXEC_MS: u64 = 5000;
+/// Timeout when streaming content (2 seconds between chunks)
+const TIMEOUT_STREAMING_MS: u64 = 2000;
+/// Timeout when waiting for first content (500ms polling)
+const TIMEOUT_WAITING_MS: u64 = 500;
+
+/// Max idle count during compaction (~2.5 minutes at 5s intervals)
+const MAX_IDLE_COMPACTION: u32 = 30;
+/// Max idle count while tools pending (~2 minutes at 5s intervals)
+const MAX_IDLE_TOOLS: u32 = 24;
+/// Max idle count while streaming (~6 seconds at 2s intervals)
+const MAX_IDLE_STREAMING: u32 = 3;
+/// Max idle count waiting for first content (~30 seconds at 500ms intervals)
+const MAX_IDLE_INITIAL: u32 = 60;
+
+/// Calculate adaptive timeout and max idle count based on current state.
+///
+/// Returns (timeout_ms, max_idle_count) tuple.
+///
+/// # State Priority (highest to lowest)
+/// 1. Compacting - longest timeout, context compaction can take 60+ seconds
+/// 2. Tools pending - long timeout, tool execution varies widely
+/// 3. Got first content - short timeout, streaming should be continuous
+/// 4. Waiting for response - medium timeout, initial response can take time
+pub fn calculate_timeouts(compacting: bool, tools_pending: bool, got_first_content: bool) -> (u64, u32) {
+    let timeout_ms = if compacting || tools_pending {
+        TIMEOUT_TOOL_EXEC_MS
+    } else if got_first_content {
+        TIMEOUT_STREAMING_MS
+    } else {
+        TIMEOUT_WAITING_MS
+    };
+
+    let max_idle = if compacting {
+        MAX_IDLE_COMPACTION
+    } else if tools_pending {
+        MAX_IDLE_TOOLS
+    } else if got_first_content {
+        MAX_IDLE_STREAMING
+    } else {
+        MAX_IDLE_INITIAL
+    };
+
+    (timeout_ms, max_idle)
+}
+
 /// Send a message to Claude and stream the response
 #[tauri::command]
 pub async fn send_message(
@@ -77,7 +130,6 @@ pub async fn send_message(
     // Read events with timeout to detect end of response
     // Note: Claude can take several seconds to start streaming, especially on first request
     let mut idle_count = 0;
-    let max_idle = 60; // Wait up to 30 seconds (60 x 500ms) for initial response
     let mut event_count = 0;
     let mut got_first_content = false;
     let mut pending_tool_count: usize = 0; // Count of tools awaiting results (for parallel tool support)
@@ -95,25 +147,10 @@ pub async fn send_message(
             }
         };
 
-        // Use longer timeout when tool/compaction is executing
-        // Compaction can take 60+ seconds for large contexts
+        // Calculate adaptive timeout based on current state
         let tools_pending = pending_tool_count > 0;
-        let current_timeout = if compacting || tools_pending {
-            5000
-        } else if got_first_content {
-            2000
-        } else {
-            500
-        };
-        let current_max_idle = if compacting {
-            30
-        } else if tools_pending {
-            24
-        } else if got_first_content {
-            3
-        } else {
-            max_idle
-        }; // 2.5 min for compaction
+        let (current_timeout, current_max_idle) =
+            calculate_timeouts(compacting, tools_pending, got_first_content);
 
         // Try to receive with timeout
         match timeout(
@@ -266,4 +303,122 @@ pub async fn send_message(
 
     cmd_debug_log("DONE", &format!("Total events received: {}", event_count));
     Ok(())
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -------------------------------------------------------------------------
+    // calculate_timeouts - State Priority Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn timeout_compaction_takes_highest_priority() {
+        // Compaction should use longest timeout even when other flags are set
+        let (timeout, max_idle) = calculate_timeouts(true, true, true);
+        assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
+        assert_eq!(max_idle, MAX_IDLE_COMPACTION);
+    }
+
+    #[test]
+    fn timeout_tools_pending_second_priority() {
+        // Tools pending should use long timeout when not compacting
+        let (timeout, max_idle) = calculate_timeouts(false, true, true);
+        assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
+        assert_eq!(max_idle, MAX_IDLE_TOOLS);
+    }
+
+    #[test]
+    fn timeout_streaming_third_priority() {
+        // Streaming mode when no tools or compaction
+        let (timeout, max_idle) = calculate_timeouts(false, false, true);
+        assert_eq!(timeout, TIMEOUT_STREAMING_MS);
+        assert_eq!(max_idle, MAX_IDLE_STREAMING);
+    }
+
+    #[test]
+    fn timeout_waiting_lowest_priority() {
+        // Waiting for first content - default state
+        let (timeout, max_idle) = calculate_timeouts(false, false, false);
+        assert_eq!(timeout, TIMEOUT_WAITING_MS);
+        assert_eq!(max_idle, MAX_IDLE_INITIAL);
+    }
+
+    // -------------------------------------------------------------------------
+    // calculate_timeouts - Edge Cases & Combinations
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn timeout_compaction_without_content() {
+        // Compaction can happen before any content received
+        let (timeout, max_idle) = calculate_timeouts(true, false, false);
+        assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
+        assert_eq!(max_idle, MAX_IDLE_COMPACTION);
+    }
+
+    #[test]
+    fn timeout_tools_without_content() {
+        // Tools can start before text content (e.g., planning mode)
+        let (timeout, max_idle) = calculate_timeouts(false, true, false);
+        assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
+        assert_eq!(max_idle, MAX_IDLE_TOOLS);
+    }
+
+    // -------------------------------------------------------------------------
+    // calculate_timeouts - Timeout Value Verification
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn timeout_values_are_reasonable() {
+        // Sanity checks on the actual timeout values
+        assert!(TIMEOUT_TOOL_EXEC_MS >= 5000, "Tool execution needs >= 5s timeout");
+        assert!(TIMEOUT_STREAMING_MS >= 1000, "Streaming needs >= 1s timeout");
+        assert!(TIMEOUT_WAITING_MS >= 100, "Waiting needs >= 100ms polling");
+        assert!(TIMEOUT_TOOL_EXEC_MS > TIMEOUT_STREAMING_MS, "Tool timeout > streaming");
+        assert!(TIMEOUT_STREAMING_MS > TIMEOUT_WAITING_MS, "Streaming timeout > waiting");
+    }
+
+    #[test]
+    fn max_idle_provides_sufficient_wait_time() {
+        // Verify total wait times are sufficient for each phase
+        // Compaction: 30 * 5000ms = 150 seconds (~2.5 minutes)
+        let compaction_wait = MAX_IDLE_COMPACTION as u64 * TIMEOUT_TOOL_EXEC_MS;
+        assert!(compaction_wait >= 120_000, "Compaction should wait >= 2 minutes");
+
+        // Tools: 24 * 5000ms = 120 seconds (2 minutes)
+        let tools_wait = MAX_IDLE_TOOLS as u64 * TIMEOUT_TOOL_EXEC_MS;
+        assert!(tools_wait >= 60_000, "Tools should wait >= 1 minute");
+
+        // Streaming: 3 * 2000ms = 6 seconds
+        let streaming_wait = MAX_IDLE_STREAMING as u64 * TIMEOUT_STREAMING_MS;
+        assert!(streaming_wait >= 5_000, "Streaming should wait >= 5 seconds");
+
+        // Initial: 60 * 500ms = 30 seconds
+        let initial_wait = MAX_IDLE_INITIAL as u64 * TIMEOUT_WAITING_MS;
+        assert!(initial_wait >= 20_000, "Initial wait should be >= 20 seconds");
+    }
+
+    // -------------------------------------------------------------------------
+    // calculate_timeouts - Boundary Conditions
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn timeout_all_flags_false() {
+        let (timeout, max_idle) = calculate_timeouts(false, false, false);
+        assert_eq!(timeout, 500);
+        assert_eq!(max_idle, 60);
+    }
+
+    #[test]
+    fn timeout_all_flags_true() {
+        // Compaction takes priority over everything
+        let (timeout, max_idle) = calculate_timeouts(true, true, true);
+        assert_eq!(timeout, 5000);
+        assert_eq!(max_idle, 30);
+    }
 }
