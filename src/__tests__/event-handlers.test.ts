@@ -571,3 +571,233 @@ describe("createEventHandler", () => {
     expect(deps.state.streamingContent).toBe("");
   });
 });
+
+// ============================================================================
+// Race Condition Tests
+// ============================================================================
+
+describe("race conditions", () => {
+  describe("tool_result before tool_start", () => {
+    it("should store result in pendingResultsRef when tool does not exist yet", () => {
+      const deps = createMockDeps();
+      deps.state.currentToolUses = []; // No tools yet
+
+      // tool_result arrives BEFORE tool_start
+      handleToolResultEvent(
+        {
+          type: "tool_result",
+          tool_use_id: "tool-123",
+          stdout: "Result from tool",
+        } as ClaudeEvent & { type: "tool_result" },
+        deps
+      );
+
+      // Result should be stored in pending, not applied to non-existent tool
+      expect(deps.pendingResultsRef.current.has("tool-123")).toBe(true);
+      expect(deps.pendingResultsRef.current.get("tool-123")).toEqual({
+        result: "Result from tool",
+        isError: false,
+      });
+
+      // Tool uses should not have been updated
+      expect(deps.setCurrentToolUses).not.toHaveBeenCalled();
+    });
+
+    it("should apply pending result when tool_start arrives later", () => {
+      const deps = createMockDeps();
+      deps.state.currentToolUses = [];
+
+      // 1. Result arrives first (stored in pending)
+      handleToolResultEvent(
+        {
+          type: "tool_result",
+          tool_use_id: "tool-123",
+          stdout: "Early result",
+        } as ClaudeEvent & { type: "tool_result" },
+        deps
+      );
+
+      expect(deps.pendingResultsRef.current.has("tool-123")).toBe(true);
+
+      // 2. Now tool_start arrives
+      handleToolStartEvent(
+        {
+          type: "tool_start",
+          id: "tool-123",
+          name: "Grep",
+        } as ClaudeEvent & { type: "tool_start" },
+        deps
+      );
+
+      // Pending result should be consumed
+      expect(deps.pendingResultsRef.current.has("tool-123")).toBe(false);
+
+      // Tool should be created with result already applied
+      expect(deps.setCurrentToolUses).toHaveBeenCalled();
+      const tool = (deps.state.currentToolUses as { id: string; result?: string; isLoading: boolean }[])[0];
+      expect(tool.id).toBe("tool-123");
+      expect(tool.result).toBe("Early result");
+      expect(tool.isLoading).toBe(false); // Not loading since result is already there
+    });
+
+    it("should handle error results in pending", () => {
+      const deps = createMockDeps();
+      deps.state.currentToolUses = [];
+
+      // Error result arrives before tool (is_error flag determines error status)
+      handleToolResultEvent(
+        {
+          type: "tool_result",
+          tool_use_id: "tool-456",
+          stderr: "Command failed",
+          is_error: true,
+        } as ClaudeEvent & { type: "tool_result" },
+        deps
+      );
+
+      expect(deps.pendingResultsRef.current.get("tool-456")).toEqual({
+        result: "Error: Command failed",
+        isError: true,
+      });
+    });
+  });
+
+  describe("parallel tool execution", () => {
+    it("should handle multiple tools starting in sequence", () => {
+      const deps = createMockDeps();
+      deps.state.currentToolUses = [];
+      const handler = createEventHandler(deps);
+
+      // 3 tools start rapidly
+      handler({ type: "tool_start", id: "grep-1", name: "Grep" } as ClaudeEvent);
+      handler({ type: "tool_start", id: "glob-1", name: "Glob" } as ClaudeEvent);
+      handler({ type: "tool_start", id: "read-1", name: "Read" } as ClaudeEvent);
+
+      const tools = deps.state.currentToolUses as { id: string }[];
+      expect(tools).toHaveLength(3);
+      expect(tools.map((t) => t.id)).toEqual(["grep-1", "glob-1", "read-1"]);
+    });
+
+    it("should handle results arriving out of order", () => {
+      const deps = createMockDeps();
+      deps.state.currentToolUses = [];
+      const handler = createEventHandler(deps);
+
+      // Start 3 tools
+      handler({ type: "tool_start", id: "grep-1", name: "Grep" } as ClaudeEvent);
+      handler({ type: "tool_start", id: "glob-1", name: "Glob" } as ClaudeEvent);
+      handler({ type: "tool_start", id: "read-1", name: "Read" } as ClaudeEvent);
+
+      // Results arrive in different order: glob, read, grep
+      handler({ type: "tool_result", tool_use_id: "glob-1", stdout: "glob-result" } as ClaudeEvent);
+      handler({ type: "tool_result", tool_use_id: "read-1", stdout: "read-result" } as ClaudeEvent);
+      handler({ type: "tool_result", tool_use_id: "grep-1", stdout: "grep-result" } as ClaudeEvent);
+
+      // All tools should have their correct results
+      const tools = deps.state.currentToolUses as { id: string; result?: string; isLoading: boolean }[];
+      expect(tools.find((t) => t.id === "grep-1")?.result).toBe("grep-result");
+      expect(tools.find((t) => t.id === "glob-1")?.result).toBe("glob-result");
+      expect(tools.find((t) => t.id === "read-1")?.result).toBe("read-result");
+
+      // All should be done loading
+      expect(tools.every((t) => t.isLoading === false)).toBe(true);
+    });
+
+    it("should handle mixed early and normal results", () => {
+      const deps = createMockDeps();
+      deps.state.currentToolUses = [];
+      const handler = createEventHandler(deps);
+
+      // Tool 1 starts
+      handler({ type: "tool_start", id: "tool-1", name: "Grep" } as ClaudeEvent);
+
+      // Tool 2's result arrives BEFORE its start (race condition)
+      handler({ type: "tool_result", tool_use_id: "tool-2", stdout: "early-result" } as ClaudeEvent);
+
+      // Tool 1's result arrives normally
+      handler({ type: "tool_result", tool_use_id: "tool-1", stdout: "normal-result" } as ClaudeEvent);
+
+      // Now tool 2 starts (should pick up pending result)
+      handler({ type: "tool_start", id: "tool-2", name: "Glob" } as ClaudeEvent);
+
+      const tools = deps.state.currentToolUses as { id: string; result?: string }[];
+      expect(tools.find((t) => t.id === "tool-1")?.result).toBe("normal-result");
+      expect(tools.find((t) => t.id === "tool-2")?.result).toBe("early-result");
+    });
+  });
+
+  describe("duplicate events", () => {
+    it("should handle duplicate tool_result events gracefully", () => {
+      const deps = createMockDeps();
+      deps.state.currentToolUses = [
+        { id: "tool-1", name: "Bash", input: {}, isLoading: true },
+      ];
+
+      // First result
+      handleToolResultEvent(
+        { type: "tool_result", tool_use_id: "tool-1", stdout: "result-1" } as ClaudeEvent & { type: "tool_result" },
+        deps
+      );
+
+      // Duplicate result (should not break anything)
+      handleToolResultEvent(
+        { type: "tool_result", tool_use_id: "tool-1", stdout: "result-2" } as ClaudeEvent & { type: "tool_result" },
+        deps
+      );
+
+      // Should have the second result (last write wins)
+      const tool = (deps.state.currentToolUses as { result?: string }[])[0];
+      expect(tool.result).toBe("result-2");
+    });
+
+    it("should handle result for non-existent tool without tool_use_id", () => {
+      const deps = createMockDeps();
+      deps.state.currentToolUses = [];
+
+      // Result with no tool_use_id (edge case)
+      handleToolResultEvent(
+        { type: "tool_result", stdout: "orphan result" } as ClaudeEvent & { type: "tool_result" },
+        deps
+      );
+
+      // Should not crash, should not store in pending (no ID to store under)
+      expect(deps.pendingResultsRef.current.size).toBe(0);
+    });
+  });
+
+  describe("rapid state transitions", () => {
+    it("should handle rapid text_delta events", () => {
+      const deps = createMockDeps();
+      const handler = createEventHandler(deps);
+
+      // Simulate rapid streaming
+      for (let i = 0; i < 100; i++) {
+        handler({ type: "text_delta", text: `chunk${i}` } as ClaudeEvent);
+      }
+
+      // All chunks should be concatenated
+      const expected = Array.from({ length: 100 }, (_, i) => `chunk${i}`).join("");
+      expect(deps.state.streamingContent).toBe(expected);
+    });
+
+    it("should handle interleaved text and tool events", () => {
+      const deps = createMockDeps();
+      const handler = createEventHandler(deps);
+
+      // Realistic interleaved sequence
+      handler({ type: "text_delta", text: "I'll search for " } as ClaudeEvent);
+      handler({ type: "tool_start", id: "grep-1", name: "Grep" } as ClaudeEvent);
+      handler({ type: "tool_input", input: '{"pattern":"test"}' } as ClaudeEvent);
+      handler({ type: "tool_pending", id: "grep-1" } as ClaudeEvent);
+      handler({ type: "tool_result", tool_use_id: "grep-1", stdout: "found: test.ts" } as ClaudeEvent);
+      handler({ type: "text_delta", text: "Found the file!" } as ClaudeEvent);
+
+      // Text should be accumulated
+      expect(deps.state.streamingContent).toBe("I'll search for Found the file!");
+
+      // Tool should have result
+      const tools = deps.state.currentToolUses as { id: string; result?: string }[];
+      expect(tools.find((t) => t.id === "grep-1")?.result).toBe("found: test.ts");
+    });
+  });
+});
