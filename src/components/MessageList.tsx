@@ -15,6 +15,7 @@ interface MessageListProps {
   streamingThinking?: string;  // Current thinking content being streamed
   showThinking?: boolean;  // Whether to show thinking in expanded view (global toggle)
   forceScrollToBottom?: boolean;  // Force scroll on new user message
+  header?: any;  // Optional header element (e.g., branding) that scrolls with content
 }
 
 const MessageList: Component<MessageListProps> = (props) => {
@@ -90,6 +91,9 @@ const MessageList: Component<MessageListProps> = (props) => {
 
   return (
     <div class="message-list" ref={containerRef}>
+      {/* Optional header (branding) - scrolls with content */}
+      {props.header}
+
       <For each={props.messages}>
         {(message) => (
           <div class={`message message-${message.role}${message.variant ? ` message-${message.variant}` : ''}${message.faded ? ' message-faded' : ''}`}>

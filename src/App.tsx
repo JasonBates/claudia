@@ -6,6 +6,7 @@ import QuestionPanel from "./components/QuestionPanel";
 import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
+// import StartupSplash from "./components/StartupSplash";
 import { sendMessage } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
@@ -80,6 +81,7 @@ function App() {
 
   // Context warning state
   const [warningDismissed, setWarningDismissed] = createSignal(false);
+
 
   // Track compaction for before/after token display
   const [lastCompactionPreTokens, setLastCompactionPreTokens] = createSignal<number | null>(null);
@@ -381,6 +383,7 @@ function App() {
           />
         </div>
       </Show>
+
     </div>
   );
 }
