@@ -424,13 +424,20 @@ export function handleToolResultEvent(
     return;
   }
 
+  // Skip empty duplicate tool_result events (CLI sends two per tool)
+  // Only process if we have a tool_use_id or actual result content
+  const targetToolId = event.tool_use_id;
+  const hasContent = event.stdout || event.stderr;
+  if (!targetToolId && !hasContent) {
+    return;
+  }
+
   const resultData = {
     result: event.is_error
       ? `Error: ${event.stderr || event.stdout}`
       : event.stdout || event.stderr || "",
     isLoading: false,
   };
-  const targetToolId = event.tool_use_id;
 
   deps.setCurrentToolUses((prev) => {
     if (prev.length === 0) return prev;
