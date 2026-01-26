@@ -1,16 +1,5 @@
 import { Component, For, Show, createSignal, createEffect, onMount } from "solid-js";
-
-interface QuestionOption {
-  label: string;
-  description: string;
-}
-
-interface Question {
-  question: string;
-  header: string;
-  options: QuestionOption[];
-  multiSelect: boolean;
-}
+import type { Question, QuestionOption } from "../lib/types";
 
 interface QuestionPanelProps {
   questions: Question[];

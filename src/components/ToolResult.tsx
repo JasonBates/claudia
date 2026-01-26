@@ -1,5 +1,6 @@
 import { Component, createSignal, Show, For } from "solid-js";
 import MessageContent from "./MessageContent";
+import type { Todo } from "../lib/types";
 
 interface ToolResultProps {
   name: string;
@@ -7,12 +8,6 @@ interface ToolResultProps {
   result?: string;
   isLoading?: boolean;
   autoExpanded?: boolean;  // Forces expanded state (survives component recreation)
-}
-
-interface Todo {
-  content: string;
-  status: "completed" | "in_progress" | "pending";
-  activeForm?: string;
 }
 
 // Special renderer for TodoWrite

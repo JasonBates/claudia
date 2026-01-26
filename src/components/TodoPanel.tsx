@@ -1,10 +1,5 @@
 import { Component, For, Show } from "solid-js";
-
-interface Todo {
-  content: string;
-  status: "completed" | "in_progress" | "pending";
-  activeForm?: string;
-}
+import type { Todo } from "../lib/types";
 
 interface TodoPanelProps {
   todos: Todo[];

@@ -1,5 +1,5 @@
 import { createSignal, onMount, onCleanup, Show, getOwner, runWithOwner, batch } from "solid-js";
-import MessageList, { Message, ToolUse, ContentBlock } from "./components/MessageList";
+import MessageList from "./components/MessageList";
 import CommandInput, { CommandInputHandle } from "./components/CommandInput";
 import TodoPanel from "./components/TodoPanel";
 import QuestionPanel from "./components/QuestionPanel";
@@ -9,25 +9,8 @@ import PermissionDialog from "./components/PermissionDialog";
 import { startSession, sendMessage, pollPermissionRequest, respondToPermission, getLaunchDir, runStreamingCommand, ClaudeEvent, CommandEvent } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
+import type { Todo, Question, Message, ToolUse, ContentBlock } from "./lib/types";
 import "./App.css";
-
-interface Todo {
-  content: string;
-  status: "completed" | "in_progress" | "pending";
-  activeForm?: string;
-}
-
-interface QuestionOption {
-  label: string;
-  description: string;
-}
-
-interface Question {
-  question: string;
-  header: string;
-  options: QuestionOption[];
-  multiSelect: boolean;
-}
 
 function App() {
   const [messages, setMessages] = createSignal<Message[]>([]);

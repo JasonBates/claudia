@@ -2,30 +2,10 @@ import { Component, For, Show, onMount, createEffect, createSignal } from "solid
 import MessageContent from "./MessageContent";
 import ToolResult from "./ToolResult";
 import ThinkingPreview from "./ThinkingPreview";
+import type { ToolUse, ContentBlock, Message } from "../lib/types";
 
-export interface ToolUse {
-  id: string;
-  name: string;
-  input?: unknown;
-  result?: string;
-  isLoading?: boolean;
-  autoExpanded?: boolean;  // Forces expanded state (survives component recreation)
-}
-
-// Content blocks allow interleaving text and tool uses in order
-export type ContentBlock =
-  | { type: "text"; content: string }
-  | { type: "tool_use"; tool: ToolUse }
-  | { type: "thinking"; content: string };
-
-export interface Message {
-  id: string;
-  role: "user" | "assistant" | "system";
-  content: string;  // Legacy: plain text content
-  toolUses?: ToolUse[];  // Legacy: tool uses at end
-  contentBlocks?: ContentBlock[];  // New: ordered blocks
-  variant?: "divider" | "status" | "compaction";  // Optional styling variant
-}
+// Re-export types for backward compatibility
+export type { ToolUse, ContentBlock, Message } from "../lib/types";
 
 interface MessageListProps {
   messages: Message[];
