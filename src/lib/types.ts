@@ -103,3 +103,24 @@ export interface PermissionRequestEvent extends BaseClaudeEvent {
   tool_input?: unknown;
   description: string;
 }
+
+// ============================================================================
+// Session Types (for sidebar)
+// ============================================================================
+
+/**
+ * A session entry from Claude Code's sessions-index.json.
+ * Used by: Sidebar, SessionList, useSidebar
+ */
+export interface SessionEntry {
+  session_id: string;
+  full_path: string;
+  file_mtime: number;
+  first_prompt: string;
+  message_count: number;
+  created: string;
+  modified: string;
+  git_branch: string;
+  project_path: string;
+  is_sidechain: boolean;
+}

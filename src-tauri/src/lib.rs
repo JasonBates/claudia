@@ -59,6 +59,9 @@ pub fn run() {
             commands::sync_cmd::is_sync_available,
             // Streaming command runner
             commands::streaming_cmd::run_streaming_command,
+            // Session listing (for sidebar)
+            commands::session_list::list_sessions,
+            commands::session_list::delete_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -6,6 +6,7 @@ import QuestionPanel from "./components/QuestionPanel";
 import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
+import Sidebar from "./components/Sidebar";
 // import StartupSplash from "./components/StartupSplash";
 import { sendMessage } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
@@ -19,6 +20,7 @@ import {
   useTodoPanel,
   useQuestionPanel,
   useLocalCommands,
+  useSidebar,
 } from "./hooks";
 import "./App.css";
 
@@ -68,10 +70,17 @@ function App() {
     getCurrentMode: currentMode,
   });
 
+  // Sidebar (session history) - initialized before localCommands so it can be passed
+  const sidebar = useSidebar({
+    owner,
+    workingDir: () => session.workingDir(),
+  });
+
   // Local commands (slash commands + keyboard shortcuts)
   const localCommands = useLocalCommands({
     streaming,
     session,
+    sidebar,
     owner,
   });
 
@@ -180,6 +189,14 @@ function App() {
     setCurrentMode(getNextMode(currentMode()));
   };
 
+  // Resume a session from the sidebar
+  const handleResumeSession = async (sessionId: string) => {
+    // TODO: Implement session resume with --resume flag
+    // For now, show a message indicating this is coming
+    console.log("[RESUME] Session resume requested:", sessionId);
+    alert(`Session resume coming soon!\n\nSession ID: ${sessionId}`);
+  };
+
   // Main message submission handler
   const handleSubmit = async (text: string) => {
     // Handle local commands (slash commands like /sync, /clear, etc.)
@@ -255,95 +272,110 @@ function App() {
 
   return (
     <div class="app">
-      {/* Fixed top bar background */}
-      <div class="top-bar"></div>
-      {/* Drag region for window */}
-      <div class="drag-region" data-tauri-drag-region="true"></div>
+      {/* Session Sidebar */}
+      <Sidebar
+        collapsed={sidebar.collapsed()}
+        onToggle={sidebar.toggleSidebar}
+        sessions={sidebar.sessions()}
+        currentSessionId={session.sessionInfo().sessionId || null}
+        isLoading={sidebar.isLoading()}
+        error={sidebar.error()}
+        onResume={handleResumeSession}
+        onDelete={sidebar.handleDeleteSession}
+      />
 
-      {/* Centered directory indicator */}
-      <div
-        class="dir-indicator"
-        classList={{ connected: session.sessionActive(), disconnected: !session.sessionActive() }}
-      >
-        <Show when={session.sessionActive()} fallback={<span class="status-icon">⊘</span>}>
-          <span class="status-icon">⚡</span>
+      {/* Main content area */}
+      <div class="app-content">
+        {/* Fixed top bar background */}
+        <div class="top-bar"></div>
+        {/* Drag region for window */}
+        <div class="drag-region" data-tauri-drag-region="true"></div>
+
+        {/* Centered directory indicator */}
+        <div
+          class="dir-indicator"
+          classList={{ connected: session.sessionActive(), disconnected: !session.sessionActive() }}
+        >
+          <Show when={session.sessionActive()} fallback={<span class="status-icon">⊘</span>}>
+            <span class="status-icon">⚡</span>
+          </Show>
+          <Show when={session.workingDir()}>
+            <span class="working-dir" title={session.workingDir()!}>
+              {session.workingDir()!.split("/").pop() || session.workingDir()}
+            </span>
+          </Show>
+        </div>
+
+        {/* Right-aligned token usage */}
+        <Show when={session.sessionActive()}>
+          <div
+            class="token-indicator"
+            classList={{
+              warning: contextThreshold() === "warning",
+              critical: contextThreshold() === "critical",
+            }}
+          >
+            <span class="token-icon">◈</span>
+            <span class="token-count">
+              {session.sessionInfo().totalContext
+                ? `${Math.round(session.sessionInfo().totalContext! / 1000)}k`
+                : "—"}
+            </span>
+          </div>
         </Show>
-        <Show when={session.workingDir()}>
-          <span class="working-dir" title={session.workingDir()!}>
-            {session.workingDir()!.split("/").pop() || session.workingDir()}
-          </span>
+
+        {/* Planning Mode Banner */}
+        <Show when={planning.isPlanning()}>
+          <PlanningBanner planFile={planning.planFilePath()} />
         </Show>
+
+        <Show when={streaming.error()}>
+          <div class="error-banner">
+            {streaming.error()}
+            <button onClick={() => streaming.setError(null)}>Dismiss</button>
+          </div>
+        </Show>
+
+        {/* Context Warning - clickable text in title bar */}
+        <Show when={contextThreshold() !== "ok" && !warningDismissed()}>
+          <div
+            class={`context-warning ${contextThreshold()}`}
+            onClick={() => handleSubmit("/compact")}
+            title="Click to compact conversation"
+          >
+            <span class="warning-icon">⚠</span>
+            <span class="warning-text">
+              {contextThreshold() === "critical" && "Context 75%+ — click to compact"}
+              {contextThreshold() === "warning" && "Context 60%+ — click to compact"}
+            </span>
+          </div>
+        </Show>
+
+        <main class="app-main">
+          <MessageList
+            messages={streaming.messages()}
+            streamingContent={streaming.isLoading() ? streaming.streamingContent() : undefined}
+            streamingToolUses={streaming.isLoading() ? streaming.currentToolUses() : undefined}
+            streamingBlocks={streaming.isLoading() ? streaming.streamingBlocks() : undefined}
+            streamingThinking={streaming.isLoading() ? streaming.streamingThinking() : undefined}
+            showThinking={streaming.showThinking()}
+            forceScrollToBottom={forceScroll()}
+          />
+        </main>
+
+        <footer class="app-footer">
+          <CommandInput
+            ref={(handle) => (commandInputRef = handle)}
+            onSubmit={handleSubmit}
+            disabled={streaming.isLoading() || !session.sessionActive()}
+            placeholder={
+              session.sessionActive() ? "Type a message... (Enter to send, Shift+Tab to change mode)" : ""
+            }
+            mode={currentMode()}
+            onModeChange={cycleMode}
+          />
+        </footer>
       </div>
-
-      {/* Right-aligned token usage */}
-      <Show when={session.sessionActive()}>
-        <div
-          class="token-indicator"
-          classList={{
-            warning: contextThreshold() === "warning",
-            critical: contextThreshold() === "critical",
-          }}
-        >
-          <span class="token-icon">◈</span>
-          <span class="token-count">
-            {session.sessionInfo().totalContext
-              ? `${Math.round(session.sessionInfo().totalContext! / 1000)}k`
-              : "—"}
-          </span>
-        </div>
-      </Show>
-
-      {/* Planning Mode Banner */}
-      <Show when={planning.isPlanning()}>
-        <PlanningBanner planFile={planning.planFilePath()} />
-      </Show>
-
-      <Show when={streaming.error()}>
-        <div class="error-banner">
-          {streaming.error()}
-          <button onClick={() => streaming.setError(null)}>Dismiss</button>
-        </div>
-      </Show>
-
-      {/* Context Warning - clickable text in title bar */}
-      <Show when={contextThreshold() !== "ok" && !warningDismissed()}>
-        <div
-          class={`context-warning ${contextThreshold()}`}
-          onClick={() => handleSubmit("/compact")}
-          title="Click to compact conversation"
-        >
-          <span class="warning-icon">⚠</span>
-          <span class="warning-text">
-            {contextThreshold() === "critical" && "Context 75%+ — click to compact"}
-            {contextThreshold() === "warning" && "Context 60%+ — click to compact"}
-          </span>
-        </div>
-      </Show>
-
-      <main class="app-main">
-        <MessageList
-          messages={streaming.messages()}
-          streamingContent={streaming.isLoading() ? streaming.streamingContent() : undefined}
-          streamingToolUses={streaming.isLoading() ? streaming.currentToolUses() : undefined}
-          streamingBlocks={streaming.isLoading() ? streaming.streamingBlocks() : undefined}
-          streamingThinking={streaming.isLoading() ? streaming.streamingThinking() : undefined}
-          showThinking={streaming.showThinking()}
-          forceScrollToBottom={forceScroll()}
-        />
-      </main>
-
-      <footer class="app-footer">
-        <CommandInput
-          ref={(handle) => (commandInputRef = handle)}
-          onSubmit={handleSubmit}
-          disabled={streaming.isLoading() || !session.sessionActive()}
-          placeholder={
-            session.sessionActive() ? "Type a message... (Enter to send, Shift+Tab to change mode)" : ""
-          }
-          mode={currentMode()}
-          onModeChange={cycleMode}
-        />
-      </footer>
 
       {/* Floating Todo Panel */}
       <Show when={todoPanel.showTodoPanel() && todoPanel.currentTodos().length > 0}>

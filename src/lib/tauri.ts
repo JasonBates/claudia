@@ -1,5 +1,6 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { runWithOwner, batch, Owner } from "solid-js";
+import type { SessionEntry } from "./types";
 
 export interface ClaudeEvent {
   type:
@@ -270,4 +271,25 @@ export async function runStreamingCommand(
     workingDir,
     channel,
   });
+}
+
+// ============================================================================
+// Session Listing (for sidebar)
+// ============================================================================
+
+/**
+ * List sessions for a given working directory.
+ * Reads from Claude Code's sessions-index.json file.
+ * Returns sessions sorted by modified date (newest first), excluding sidechains.
+ */
+export async function listSessions(workingDir: string): Promise<SessionEntry[]> {
+  return await invoke<SessionEntry[]>("list_sessions", { workingDir });
+}
+
+/**
+ * Delete a session by its ID.
+ * Removes the JSONL file and updates sessions-index.json.
+ */
+export async function deleteSession(sessionId: string, workingDir: string): Promise<void> {
+  await invoke("delete_session", { sessionId, workingDir });
 }

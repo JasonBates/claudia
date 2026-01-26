@@ -1,6 +1,7 @@
 import { Accessor, Owner } from "solid-js";
 import type { UseStreamingMessagesReturn } from "./useStreamingMessages";
 import type { UseSessionReturn } from "./useSession";
+import type { UseSidebarReturn } from "./useSidebar";
 import { runStreamingCommand, CommandEvent, ClaudeEvent, clearSession } from "../lib/tauri";
 import type { Message } from "../lib/types";
 
@@ -19,6 +20,10 @@ export interface UseLocalCommandsOptions {
   streaming: UseStreamingMessagesReturn;
   session: UseSessionReturn;
   owner: Owner | null;
+  /**
+   * Sidebar hook for toggle command. Optional.
+   */
+  sidebar?: UseSidebarReturn;
   /**
    * Callback to process CLI events (for commands that talk to CLI).
    * This should be the same handler used for normal message submission.
@@ -122,7 +127,7 @@ function matchesKeybinding(e: KeyboardEvent, binding: ParsedKeybinding): boolean
  * - Unified system: commands can have both slash and keybinding
  */
 export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalCommandsReturn {
-  const { streaming, session, owner, onCliEvent } = options;
+  const { streaming, session, owner, sidebar, onCliEvent } = options;
 
   // ==========================================================================
   // Command Handlers
@@ -316,6 +321,15 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     streaming.setShowThinking((prev) => !prev);
   };
 
+  /**
+   * Toggle sidebar visibility (Cmd+Shift+[)
+   */
+  const handleToggleSidebar = async () => {
+    if (sidebar) {
+      sidebar.toggleSidebar();
+    }
+  };
+
   // ==========================================================================
   // Command Registry
   // ==========================================================================
@@ -336,6 +350,12 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       description: "Toggle thinking display",
       keybinding: "alt+t",
       handler: handleToggleThinking,
+    },
+    {
+      name: "sidebar",
+      description: "Toggle session sidebar",
+      keybinding: "cmd+shift+[",
+      handler: handleToggleSidebar,
     },
   ];
 

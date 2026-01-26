@@ -12,6 +12,7 @@ pub mod config_cmd;
 pub mod messaging;
 pub mod permission;
 pub mod session;
+pub mod session_list;
 pub mod streaming_cmd;
 pub mod sync_cmd;
 

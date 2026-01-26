@@ -19,3 +19,6 @@ export type { UseQuestionPanelReturn, UseQuestionPanelOptions } from "./useQuest
 
 export { useLocalCommands } from "./useLocalCommands";
 export type { UseLocalCommandsReturn, UseLocalCommandsOptions, Command } from "./useLocalCommands";
+
+export { useSidebar } from "./useSidebar";
+export type { UseSidebarReturn, UseSidebarOptions } from "./useSidebar";
