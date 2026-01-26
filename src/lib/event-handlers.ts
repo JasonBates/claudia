@@ -438,11 +438,12 @@ export function handleToolResultEvent(
     return;
   }
 
-  // Skip empty duplicate tool_result events (CLI sends two per tool)
-  // Only process if we have a tool_use_id or actual result content
+  // The CLI sends duplicate tool_result events: first with tool_use_id, then
+  // without it but with the same content. We ONLY process results that have
+  // a tool_use_id to avoid corrupting other tools' results.
   const targetToolId = event.tool_use_id;
-  const hasContent = event.stdout || event.stderr;
-  if (!targetToolId && !hasContent) {
+  if (!targetToolId) {
+    // No tool_use_id = duplicate event, skip it
     return;
   }
 
@@ -454,36 +455,26 @@ export function handleToolResultEvent(
     isError: event.is_error || false,
   };
 
-  // Pre-check: if we have a specific ID but can't find the tool, store as pending
-  // This handles race conditions where tool_result arrives before tool_start
-  if (targetToolId) {
-    const currentTools = deps.getCurrentToolUses();
-    const toolExists = currentTools.some((t) => t.id === targetToolId);
-    if (!toolExists) {
-      console.log(`[tool_result] Tool not found, storing pending result for ID: ${targetToolId}`);
-      deps.pendingResultsRef.current.set(targetToolId, {
-        result: resultData.result,
-        isError: resultData.isError,
-      });
-      return;
-    }
+  // Check if tool exists yet - if not, store result for later (race condition handling)
+  const currentTools = deps.getCurrentToolUses();
+  const toolExists = currentTools.some((t) => t.id === targetToolId);
+  if (!toolExists) {
+    console.log(`[tool_result] Tool not found, storing pending result for ID: ${targetToolId}`);
+    deps.pendingResultsRef.current.set(targetToolId, {
+      result: resultData.result,
+      isError: resultData.isError,
+    });
+    return;
   }
 
   deps.setCurrentToolUses((prev) => {
     if (prev.length === 0) return prev;
     const updated = [...prev];
 
-    // Find the tool by ID, or use last tool only if no specific ID was provided
-    let toolIndex: number;
-    if (targetToolId) {
-      toolIndex = updated.findIndex((t) => t.id === targetToolId);
-      if (toolIndex === -1) {
-        // Should not happen after pre-check, but be safe
-        return prev;
-      }
-    } else {
-      // No specific ID - fall back to last tool (legacy behavior)
-      toolIndex = updated.length - 1;
+    const toolIndex = updated.findIndex((t) => t.id === targetToolId);
+    if (toolIndex === -1) {
+      // Should not happen after pre-check, but be safe
+      return prev;
     }
 
     const tool = updated[toolIndex];
@@ -506,44 +497,32 @@ export function handleToolResultEvent(
 
   deps.setStreamingBlocks((prev) => {
     const blocks = [...prev];
-    let foundIndex = -1;
 
-    // Find by specific ID first
-    if (targetToolId) {
-      for (let i = blocks.length - 1; i >= 0; i--) {
-        if (blocks[i].type === "tool_use") {
-          const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
-          if (toolBlock.tool.id === targetToolId) {
-            foundIndex = i;
-            break;
-          }
-        }
-      }
-      // If we have a specific ID but can't find it, don't update
-      if (foundIndex === -1) {
-        return prev;
-      }
-    } else {
-      // No specific ID - find last tool_use block (legacy behavior)
-      for (let i = blocks.length - 1; i >= 0; i--) {
-        if (blocks[i].type === "tool_use") {
+    // Find the tool block by ID
+    let foundIndex = -1;
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].type === "tool_use") {
+        const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
+        if (toolBlock.tool.id === targetToolId) {
           foundIndex = i;
           break;
         }
       }
     }
 
-    if (foundIndex !== -1) {
-      const toolBlock = blocks[foundIndex] as { type: "tool_use"; tool: ToolUse };
-      blocks[foundIndex] = {
-        type: "tool_use",
-        tool: {
-          ...toolBlock.tool,
-          result: resultData.result,
-          isLoading: resultData.isLoading,
-        },
-      };
+    if (foundIndex === -1) {
+      return prev;
     }
+
+    const toolBlock = blocks[foundIndex] as { type: "tool_use"; tool: ToolUse };
+    blocks[foundIndex] = {
+      type: "tool_use",
+      tool: {
+        ...toolBlock.tool,
+        result: resultData.result,
+        isLoading: resultData.isLoading,
+      },
+    };
     return blocks;
   });
 }
