@@ -94,6 +94,10 @@ export interface EventHandlerDeps {
   isCollectingTodoRef: { current: boolean };
   isCollectingQuestionRef: { current: boolean };
 
+  // Pending tool results (for race condition handling)
+  // When a tool_result arrives before the tool exists, we store it here
+  pendingResultsRef: { current: Map<string, { result: string; isError: boolean }> };
+
   // Callbacks
   generateMessageId: () => string;
   finishStreaming: () => void;
@@ -296,11 +300,21 @@ export function handleToolStartEvent(
   } else if (event.name === "ExitPlanMode") {
     deps.setShowPlanApproval(true);
   } else {
+    const toolId = event.id || "";
+
+    // Check if we have a pending result for this tool (race condition recovery)
+    const pendingResult = toolId ? deps.pendingResultsRef.current.get(toolId) : undefined;
+    if (pendingResult) {
+      deps.pendingResultsRef.current.delete(toolId);
+      console.log(`[tool_start] Applying pending result for tool: ${toolId}`);
+    }
+
     const newTool: ToolUse = {
-      id: event.id || "",
+      id: toolId,
       name: event.name || "unknown",
       input: {},
-      isLoading: true,
+      isLoading: pendingResult ? false : true,
+      result: pendingResult?.result,
     };
     deps.setCurrentToolUses((prev) => [...prev, newTool]);
     deps.setStreamingBlocks((prev) => [...prev, { type: "tool_use", tool: newTool }]);
@@ -437,15 +451,40 @@ export function handleToolResultEvent(
       ? `Error: ${event.stderr || event.stdout}`
       : event.stdout || event.stderr || "",
     isLoading: false,
+    isError: event.is_error || false,
   };
+
+  // Pre-check: if we have a specific ID but can't find the tool, store as pending
+  // This handles race conditions where tool_result arrives before tool_start
+  if (targetToolId) {
+    const currentTools = deps.getCurrentToolUses();
+    const toolExists = currentTools.some((t) => t.id === targetToolId);
+    if (!toolExists) {
+      console.log(`[tool_result] Tool not found, storing pending result for ID: ${targetToolId}`);
+      deps.pendingResultsRef.current.set(targetToolId, {
+        result: resultData.result,
+        isError: resultData.isError,
+      });
+      return;
+    }
+  }
 
   deps.setCurrentToolUses((prev) => {
     if (prev.length === 0) return prev;
     const updated = [...prev];
-    let toolIndex = targetToolId
-      ? updated.findIndex((t) => t.id === targetToolId)
-      : updated.length - 1;
-    if (toolIndex === -1) toolIndex = updated.length - 1;
+
+    // Find the tool by ID, or use last tool only if no specific ID was provided
+    let toolIndex: number;
+    if (targetToolId) {
+      toolIndex = updated.findIndex((t) => t.id === targetToolId);
+      if (toolIndex === -1) {
+        // Should not happen after pre-check, but be safe
+        return prev;
+      }
+    } else {
+      // No specific ID - fall back to last tool (legacy behavior)
+      toolIndex = updated.length - 1;
+    }
 
     const tool = updated[toolIndex];
 
@@ -469,14 +508,28 @@ export function handleToolResultEvent(
     const blocks = [...prev];
     let foundIndex = -1;
 
-    for (let i = blocks.length - 1; i >= 0; i--) {
-      if (blocks[i].type === "tool_use") {
-        const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
-        if (targetToolId && toolBlock.tool.id === targetToolId) {
+    // Find by specific ID first
+    if (targetToolId) {
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        if (blocks[i].type === "tool_use") {
+          const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
+          if (toolBlock.tool.id === targetToolId) {
+            foundIndex = i;
+            break;
+          }
+        }
+      }
+      // If we have a specific ID but can't find it, don't update
+      if (foundIndex === -1) {
+        return prev;
+      }
+    } else {
+      // No specific ID - find last tool_use block (legacy behavior)
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        if (blocks[i].type === "tool_use") {
           foundIndex = i;
           break;
         }
-        if (foundIndex === -1) foundIndex = i;
       }
     }
 

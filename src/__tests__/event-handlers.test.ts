@@ -98,6 +98,7 @@ function createMockDeps(): EventHandlerDeps & { state: Record<string, unknown> }
     questionJsonRef: { current: "" },
     isCollectingTodoRef: { current: false },
     isCollectingQuestionRef: { current: false },
+    pendingResultsRef: { current: new Map<string, { result: string; isError: boolean }>() },
 
     generateMessageId: vi.fn(() => `msg-${Date.now()}`),
     finishStreaming: vi.fn(),

@@ -53,6 +53,8 @@ function App() {
   const questionJsonRef = { current: "" };
   const isCollectingTodoRef = { current: false };
   const isCollectingQuestionRef = { current: false };
+  // Pending results for race condition handling (tool_result before tool_start)
+  const pendingResultsRef = { current: new Map<string, { result: string; isError: boolean }>() };
 
   // Planning mode tracking
   const [isPlanning, setIsPlanning] = createSignal(false);
@@ -402,6 +404,7 @@ function App() {
     questionJsonRef,
     isCollectingTodoRef,
     isCollectingQuestionRef,
+    pendingResultsRef,
 
     // Callbacks
     generateMessageId: generateId,
