@@ -167,6 +167,28 @@ This opens Claudia with that directory as the working directory, allowing Claude
 
 Multiple instances can run simultaneously (`-n` flag), each in their own project.
 
+### Startup Branding (Optional)
+
+A retro-style branding component is available but currently disabled. To enable:
+
+1. Uncomment the import in `src/App.tsx`:
+   ```tsx
+   import StartupSplash from "./components/StartupSplash";
+   ```
+
+2. Add the `header` prop to MessageList:
+   ```tsx
+   <MessageList
+     ...
+     header={<StartupSplash workingDir={session.launchDir() || session.workingDir()} />}
+   />
+   ```
+
+Features:
+- Pixel art Claudia logo
+- ASCII block-style "CLAUDIA" text in cyan
+- Scrolls with message content (not fixed)
+
 ### Testing
 
 The project has comprehensive tests for both Rust backend and TypeScript frontend:
@@ -327,9 +349,12 @@ claude-terminal/
 │   │   ├── setup.ts         # Tauri API mocks
 │   │   ├── context-utils.test.ts
 │   │   └── mode-utils.test.ts
+│   ├── assets/
+│   │   └── claudia-logo.jpg # Pixel art branding image
 │   ├── components/
-│   │   ├── MessageList.tsx  # Message rendering
+│   │   ├── MessageList.tsx  # Message rendering (supports header prop)
 │   │   ├── CommandInput.tsx # Input with type-ahead
+│   │   ├── StartupSplash.tsx # Retro ASCII branding (disabled)
 │   │   └── ToolResult.tsx   # Collapsible tool results
 │   └── lib/
 │       ├── tauri.ts         # Tauri IPC bindings + streaming command API
