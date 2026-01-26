@@ -17,24 +17,28 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
-            commands::start_session,
-            commands::send_message,
-            commands::stop_session,
-            commands::send_interrupt,
-            commands::get_config,
-            commands::save_config,
-            commands::is_session_active,
-            commands::send_permission_response,
-            commands::poll_permission_request,
-            commands::respond_to_permission,
-            commands::get_launch_dir,
+            // Session commands
+            commands::session::start_session,
+            commands::session::stop_session,
+            commands::session::send_interrupt,
+            commands::session::is_session_active,
+            commands::session::get_launch_dir,
+            // Messaging
+            commands::messaging::send_message,
+            // Configuration
+            commands::config_cmd::get_config,
+            commands::config_cmd::save_config,
+            // Permissions
+            commands::permission::send_permission_response,
+            commands::permission::poll_permission_request,
+            commands::permission::respond_to_permission,
             // Sync commands (CCMS integration)
-            commands::sync_pull,
-            commands::sync_push,
-            commands::sync_status,
-            commands::is_sync_available,
+            commands::sync_cmd::sync_pull,
+            commands::sync_cmd::sync_push,
+            commands::sync_cmd::sync_status,
+            commands::sync_cmd::is_sync_available,
             // Streaming command runner
-            commands::run_streaming_command,
+            commands::streaming_cmd::run_streaming_command,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
