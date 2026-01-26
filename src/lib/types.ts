@@ -111,16 +111,19 @@ export interface PermissionRequestEvent extends BaseClaudeEvent {
 /**
  * A session entry from Claude Code's sessions-index.json.
  * Used by: Sidebar, SessionList, useSidebar
+ *
+ * Note: Field names match Rust's serde rename attributes (camelCase)
+ * to match the JSON serialization from the backend.
  */
 export interface SessionEntry {
-  session_id: string;
-  full_path: string;
-  file_mtime: number;
-  first_prompt: string;
-  message_count: number;
+  sessionId: string;
+  fullPath: string;
+  fileMtime: number;
+  firstPrompt: string;
+  messageCount: number;
   created: string;
   modified: string;
-  git_branch: string;
-  project_path: string;
-  is_sidechain: boolean;
+  gitBranch: string;
+  projectPath: string;
+  isSidechain: boolean;
 }

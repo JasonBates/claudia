@@ -130,7 +130,7 @@ export function useSidebar(options: UseSidebarOptions): UseSidebarReturn {
       await deleteSession(sessionId, dir);
 
       // Remove from local state immediately for responsive UI
-      setSessions((prev) => prev.filter((s) => s.session_id !== sessionId));
+      setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       console.error("[SIDEBAR] Failed to delete session:", errorMsg);

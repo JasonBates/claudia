@@ -68,9 +68,9 @@ const Sidebar: Component<SidebarProps> = (props) => {
                 {(session) => (
                   <SessionItem
                     session={session}
-                    isActive={session.session_id === props.currentSessionId}
-                    onClick={() => props.onResume(session.session_id)}
-                    onDelete={() => props.onDelete(session.session_id)}
+                    isActive={session.sessionId === props.currentSessionId}
+                    onClick={() => props.onResume(session.sessionId)}
+                    onDelete={() => props.onDelete(session.sessionId)}
                   />
                 )}
               </For>

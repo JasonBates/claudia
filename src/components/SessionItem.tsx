@@ -52,15 +52,15 @@ const SessionItem: Component<SessionItemProps> = (props) => {
       classList={{ active: props.isActive }}
       onClick={props.onClick}
       onContextMenu={handleContextMenu}
-      title={props.session.first_prompt}
+      title={props.session.firstPrompt}
     >
       <div class="session-preview">
-        {truncate(props.session.first_prompt || "Empty session", 60)}
+        {truncate(props.session.firstPrompt || "Empty session", 60)}
       </div>
       <div class="session-meta">
         <span class="session-count">
           <span class="session-count-icon">💬</span>
-          {props.session.message_count}
+          {props.session.messageCount}
         </span>
         <span class="session-time">
           {formatRelativeTime(props.session.modified)}
