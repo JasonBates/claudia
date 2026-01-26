@@ -290,42 +290,61 @@ function App() {
     }
   };
 
-  const handleSubmit = async (text: string) => {
-    // Handle /sync command locally
-    if (text.trim().toLowerCase() === "/sync") {
-      await handleSyncCommand();
-      return;
+  // finishStreaming must be declared before createEventHandler which uses it
+  const finishStreaming = () => {
+    console.log("[FINISH] finishStreaming called");
+    const content = streamingContent();
+    const tools = [...currentToolUses()]; // Create copies to avoid reference issues
+    const blocks = [...streamingBlocks()];
+
+    console.log("[FINISH] content length:", content.length, "tools:", tools.length, "blocks:", blocks.length);
+
+    // CRITICAL ORDER: Add message to array FIRST, then set isLoading false, then clear streaming
+    // This prevents the UI from showing empty state between clearing streaming and showing messages
+
+    // Step 1: Add the completed message to the messages array
+    if (content || tools.length > 0 || blocks.length > 0) {
+      console.log("[FINISH] Adding message to messages array");
+      const newMessage = {
+        id: generateId(),
+        role: "assistant" as const,
+        content: content,
+        toolUses: tools.length > 0 ? tools : undefined,
+        contentBlocks: blocks.length > 0 ? blocks : undefined,
+      };
+
+      const currentMessages = messages();
+      const newMessages = [...currentMessages, newMessage];
+      setMessages(newMessages);
+      console.log("[FINISH] Message added, new count:", newMessages.length);
     }
 
-    if (isLoading()) return;
+    // Step 2: Set isLoading to false - this switches MessageList from streaming to messages
+    // MessageList uses: isLoading() ? streamingContent() : undefined
+    // When isLoading becomes false, it stops looking at streaming state entirely
+    setIsLoading(false);
+    console.log("[FINISH] isLoading set to false");
 
-    setError(null);
-    setIsLoading(true);
-    setCurrentToolUses([]);
-    currentToolInput = "";
-
-    // Reset streaming blocks
-    setStreamingBlocks([]);
-
-    // Add user message
-    const userMessage: Message = {
-      id: generateId(),
-      role: "user",
-      content: text,
-    };
-    setMessages((prev) => [...prev, userMessage]);
-
-    // Reset streaming content
+    // Step 3: NOW clear streaming state (safe because isLoading is false, so MessageList ignores these)
     setStreamingContent("");
+    setStreamingThinking("");
+    setCurrentToolUses([]);
+    setStreamingBlocks([]);
+    toolInputRef.current = "";
+    console.log("[FINISH] Streaming state cleared, messages count:", messages().length);
 
-    try {
-      console.log("[SUBMIT] Calling sendMessage...");
-      await sendMessage(text, handleEvent, owner);
-      console.log("[SUBMIT] sendMessage returned");
-    } catch (e) {
-      console.error("[SUBMIT] Error:", e);
-      setError(`Error: ${e}`);
-      setIsLoading(false);
+    // Auto-hide todo panel after delay
+    if (showTodoPanel()) {
+      setTodoPanelHiding(true);
+      setTimeout(() => {
+        // Restore SolidJS context for setTimeout callback
+        runWithOwner(owner, () => {
+          batch(() => {
+            setShowTodoPanel(false);
+            setTodoPanelHiding(false);
+          });
+        });
+      }, 2000);
     }
   };
 
@@ -396,6 +415,46 @@ function App() {
     coreEventHandler(event);
   };
 
+  // handleSubmit must be after handleEvent since it uses it
+  const handleSubmit = async (text: string) => {
+    // Handle /sync command locally
+    if (text.trim().toLowerCase() === "/sync") {
+      await handleSyncCommand();
+      return;
+    }
+
+    if (isLoading()) return;
+
+    setError(null);
+    setIsLoading(true);
+    setCurrentToolUses([]);
+    toolInputRef.current = "";
+
+    // Reset streaming blocks
+    setStreamingBlocks([]);
+
+    // Add user message
+    const userMessage: Message = {
+      id: generateId(),
+      role: "user",
+      content: text,
+    };
+    setMessages((prev) => [...prev, userMessage]);
+
+    // Reset streaming content
+    setStreamingContent("");
+
+    try {
+      console.log("[SUBMIT] Calling sendMessage...");
+      await sendMessage(text, handleEvent, owner);
+      console.log("[SUBMIT] sendMessage returned");
+    } catch (e) {
+      console.error("[SUBMIT] Error:", e);
+      setError(`Error: ${e}`);
+      setIsLoading(false);
+    }
+  };
+
   const handleQuestionAnswer = async (answers: Record<string, string>) => {
     // Hide the question panel
     setShowQuestionPanel(false);
@@ -451,64 +510,6 @@ function App() {
     // Use hook-based response (writes to file for hook to read)
     await respondToPermission(false, "User denied permission");
     console.log("[PERMISSION] Denied:", permission.toolName);
-  };
-
-  const finishStreaming = () => {
-    console.log("[FINISH] finishStreaming called");
-    const content = streamingContent();
-    const tools = [...currentToolUses()]; // Create copies to avoid reference issues
-    const blocks = [...streamingBlocks()];
-
-    console.log("[FINISH] content length:", content.length, "tools:", tools.length, "blocks:", blocks.length);
-
-    // CRITICAL ORDER: Add message to array FIRST, then set isLoading false, then clear streaming
-    // This prevents the UI from showing empty state between clearing streaming and showing messages
-
-    // Step 1: Add the completed message to the messages array
-    if (content || tools.length > 0 || blocks.length > 0) {
-      console.log("[FINISH] Adding message to messages array");
-      const newMessage = {
-        id: generateId(),
-        role: "assistant" as const,
-        content: content,
-        toolUses: tools.length > 0 ? tools : undefined,
-        contentBlocks: blocks.length > 0 ? blocks : undefined,
-      };
-
-      const currentMessages = messages();
-      const newMessages = [...currentMessages, newMessage];
-      setMessages(newMessages);
-      console.log("[FINISH] Message added, new count:", newMessages.length);
-    }
-
-    // Step 2: Set isLoading to false - this switches MessageList from streaming to messages
-    // MessageList uses: isLoading() ? streamingContent() : undefined
-    // When isLoading becomes false, it stops looking at streaming state entirely
-    setIsLoading(false);
-    console.log("[FINISH] isLoading set to false");
-
-    // Step 3: NOW clear streaming state (safe because isLoading is false, so MessageList ignores these)
-    setStreamingContent("");
-    setStreamingThinking("");
-    setCurrentToolUses([]);
-    setStreamingBlocks([]);
-    toolInputRef.current = "";
-    console.log("[FINISH] Streaming state cleared, messages count:", messages().length);
-
-    // Auto-hide todo panel after delay
-    if (showTodoPanel()) {
-      setTodoPanelHiding(true);
-      setTimeout(() => {
-        // Restore SolidJS context for setTimeout callback
-        runWithOwner(owner, () => {
-          batch(() => {
-            setShowTodoPanel(false);
-            setTodoPanelHiding(false);
-          });
-        });
-      }, 2000);
-    }
-
   };
 
   return (

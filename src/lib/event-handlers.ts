@@ -103,7 +103,7 @@ export interface EventHandlerDeps {
  * Handle status events (status messages, compaction)
  */
 export function handleStatusEvent(
-  event: ClaudeEvent & { type: "status" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   if (!event.message) return;
@@ -180,7 +180,7 @@ export function handleStatusEvent(
  * Handle ready event (session established)
  */
 export function handleReadyEvent(
-  event: ClaudeEvent & { type: "ready" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   deps.setSessionActive(true);
@@ -199,7 +199,7 @@ export function handleThinkingStartEvent(deps: EventHandlerDeps): void {
 }
 
 export function handleThinkingDeltaEvent(
-  event: ClaudeEvent & { type: "thinking_delta" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   const thinking = event.thinking || "";
@@ -224,7 +224,7 @@ export function handleThinkingDeltaEvent(
  * Handle text delta events (streaming text)
  */
 export function handleTextDeltaEvent(
-  event: ClaudeEvent & { type: "text_delta" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   const text = event.text || "";
@@ -278,7 +278,7 @@ export function handleTextDeltaEvent(
  * Handle tool start events
  */
 export function handleToolStartEvent(
-  event: ClaudeEvent & { type: "tool_start" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   deps.toolInputRef.current = "";
@@ -311,7 +311,7 @@ export function handleToolStartEvent(
  * Handle tool input events (accumulate JSON chunks)
  */
 export function handleToolInputEvent(
-  event: ClaudeEvent & { type: "tool_input" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   const json = event.json || "";
@@ -396,7 +396,7 @@ export function handleToolPendingEvent(deps: EventHandlerDeps): void {
  * Handle permission request events
  */
 export function handlePermissionRequestEvent(
-  event: ClaudeEvent & { type: "permission_request" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   deps.setPendingPermission({
@@ -411,7 +411,7 @@ export function handlePermissionRequestEvent(
  * Handle tool result events
  */
 export function handleToolResultEvent(
-  event: ClaudeEvent & { type: "tool_result" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   if (deps.isCollectingTodoRef.current) {
@@ -492,7 +492,7 @@ export function handleToolResultEvent(
  * Handle context update events
  */
 export function handleContextUpdateEvent(
-  event: ClaudeEvent & { type: "context_update" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   const contextTotal = event.input_tokens || 0;
@@ -510,7 +510,7 @@ export function handleContextUpdateEvent(
  * Handle result events (response complete)
  */
 export function handleResultEvent(
-  event: ClaudeEvent & { type: "result" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   const newOutputTokens = event.output_tokens || 0;
@@ -533,7 +533,7 @@ export function handleDoneEvent(deps: EventHandlerDeps): void {
  * Handle closed events (session terminated)
  */
 export function handleClosedEvent(
-  event: ClaudeEvent & { type: "closed" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   deps.setSessionActive(false);
@@ -544,7 +544,7 @@ export function handleClosedEvent(
  * Handle error events
  */
 export function handleErrorEvent(
-  event: ClaudeEvent & { type: "error" },
+  event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
   deps.setError(event.message || "Unknown error");
