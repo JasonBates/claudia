@@ -85,6 +85,9 @@ function App() {
   const [lastCompactionPreTokens, setLastCompactionPreTokens] = createSignal<number | null>(null);
   const [compactionMessageId, setCompactionMessageId] = createSignal<string | null>(null);
 
+  // Force scroll to bottom when user sends a new message
+  const [forceScroll, setForceScroll] = createSignal(false);
+
   // ============================================================================
   // Computed Values
   // ============================================================================
@@ -183,6 +186,10 @@ function App() {
     }
 
     if (streaming.isLoading()) return;
+
+    // Force scroll to bottom on new user message
+    setForceScroll(true);
+    setTimeout(() => setForceScroll(false), 100);
 
     // Reset streaming state
     streaming.resetStreamingState();
@@ -322,6 +329,7 @@ function App() {
           streamingBlocks={streaming.isLoading() ? streaming.streamingBlocks() : undefined}
           streamingThinking={streaming.isLoading() ? streaming.streamingThinking() : undefined}
           showThinking={streaming.showThinking()}
+          forceScrollToBottom={forceScroll()}
         />
       </main>
 

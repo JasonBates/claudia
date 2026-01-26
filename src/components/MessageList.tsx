@@ -1,4 +1,4 @@
-import { Component, For, Show, onMount, createEffect, createSignal } from "solid-js";
+import { Component, For, Show, onMount, onCleanup, createEffect, createSignal } from "solid-js";
 import MessageContent from "./MessageContent";
 import ToolResult from "./ToolResult";
 import ThinkingPreview from "./ThinkingPreview";
@@ -14,6 +14,7 @@ interface MessageListProps {
   streamingBlocks?: ContentBlock[];  // New: ordered streaming blocks
   streamingThinking?: string;  // Current thinking content being streamed
   showThinking?: boolean;  // Whether to show thinking in expanded view (global toggle)
+  forceScrollToBottom?: boolean;  // Force scroll on new user message
 }
 
 const MessageList: Component<MessageListProps> = (props) => {
@@ -21,6 +22,17 @@ const MessageList: Component<MessageListProps> = (props) => {
 
   // Track individually expanded thinking blocks by unique key (messageId:blockIndex)
   const [expandedThinking, setExpandedThinking] = createSignal<Set<string>>(new Set());
+
+  // Smart scroll control: auto-scroll when at bottom, pause when user scrolls up
+  const [shouldAutoScroll, setShouldAutoScroll] = createSignal(true);
+  const SCROLL_THRESHOLD = 1; // must be exactly at bottom
+
+  const handleScroll = () => {
+    if (!containerRef) return;
+    const { scrollTop, scrollHeight, clientHeight } = containerRef;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD;
+    setShouldAutoScroll(isAtBottom);
+  };
 
   const isThinkingExpanded = (blockKey: string) => {
     return props.showThinking || expandedThinking().has(blockKey);
@@ -39,7 +51,7 @@ const MessageList: Component<MessageListProps> = (props) => {
   };
 
   const scrollToBottom = () => {
-    if (containerRef) {
+    if (containerRef && shouldAutoScroll()) {
       containerRef.scrollTop = containerRef.scrollHeight;
     }
   };
@@ -52,16 +64,28 @@ const MessageList: Component<MessageListProps> = (props) => {
     const streaming = props.streamingContent;
     const blocks = props.streamingBlocks;
     const thinking = props.streamingThinking;
+    const forceScroll = props.forceScrollToBottom;
     // Force SolidJS to track these dependencies
     void msgs;
     void streaming;
     void blocks;
     void thinking;
+
+    // If forceScrollToBottom is set, re-enable auto-scroll
+    if (forceScroll) {
+      setShouldAutoScroll(true);
+    }
+
     scrollToBottom();
   });
 
   onMount(() => {
+    containerRef?.addEventListener('scroll', handleScroll);
     scrollToBottom();
+  });
+
+  onCleanup(() => {
+    containerRef?.removeEventListener('scroll', handleScroll);
   });
 
   return (
