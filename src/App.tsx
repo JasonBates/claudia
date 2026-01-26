@@ -6,9 +6,10 @@ import QuestionPanel from "./components/QuestionPanel";
 import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
-import { startSession, sendMessage, pollPermissionRequest, respondToPermission, getLaunchDir, runStreamingCommand, ClaudeEvent, CommandEvent } from "./lib/tauri";
+import { startSession, sendMessage, pollPermissionRequest, respondToPermission, getLaunchDir, runStreamingCommand, CommandEvent } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
+import { createEventHandler, type PermissionRequest, type SessionInfo } from "./lib/event-handlers";
 import type { Todo, Question, Message, ToolUse, ContentBlock } from "./lib/types";
 import "./App.css";
 
@@ -20,12 +21,7 @@ function App() {
   const [sessionActive, setSessionActive] = createSignal(false);
   const [launchDir, setLaunchDir] = createSignal<string | null>(null);
   const [workingDir, setWorkingDir] = createSignal<string | null>(null);
-  const [sessionInfo, setSessionInfo] = createSignal<{
-    model?: string;
-    totalContext?: number;  // Total context used (all input tokens)
-    outputTokens?: number;
-    baseContext?: number;   // System prompt size (for estimating post-compaction context)
-  }>({});
+  const [sessionInfo, setSessionInfo] = createSignal<SessionInfo>({});
 
   const CONTEXT_LIMIT = DEFAULT_CONTEXT_LIMIT;
 
@@ -34,7 +30,6 @@ function App() {
 
   // Current tool uses being collected for the streaming message
   const [currentToolUses, setCurrentToolUses] = createSignal<ToolUse[]>([]);
-  let currentToolInput = "";
 
   // Ordered content blocks for proper interleaving of text and tools
   const [streamingBlocks, setStreamingBlocks] = createSignal<ContentBlock[]>([]);
@@ -47,14 +42,17 @@ function App() {
   const [currentTodos, setCurrentTodos] = createSignal<Todo[]>([]);
   const [showTodoPanel, setShowTodoPanel] = createSignal(false);
   const [todoPanelHiding, setTodoPanelHiding] = createSignal(false);
-  let isCollectingTodoWrite = false;
-  let todoWriteJson = "";
 
   // AskUserQuestion tracking
   const [pendingQuestions, setPendingQuestions] = createSignal<Question[]>([]);
   const [showQuestionPanel, setShowQuestionPanel] = createSignal(false);
-  let isCollectingQuestion = false;
-  let questionJson = "";
+
+  // Mutable refs for JSON accumulation (passed to event handlers)
+  const toolInputRef = { current: "" };
+  const todoJsonRef = { current: "" };
+  const questionJsonRef = { current: "" };
+  const isCollectingTodoRef = { current: false };
+  const isCollectingQuestionRef = { current: false };
 
   // Planning mode tracking
   const [isPlanning, setIsPlanning] = createSignal(false);
@@ -63,12 +61,6 @@ function App() {
   const [planContent, setPlanContent] = createSignal("");
 
   // Permission request tracking (control_request with can_use_tool)
-  interface PermissionRequest {
-    requestId: string;
-    toolName: string;
-    toolInput?: unknown;
-    description: string;
-  }
   const [pendingPermission, setPendingPermission] = createSignal<PermissionRequest | null>(null);
 
   // Mode switching (like Claude Code's Shift+Tab)
@@ -337,467 +329,71 @@ function App() {
     }
   };
 
-  const handleEvent = (event: ClaudeEvent) => {
+  // Create event handler with all dependencies injected
+  const coreEventHandler = createEventHandler({
+    // Message state
+    setMessages,
+    setStreamingContent,
+    setStreamingBlocks,
+    setStreamingThinking,
+
+    // Tool state
+    setCurrentToolUses,
+
+    // Todo state
+    setCurrentTodos,
+    setShowTodoPanel,
+    setTodoPanelHiding,
+
+    // Question state
+    setPendingQuestions,
+    setShowQuestionPanel,
+
+    // Planning state
+    setIsPlanning,
+    setPlanFilePath,
+    setShowPlanApproval,
+    setPlanContent,
+
+    // Permission state
+    setPendingPermission,
+
+    // Session state
+    setSessionActive,
+    setSessionInfo,
+    setError,
+    setIsLoading,
+
+    // Compaction tracking
+    setLastCompactionPreTokens,
+    setCompactionMessageId,
+    setWarningDismissed,
+
+    // State accessors
+    getSessionInfo: sessionInfo,
+    getCurrentToolUses: currentToolUses,
+    getStreamingBlocks: streamingBlocks,
+    getPlanFilePath: planFilePath,
+    getLastCompactionPreTokens: lastCompactionPreTokens,
+    getCompactionMessageId: compactionMessageId,
+
+    // Mutable refs
+    toolInputRef,
+    todoJsonRef,
+    questionJsonRef,
+    isCollectingTodoRef,
+    isCollectingQuestionRef,
+
+    // Callbacks
+    generateMessageId: generateId,
+    finishStreaming,
+  });
+
+  // Wrapper that adds logging
+  const handleEvent = (event: Parameters<typeof coreEventHandler>[0]) => {
     const ts = new Date().toISOString().split("T")[1];
     console.log(`[${ts}] Event received:`, event.type, event);
-
-    switch (event.type) {
-      case "status":
-        // Show status messages inline in the message list
-        if (event.message) {
-          // If this is "Compacting...", show compaction block immediately with loading state
-          if (event.message.includes("Compacting")) {
-            const currentContext = sessionInfo().totalContext || 0;
-            setLastCompactionPreTokens(currentContext);
-
-            // Create compaction message with loading state (content = "loading")
-            const msgId = `compaction-${Date.now()}`;
-            setCompactionMessageId(msgId);
-            const preK = Math.round(currentContext / 1000);
-
-            const compactionMsg: Message = {
-              id: msgId,
-              role: "system",
-              content: `${preK}k → ...`,  // Loading indicator
-              variant: "compaction",
-            };
-            setMessages((prev) => [...prev, compactionMsg]);
-            break;
-          }
-
-          // Handle compaction completion - update the existing compaction block
-          if (event.is_compaction) {
-            const preTokens = lastCompactionPreTokens() || event.pre_tokens || 0;
-            const summaryTokens = event.post_tokens || 0;
-
-            // Estimate full context: baseContext (system prompt) + summary tokens
-            // post_tokens from CLI is just the summary, not including system prompt
-            const baseContext = sessionInfo().baseContext || 0;
-            const estimatedContext = baseContext + summaryTokens;
-
-            // Update context with estimated value
-            if (estimatedContext > 0) {
-              setSessionInfo((prev) => ({
-                ...prev,
-                totalContext: estimatedContext,
-              }));
-            }
-
-            // Build compact display: "145k → 34k"
-            const preK = Math.round(preTokens / 1000);
-            const postK = estimatedContext > 0 ? Math.round(estimatedContext / 1000) : '?';
-            const content = `${preK}k → ${postK}k`;
-
-            // Update existing compaction message or create new one
-            const existingMsgId = compactionMessageId();
-            if (existingMsgId) {
-              setMessages((prev) => prev.map((msg) =>
-                msg.id === existingMsgId
-                  ? { ...msg, content }
-                  : msg
-              ));
-            } else {
-              const compactionMsg: Message = {
-                id: `compaction-${Date.now()}`,
-                role: "system",
-                content,
-                variant: "compaction",
-              };
-              setMessages((prev) => [...prev, compactionMsg]);
-            }
-
-            // Clear compaction tracking
-            setLastCompactionPreTokens(null);
-            setCompactionMessageId(null);
-            setWarningDismissed(false);
-            break;
-          }
-
-          // Regular status messages
-          const statusMsg: Message = {
-            id: `status-${Date.now()}`,
-            role: "system",
-            content: event.message,
-            variant: "status",
-          };
-          setMessages((prev) => [...prev, statusMsg]);
-        }
-        break;
-
-      case "ready":
-        setSessionActive(true);
-        // Preserve existing totalContext if we have it (ready can fire multiple times)
-        setSessionInfo((prev) => ({
-          ...prev,
-          model: event.model,
-          // Only reset totalContext if we don't have a value yet
-          totalContext: prev.totalContext || 0,
-        }));
-        break;
-
-      case "processing":
-        // User message being processed
-        break;
-
-      case "thinking_start":
-        // New thinking block starting - reset thinking content
-        setStreamingThinking("");
-        break;
-
-      case "thinking_delta":
-        // Append thinking chunk
-        setStreamingThinking(prev => prev + (event.thinking || ""));
-
-        // Also add to streamingBlocks for persistence in completed messages
-        setStreamingBlocks(prev => {
-          const blocks = [...prev];
-          // If last block is thinking, append to it
-          if (blocks.length > 0 && blocks[blocks.length - 1].type === "thinking") {
-            const lastBlock = blocks[blocks.length - 1] as { type: "thinking"; content: string };
-            blocks[blocks.length - 1] = {
-              type: "thinking",
-              content: lastBlock.content + (event.thinking || "")
-            };
-          } else {
-            // Create new thinking block
-            blocks.push({ type: "thinking", content: event.thinking || "" });
-          }
-          return blocks;
-        });
-        break;
-
-      case "text_delta":
-        // Streaming text chunk - append to current content
-        console.log(`  -> text_delta: "${event.text}"`);
-
-        // If we're receiving text and there are loading tools, mark them as completed
-        // (Text after tool_pending means the tool finished executing)
-        setCurrentToolUses(prev => {
-          const hasLoadingTool = prev.some(t => t.isLoading);
-          if (hasLoadingTool) {
-            return prev.map(t => ({ ...t, isLoading: false }));
-          }
-          return prev;
-        });
-        setStreamingBlocks(prev => {
-          let updated = false;
-          const blocks = prev.map(block => {
-            if (block.type === "tool_use" && block.tool.isLoading) {
-              updated = true;
-              return { ...block, tool: { ...block.tool, isLoading: false } };
-            }
-            return block;
-          });
-          return updated ? blocks : prev;
-        });
-
-        // Update legacy streamingContent for backwards compatibility
-        setStreamingContent((prev) => {
-          const newContent = prev + (event.text || "");
-
-          // Extract plan file path if present (from system-reminder)
-          const planMatch = newContent.match(/plan file[^\/]*?(\/[^\s]+\.md)/i);
-          if (planMatch && !planFilePath()) {
-            setPlanFilePath(planMatch[1]);
-          }
-
-          return newContent;
-        });
-
-        // Update streamingBlocks with proper ordering
-        setStreamingBlocks((prev) => {
-          const blocks = [...prev];
-          const text = event.text || "";
-
-          // If last block is text, append to it
-          if (blocks.length > 0 && blocks[blocks.length - 1].type === "text") {
-            const lastBlock = blocks[blocks.length - 1] as { type: "text"; content: string };
-            blocks[blocks.length - 1] = { type: "text", content: lastBlock.content + text };
-          } else {
-            // Create new text block
-            blocks.push({ type: "text", content: text });
-          }
-          return blocks;
-        });
-        break;
-
-      case "tool_start":
-        // New tool invocation starting
-        currentToolInput = "";
-
-        // Special handling for TodoWrite
-        if (event.name === "TodoWrite") {
-          isCollectingTodoWrite = true;
-          todoWriteJson = "";
-          setShowTodoPanel(true);
-          setTodoPanelHiding(false);
-        } else if (event.name === "AskUserQuestion") {
-          isCollectingQuestion = true;
-          questionJson = "";
-        } else if (event.name === "EnterPlanMode") {
-          setIsPlanning(true);
-          // Don't add to currentToolUses - shown in banner
-        } else if (event.name === "ExitPlanMode") {
-          // Show plan approval modal
-          setShowPlanApproval(true);
-          // Don't add to currentToolUses - shown in modal
-        } else {
-          const newTool: ToolUse = {
-            id: event.id || "",
-            name: event.name || "unknown",
-            input: {},
-            isLoading: true,
-          };
-
-          // Add to legacy currentToolUses
-          setCurrentToolUses(prev => [...prev, newTool]);
-
-          // Add to streamingBlocks for proper ordering
-          setStreamingBlocks(prev => [...prev, { type: "tool_use", tool: newTool }]);
-        }
-        break;
-
-      case "tool_input":
-        // Accumulate tool input JSON
-        if (isCollectingTodoWrite) {
-          todoWriteJson += event.json || "";
-          // Try to parse and update todos in real-time
-          try {
-            const parsed = JSON.parse(todoWriteJson);
-            if (parsed.todos && Array.isArray(parsed.todos)) {
-              setCurrentTodos(parsed.todos);
-            }
-          } catch {
-            // Incomplete JSON, wait for more chunks
-          }
-        } else if (isCollectingQuestion) {
-          questionJson += event.json || "";
-          // Try to parse questions
-          try {
-            const parsed = JSON.parse(questionJson);
-            if (parsed.questions && Array.isArray(parsed.questions)) {
-              setPendingQuestions(parsed.questions);
-              setShowQuestionPanel(true);
-            }
-          } catch {
-            // Incomplete JSON, wait for more chunks
-          }
-        } else {
-          currentToolInput += event.json || "";
-        }
-        break;
-
-      case "permission_request":
-        // Tool needs permission (control_request with can_use_tool)
-        setPendingPermission({
-          requestId: event.request_id || "",
-          toolName: event.tool_name || "unknown",
-          toolInput: event.tool_input,
-          description: event.description || "",
-        });
-        break;
-
-      case "tool_pending":
-        // Tool about to execute - try to parse accumulated input
-        if (isCollectingTodoWrite) {
-          // Final parse for TodoWrite
-          try {
-            const parsed = JSON.parse(todoWriteJson);
-            if (parsed.todos && Array.isArray(parsed.todos)) {
-              setCurrentTodos(parsed.todos);
-            }
-          } catch {
-            // Parsing failed
-          }
-        } else if (isCollectingQuestion) {
-          // Final parse for AskUserQuestion
-          try {
-            const parsed = JSON.parse(questionJson);
-            if (parsed.questions && Array.isArray(parsed.questions)) {
-              setPendingQuestions(parsed.questions);
-              setShowQuestionPanel(true);
-            }
-          } catch {
-            // Parsing failed
-          }
-        } else if (currentToolUses().length > 0) {
-          // Parse tool input - handle empty input gracefully
-          let parsedInput: unknown = {};
-          if (currentToolInput.trim()) {
-            try {
-              parsedInput = JSON.parse(currentToolInput);
-            } catch {
-              parsedInput = { raw: currentToolInput };
-            }
-          }
-
-          // Update input in currentToolUses
-          setCurrentToolUses(prev => {
-            const updated = [...prev];
-            const lastTool = updated[updated.length - 1];
-            lastTool.input = parsedInput;
-            return updated;
-          });
-
-          // Also update in streamingBlocks - create new objects for reactivity
-          setStreamingBlocks(prev => {
-            const blocks = [...prev];
-            // Find last tool_use block
-            for (let i = blocks.length - 1; i >= 0; i--) {
-              if (blocks[i].type === "tool_use") {
-                const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
-                // Create new block object to trigger SolidJS reactivity
-                blocks[i] = {
-                  type: "tool_use",
-                  tool: {
-                    ...toolBlock.tool,
-                    input: parsedInput,
-                  }
-                };
-                break;
-              }
-            }
-            return blocks;
-          });
-        }
-        break;
-
-      case "tool_result":
-        // Tool finished - update the matching tool by ID
-        if (isCollectingTodoWrite) {
-          isCollectingTodoWrite = false;
-          // Don't add to currentToolUses - shown in panel instead
-        } else if (isCollectingQuestion) {
-          isCollectingQuestion = false;
-          // Keep question panel visible until user answers
-        } else {
-          const resultData = {
-            result: event.is_error ? `Error: ${event.stderr || event.stdout}` : (event.stdout || event.stderr || ""),
-            isLoading: false,
-          };
-          const targetToolId = event.tool_use_id;
-
-          console.log("[TOOL_RESULT] Received tool_use_id:", targetToolId, "result length:", resultData.result.length);
-
-          // Update currentToolUses - find by ID or fall back to last tool
-          setCurrentToolUses(prev => {
-            if (prev.length === 0) {
-              console.log("[TOOL_RESULT] No tools in currentToolUses, skipping update");
-              return prev;
-            }
-            const updated = [...prev];
-            // Find tool by ID, or use last tool as fallback
-            let toolIndex = targetToolId
-              ? updated.findIndex(t => t.id === targetToolId)
-              : updated.length - 1;
-            if (toolIndex === -1) toolIndex = updated.length - 1;
-
-            const tool = updated[toolIndex];
-            console.log("[TOOL_RESULT] Updating tool:", tool.name, "at index:", toolIndex);
-
-            // Check if this is a Read tool result for the plan file
-            if (tool.name === "Read" && planFilePath()) {
-              const inputPath = (tool.input as any)?.file_path || "";
-              if (inputPath === planFilePath()) {
-                setPlanContent(event.stdout || "");
-              }
-            }
-            updated[toolIndex] = {
-              ...tool,
-              result: resultData.result,
-              isLoading: resultData.isLoading,
-            };
-            return updated;
-          });
-
-          // Also update in streamingBlocks - find by ID for correct matching
-          setStreamingBlocks(prev => {
-            const blocks = [...prev];
-            // Find matching tool_use block by ID, or fall back to last one
-            let foundIndex = -1;
-            for (let i = blocks.length - 1; i >= 0; i--) {
-              if (blocks[i].type === "tool_use") {
-                const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
-                if (targetToolId && toolBlock.tool.id === targetToolId) {
-                  foundIndex = i;
-                  break;
-                }
-                if (foundIndex === -1) foundIndex = i; // Remember last one as fallback
-              }
-            }
-
-            if (foundIndex !== -1) {
-              const toolBlock = blocks[foundIndex] as { type: "tool_use"; tool: ToolUse };
-              console.log("[TOOL_RESULT] Updating streamingBlocks tool:", toolBlock.tool.name, "at index:", foundIndex);
-              // Create new block object to trigger SolidJS reactivity
-              blocks[foundIndex] = {
-                type: "tool_use",
-                tool: {
-                  ...toolBlock.tool,
-                  result: resultData.result,
-                  isLoading: resultData.isLoading,
-                }
-              };
-            } else {
-              console.log("[TOOL_RESULT] No matching tool_use block found in streamingBlocks");
-            }
-            return blocks;
-          });
-        }
-        break;
-
-      case "block_end":
-        // Content block ended - nothing special needed
-        break;
-
-      case "context_update":
-        // Real-time context size from message_start event
-        // This fires at the START of each response with current token usage
-        // Total = raw_input + cache_read + cache_write (all represent context window usage)
-        const contextTotal = event.input_tokens || 0;
-        if (contextTotal > 0) {
-          // Track baseContext (system prompt size) for post-compaction estimation
-          // It's the larger of cache_read or cache_write (cache_write on first msg, cache_read after)
-          // Always take MAX seen - cache can grow as MCP servers load, etc.
-          const cacheSize = Math.max(event.cache_read || 0, event.cache_write || 0);
-          setSessionInfo((prev) => ({
-            ...prev,
-            totalContext: contextTotal,
-            baseContext: Math.max(prev.baseContext || 0, cacheSize),
-          }));
-        }
-        break;
-
-      case "result":
-        console.log("[EVENT] *** RESULT EVENT RECEIVED ***", event);
-        // Only add output tokens to context - input context handled by context_update
-        // result's input_tokens has different semantics (CLI aggregates differently)
-        const newOutputTokens = event.output_tokens || 0;
-        setSessionInfo((prev) => ({
-          ...prev,
-          totalContext: (prev.totalContext || 0) + newOutputTokens,
-          outputTokens: (prev.outputTokens || 0) + newOutputTokens,
-        }));
-        console.log("[EVENT] Calling finishStreaming from result");
-        finishStreaming();
-        break;
-
-      case "done":
-        console.log("[EVENT] *** DONE EVENT RECEIVED ***");
-        console.log("[EVENT] Calling finishStreaming from done");
-        finishStreaming();
-        break;
-
-      case "closed":
-        setSessionActive(false);
-        setError(`Session closed (code ${event.code})`);
-        break;
-
-      case "error":
-        setError(event.message || "Unknown error");
-        finishStreaming();
-        break;
-    }
+    coreEventHandler(event);
   };
 
   const handleQuestionAnswer = async (answers: Record<string, string>) => {
@@ -896,7 +492,7 @@ function App() {
     setStreamingThinking("");
     setCurrentToolUses([]);
     setStreamingBlocks([]);
-    currentToolInput = "";
+    toolInputRef.current = "";
     console.log("[FINISH] Streaming state cleared, messages count:", messages().length);
 
     // Auto-hide todo panel after delay
