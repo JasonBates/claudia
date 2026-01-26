@@ -1,4 +1,4 @@
-import { Component, createSignal, onMount, onCleanup, Show } from "solid-js";
+import { Component, createSignal, onMount, onCleanup } from "solid-js";
 
 type Mode = "normal" | "plan" | "auto-accept";
 

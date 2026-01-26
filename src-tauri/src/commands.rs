@@ -113,20 +113,15 @@ pub async fn send_message(
             cmd_debug_log("DRAIN", "Draining stale events...");
             let mut drained = 0;
             let mut forwarded = 0;
-            loop {
-                match timeout(Duration::from_millis(10), process.recv_event()).await {
-                    Ok(Some(event)) => {
-                        // Forward Status events to frontend instead of draining
-                        if matches!(&event, ClaudeEvent::Status { .. }) {
-                            cmd_debug_log("DRAIN", &format!("Forwarding Status: {:?}", event));
-                            let _ = channel.send(event);
-                            forwarded += 1;
-                        } else {
-                            cmd_debug_log("DRAIN", &format!("Drained: {:?}", event));
-                            drained += 1;
-                        }
-                    }
-                    _ => break,
+            while let Ok(Some(event)) = timeout(Duration::from_millis(10), process.recv_event()).await {
+                // Forward Status events to frontend instead of draining
+                if matches!(&event, ClaudeEvent::Status { .. }) {
+                    cmd_debug_log("DRAIN", &format!("Forwarding Status: {:?}", event));
+                    let _ = channel.send(event);
+                    forwarded += 1;
+                } else {
+                    cmd_debug_log("DRAIN", &format!("Drained: {:?}", event));
+                    drained += 1;
                 }
             }
             if drained > 0 || forwarded > 0 {
@@ -170,7 +165,7 @@ pub async fn send_message(
 
         // Use longer timeout when tool/compaction is executing
         // Compaction can take 60+ seconds for large contexts
-        let current_timeout = if compacting { 5000 } else if tool_pending { 5000 } else if got_first_content { 2000 } else { 500 };
+        let current_timeout = if compacting || tool_pending { 5000 } else if got_first_content { 2000 } else { 500 };
         let current_max_idle = if compacting { 30 } else if tool_pending { 24 } else if got_first_content { 3 } else { max_idle }; // 2.5 min for compaction
 
         // Try to receive with timeout
@@ -423,7 +418,7 @@ pub async fn send_permission_response(
 pub async fn sync_pull() -> Result<SyncResult, String> {
     cmd_debug_log("SYNC", "sync_pull called");
 
-    let result = tokio::task::spawn_blocking(|| sync::ccms_pull())
+    let result = tokio::task::spawn_blocking(sync::ccms_pull)
         .await
         .map_err(|e| format!("Task join error: {}", e))?;
 
@@ -437,7 +432,7 @@ pub async fn sync_pull() -> Result<SyncResult, String> {
 pub async fn sync_push() -> Result<SyncResult, String> {
     cmd_debug_log("SYNC", "sync_push called");
 
-    let result = tokio::task::spawn_blocking(|| sync::ccms_push())
+    let result = tokio::task::spawn_blocking(sync::ccms_push)
         .await
         .map_err(|e| format!("Task join error: {}", e))?;
 
@@ -450,7 +445,7 @@ pub async fn sync_push() -> Result<SyncResult, String> {
 pub async fn sync_status() -> Result<SyncResult, String> {
     cmd_debug_log("SYNC", "sync_status called");
 
-    let result = tokio::task::spawn_blocking(|| sync::ccms_status())
+    let result = tokio::task::spawn_blocking(sync::ccms_status)
         .await
         .map_err(|e| format!("Task join error: {}", e))?;
 

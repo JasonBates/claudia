@@ -4,7 +4,6 @@ import {
   formatTokenCount,
   getContextPercentage,
   DEFAULT_CONTEXT_LIMIT,
-  ContextThreshold,
 } from '../lib/context-utils';
 
 describe('context-utils', () => {

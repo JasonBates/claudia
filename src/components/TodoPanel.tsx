@@ -1,4 +1,4 @@
-import { Component, For, Show, createSignal, createEffect } from "solid-js";
+import { Component, For, Show } from "solid-js";
 
 interface Todo {
   content: string;

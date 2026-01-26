@@ -44,7 +44,7 @@ fn find_binary(name: &str) -> Option<PathBuf> {
     if nvm_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
             let mut versions: Vec<_> = entries.filter_map(|e| e.ok()).collect();
-            versions.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+            versions.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
             if let Some(latest) = versions.first() {
                 let bin_path = latest.path().join("bin").join(name);
                 if bin_path.exists() {

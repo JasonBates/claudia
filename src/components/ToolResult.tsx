@@ -1,4 +1,4 @@
-import { Component, createSignal, createMemo, Show, For } from "solid-js";
+import { Component, createSignal, Show, For } from "solid-js";
 import MessageContent from "./MessageContent";
 
 interface ToolResultProps {
@@ -80,22 +80,6 @@ const ToolResult: Component<ToolResultProps> = (props) => {
     const input = props.input as { todos?: Todo[] } | undefined;
     return input?.todos || [];
   };
-
-  // Get result lines for preview
-  const resultLines = createMemo(() => {
-    if (!props.result) return [];
-    return props.result.split('\n');
-  });
-
-  // Preview shows first 2 lines
-  const previewContent = createMemo(() => {
-    const lines = resultLines();
-    if (lines.length <= 2) return props.result || "";
-    return lines.slice(0, 2).join('\n');
-  });
-
-  const hasMoreLines = () => resultLines().length > 2;
-  const extraLineCount = () => resultLines().length - 2;
 
   return (
     <div class="tool-result" classList={{ expanded: isExpanded(), loading: props.isLoading }}>

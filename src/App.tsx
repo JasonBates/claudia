@@ -6,9 +6,9 @@ import QuestionPanel from "./components/QuestionPanel";
 import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
-import { startSession, sendMessage, sendPermissionResponse, pollPermissionRequest, respondToPermission, getLaunchDir, syncPull, syncPush, isSyncAvailable, runStreamingCommand, ClaudeEvent, CommandEvent, PermissionRequestFromHook } from "./lib/tauri";
-import { getContextThreshold, formatTokenCount, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
-import { Mode, MODES, getNextMode } from "./lib/mode-utils";
+import { startSession, sendMessage, pollPermissionRequest, respondToPermission, getLaunchDir, runStreamingCommand, ClaudeEvent, CommandEvent } from "./lib/tauri";
+import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
+import { Mode, getNextMode } from "./lib/mode-utils";
 import "./App.css";
 
 interface Todo {
@@ -55,7 +55,6 @@ function App() {
 
   // Ordered content blocks for proper interleaving of text and tools
   const [streamingBlocks, setStreamingBlocks] = createSignal<ContentBlock[]>([]);
-  let currentTextBlockIndex = -1;  // Index of current text block being streamed
 
   // Thinking mode tracking
   const [streamingThinking, setStreamingThinking] = createSignal("");
@@ -95,7 +94,6 @@ function App() {
 
   // Context warning state
   const [warningDismissed, setWarningDismissed] = createSignal(false);
-  const [toastMessage, setToastMessage] = createSignal<string | null>(null);
 
   // Track compaction for before/after token display
   const [lastCompactionPreTokens, setLastCompactionPreTokens] = createSignal<number | null>(null);
@@ -105,12 +103,6 @@ function App() {
   const contextThreshold = () => {
     const used = sessionInfo().totalContext || 0;
     return getContextThreshold(used, CONTEXT_LIMIT);
-  };
-
-  // Show toast notification
-  const showToast = (message: string, duration = 3000) => {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(null), duration);
   };
 
   // Ref to CommandInput for focus management
@@ -339,7 +331,6 @@ function App() {
 
     // Reset streaming blocks
     setStreamingBlocks([]);
-    currentTextBlockIndex = -1;
 
     // Add user message
     const userMessage: Message = {
@@ -543,7 +534,6 @@ function App() {
             // Create new text block
             blocks.push({ type: "text", content: text });
           }
-          currentTextBlockIndex = blocks.length - 1;
           return blocks;
         });
         break;
@@ -838,9 +828,7 @@ function App() {
     });
 
     // Format the answer and send as a follow-up message
-    const answerText = Object.entries(answers)
-      .map(([q, a]) => a)
-      .join(", ");
+    const answerText = Object.values(answers).join(", ");
 
     // Send the answer as the user's response
     await handleSubmit(answerText);
@@ -868,7 +856,7 @@ function App() {
     await handleSubmit("Cancel this plan. Let's start over with a different approach.");
   };
 
-  const handlePermissionAllow = async (remember: boolean) => {
+  const handlePermissionAllow = async (_remember: boolean) => {
     const permission = pendingPermission();
     if (!permission) return;
     setPendingPermission(null);
@@ -926,7 +914,6 @@ function App() {
     setCurrentToolUses([]);
     setStreamingBlocks([]);
     currentToolInput = "";
-    currentTextBlockIndex = -1;
     console.log("[FINISH] Streaming state cleared, messages count:", messages().length);
 
     // Auto-hide todo panel after delay
@@ -976,7 +963,7 @@ function App() {
             critical: contextThreshold() === 'critical'
           }}>
             {sessionInfo().totalContext
-              ? `${Math.round(sessionInfo().totalContext / 1000)}k`
+              ? `${Math.round(sessionInfo().totalContext! / 1000)}k`
               : '—'}
           </span>
         </Show>
@@ -1074,12 +1061,6 @@ function App() {
         </div>
       </Show>
 
-      {/* Toast Notification */}
-      <Show when={toastMessage()}>
-        <div class="toast-notification">
-          {toastMessage()}
-        </div>
-      </Show>
     </div>
   );
 }
