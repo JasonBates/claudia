@@ -459,7 +459,6 @@ export function handleToolResultEvent(
   const currentTools = deps.getCurrentToolUses();
   const toolExists = currentTools.some((t) => t.id === targetToolId);
   if (!toolExists) {
-    console.log(`[tool_result] Tool not found, storing pending result for ID: ${targetToolId}`);
     deps.pendingResultsRef.current.set(targetToolId, {
       result: resultData.result,
       isError: resultData.isError,
