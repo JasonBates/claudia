@@ -149,6 +149,12 @@ cp -R src-tauri/target/release/bundle/macos/Claudia.app /Applications/
 Install the `claudia` CLI launcher to open the app from any directory:
 
 ```bash
+./install.sh
+```
+
+Or manually:
+
+```bash
 cp claudia ~/.local/bin/
 chmod +x ~/.local/bin/claudia
 ```
