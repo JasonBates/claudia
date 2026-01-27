@@ -40,14 +40,20 @@ impl AppState {
     /// Create new AppState with optional CLI-provided directory
     pub fn new(cli_dir: Option<String>) -> Self {
         let config = Config::load().unwrap_or_default();
-        // Use CLI directory if provided, otherwise fall back to current_dir
+        // Use CLI directory if provided, otherwise default to home directory
+        // This ensures a predictable experience when launched from desktop/Finder
         let launch_dir = cli_dir
             .or_else(|| {
+                dirs::home_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+            })
+            .unwrap_or_else(|| {
+                // Last resort fallback to current_dir
                 std::env::current_dir()
                     .ok()
                     .map(|p| p.to_string_lossy().to_string())
-            })
-            .unwrap_or_else(|| ".".to_string());
+                    .unwrap_or_else(|| ".".to_string())
+            });
         Self {
             process: Arc::new(Mutex::new(None)),
             config: Arc::new(Mutex::new(config)),
