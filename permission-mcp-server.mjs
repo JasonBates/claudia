@@ -17,9 +17,12 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
-const PERMISSION_REQUEST_FILE = path.join(os.tmpdir(), "claude-terminal-permission-request.json");
-const PERMISSION_RESPONSE_FILE = path.join(os.tmpdir(), "claude-terminal-permission-response.json");
-const LOG_FILE = path.join(os.tmpdir(), "claude-permission-mcp.log");
+// Get session ID from environment (set by Tauri when spawning bridge)
+// This ensures multi-instance safety by using unique file paths per app instance
+const SESSION_ID = process.env.CLAUDE_TERMINAL_SESSION_ID || "default";
+const PERMISSION_REQUEST_FILE = path.join(os.tmpdir(), `claude-terminal-permission-request-${SESSION_ID}.json`);
+const PERMISSION_RESPONSE_FILE = path.join(os.tmpdir(), `claude-terminal-permission-response-${SESSION_ID}.json`);
+const LOG_FILE = path.join(os.tmpdir(), `claude-permission-mcp-${SESSION_ID}.log`);
 const TIMEOUT_MS = 120000; // 2 minute timeout
 
 // Log to file (stderr would interfere with MCP protocol)
@@ -30,6 +33,7 @@ function log(message) {
 
 // Clear log on start
 fs.writeFileSync(LOG_FILE, `=== Permission MCP Server started at ${new Date().toISOString()} ===\n`);
+log(`Session ID: ${SESSION_ID.substring(0, 8)}...`);
 
 const server = new Server(
   {

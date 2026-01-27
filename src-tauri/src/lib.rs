@@ -53,6 +53,7 @@ pub fn run() {
             commands::permission::send_permission_response,
             commands::permission::poll_permission_request,
             commands::permission::respond_to_permission,
+            commands::permission::get_session_id,
             // Sync commands (CCMS integration)
             commands::sync_cmd::sync_pull,
             commands::sync_cmd::sync_push,

@@ -125,13 +125,18 @@ fn get_bridge_script_path() -> Result<PathBuf, String> {
 
 impl ClaudeProcess {
     /// Spawn a new Claude process
-    pub fn spawn(working_dir: &Path) -> Result<Self, String> {
-        Self::spawn_with_resume(working_dir, None)
+    pub fn spawn(working_dir: &Path, app_session_id: &str) -> Result<Self, String> {
+        Self::spawn_with_resume(working_dir, None, app_session_id)
     }
 
     /// Spawn a Claude process, optionally resuming a previous session
-    pub fn spawn_with_resume(working_dir: &Path, resume_session_id: Option<&str>) -> Result<Self, String> {
+    pub fn spawn_with_resume(
+        working_dir: &Path,
+        resume_session_id: Option<&str>,
+        app_session_id: &str,
+    ) -> Result<Self, String> {
         rust_debug_log("SPAWN", &format!("Starting spawn in dir: {:?}", working_dir));
+        rust_debug_log("SPAWN", &format!("App session ID: {}", &app_session_id[..8]));
         if let Some(session_id) = resume_session_id {
             rust_debug_log("SPAWN", &format!("Resuming session: {}", session_id));
         }
@@ -155,6 +160,8 @@ impl ClaudeProcess {
             .current_dir(working_dir)
             .env("NODE_OPTIONS", "--no-warnings")
             .env("FORCE_COLOR", "0")
+            // Pass app session ID for multi-instance permission file safety
+            .env("CLAUDE_TERMINAL_SESSION_ID", app_session_id)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

@@ -5,19 +5,22 @@ use tauri::State;
 use super::{cmd_debug_log, AppState};
 
 /// Permission file paths (hook-based permission system)
-fn get_permission_request_path() -> std::path::PathBuf {
-    std::env::temp_dir().join("claude-terminal-permission-request.json")
+/// Uses session_id to prevent collisions between multiple app instances
+fn get_permission_request_path(session_id: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("claude-terminal-permission-request-{}.json", session_id))
 }
 
-fn get_permission_response_path() -> std::path::PathBuf {
-    std::env::temp_dir().join("claude-terminal-permission-response.json")
+fn get_permission_response_path(session_id: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("claude-terminal-permission-response-{}.json", session_id))
 }
 
 /// Check for pending permission request from hook
 /// This is an atomic "take" operation - it reads and deletes the file
 #[tauri::command]
-pub async fn poll_permission_request() -> Result<Option<serde_json::Value>, String> {
-    let request_path = get_permission_request_path();
+pub async fn poll_permission_request(
+    state: State<'_, AppState>,
+) -> Result<Option<serde_json::Value>, String> {
+    let request_path = get_permission_request_path(&state.session_id);
 
     if request_path.exists() {
         match std::fs::read_to_string(&request_path) {
@@ -29,7 +32,7 @@ pub async fn poll_permission_request() -> Result<Option<serde_json::Value>, Stri
                     Ok(json) => {
                         cmd_debug_log(
                             "PERMISSION",
-                            &format!("Found and took permission request: {:?}", json),
+                            &format!("Found and took permission request (session {}): {:?}", &state.session_id[..8], json),
                         );
                         Ok(Some(json))
                     }
@@ -57,16 +60,20 @@ pub async fn poll_permission_request() -> Result<Option<serde_json::Value>, Stri
 
 /// Respond to permission request (write response file for hook to read)
 #[tauri::command]
-pub async fn respond_to_permission(allow: bool, message: Option<String>) -> Result<(), String> {
+pub async fn respond_to_permission(
+    allow: bool,
+    message: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     cmd_debug_log(
         "PERMISSION",
         &format!(
-            "Writing permission response: allow={}, message={:?}",
-            allow, message
+            "Writing permission response (session {}): allow={}, message={:?}",
+            &state.session_id[..8], allow, message
         ),
     );
 
-    let response_path = get_permission_response_path();
+    let response_path = get_permission_response_path(&state.session_id);
 
     let response = serde_json::json!({
         "allow": allow,
@@ -112,4 +119,11 @@ pub async fn send_permission_response(
 
     process.send_message(&msg.to_string())?;
     Ok(())
+}
+
+/// Get the session ID for this app instance
+/// Used to coordinate permission file paths with the bridge/MCP server
+#[tauri::command]
+pub async fn get_session_id(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(state.session_id.clone())
 }

@@ -245,26 +245,10 @@ export function handleTextDeltaEvent(
 ): void {
   const text = event.text || "";
 
-  // Mark loading tools as completed (text after tool = tool finished)
-  deps.setCurrentToolUses((prev) => {
-    const hasLoadingTool = prev.some((t) => t.isLoading);
-    if (hasLoadingTool) {
-      return prev.map((t) => ({ ...t, isLoading: false }));
-    }
-    return prev;
-  });
-
-  deps.setStreamingBlocks((prev) => {
-    let updated = false;
-    const blocks = prev.map((block) => {
-      if (block.type === "tool_use" && block.tool.isLoading) {
-        updated = true;
-        return { ...block, tool: { ...block.tool, isLoading: false } };
-      }
-      return block;
-    });
-    return updated ? blocks : prev;
-  });
+  // NOTE: Tool loading state is NOT cleared here on text arrival.
+  // Tools remain in loading state until their tool_result event arrives.
+  // This prevents premature "done" indicators when Claude outputs text
+  // between or during parallel tool executions.
 
   // Update streaming content
   deps.setStreamingContent((prev) => {

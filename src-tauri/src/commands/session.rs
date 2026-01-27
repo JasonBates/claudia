@@ -41,8 +41,13 @@ pub async fn start_session(
     let dir_string = dir.to_string_lossy().to_string();
     cmd_debug_log("SESSION", &format!("Using directory: {:?}", dir));
 
+    // Clone session_id for the blocking task
+    let app_session_id = state.session_id.clone();
+
     // Spawn new Claude process (sync operation wrapped in blocking task)
-    let process = tokio::task::spawn_blocking(move || ClaudeProcess::spawn(&dir))
+    let process = tokio::task::spawn_blocking(move || {
+        ClaudeProcess::spawn(&dir, &app_session_id)
+    })
         .await
         .map_err(|e| {
             cmd_debug_log("SESSION", &format!("Task join error: {}", e));
@@ -117,8 +122,9 @@ pub async fn resume_session(
     // Spawn new Claude process with resume flag
     let dir = working_dir.clone();
     let sid = session_id.clone();
+    let app_session_id = state.session_id.clone();
     let process = tokio::task::spawn_blocking(move || {
-        ClaudeProcess::spawn_with_resume(&dir, Some(&sid))
+        ClaudeProcess::spawn_with_resume(&dir, Some(&sid), &app_session_id)
     })
         .await
         .map_err(|e| {
@@ -173,7 +179,10 @@ pub async fn clear_session(
 
     // Spawn new Claude process
     let dir = working_dir.clone();
-    let process = tokio::task::spawn_blocking(move || ClaudeProcess::spawn(&dir))
+    let app_session_id = state.session_id.clone();
+    let process = tokio::task::spawn_blocking(move || {
+        ClaudeProcess::spawn(&dir, &app_session_id)
+    })
         .await
         .map_err(|e| {
             cmd_debug_log("CLEAR", &format!("Task join error: {}", e));

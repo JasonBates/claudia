@@ -34,6 +34,8 @@ pub struct AppState {
     pub config: Arc<Mutex<Config>>,
     /// Directory from which the app was launched
     pub launch_dir: String,
+    /// Unique session ID for this app instance (used for multi-instance safety)
+    pub session_id: String,
 }
 
 impl AppState {
@@ -54,10 +56,16 @@ impl AppState {
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| ".".to_string())
             });
+
+        // Generate unique session ID for multi-instance safety
+        // This ensures permission files don't collide between app windows
+        let session_id = uuid::Uuid::new_v4().to_string();
+
         Self {
             process: Arc::new(Mutex::new(None)),
             config: Arc::new(Mutex::new(config)),
             launch_dir,
+            session_id,
         }
     }
 }

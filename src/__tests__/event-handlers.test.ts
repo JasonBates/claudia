@@ -306,7 +306,10 @@ describe("handleTextDeltaEvent", () => {
     expect(blocks[0]).toEqual({ type: "text", content: "Some text" });
   });
 
-  it("should mark loading tools as completed when text arrives", () => {
+  it("should NOT clear tool loading state when text arrives", () => {
+    // Tools should remain in loading state until their tool_result event arrives.
+    // Text can appear during tool execution (Claude's commentary) or between
+    // parallel tool invocations - it doesn't mean tools are done.
     deps.state.currentToolUses = [
       { id: "tool-1", name: "Read", input: {}, isLoading: true },
     ];
@@ -314,7 +317,7 @@ describe("handleTextDeltaEvent", () => {
     handleTextDeltaEvent({ type: "text_delta", text: "Result: " }, deps);
 
     const tools = deps.state.currentToolUses as { isLoading: boolean }[];
-    expect(tools[0].isLoading).toBe(false);
+    expect(tools[0].isLoading).toBe(true); // Should remain loading
   });
 
   it("should extract plan file path from text", () => {
