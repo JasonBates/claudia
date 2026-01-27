@@ -8,7 +8,7 @@ import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
 // import StartupSplash from "./components/StartupSplash";
-import { sendMessage } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { createEventHandler } from "./lib/event-handlers";
@@ -191,10 +191,57 @@ function App() {
 
   // Resume a session from the sidebar
   const handleResumeSession = async (sessionId: string) => {
-    // TODO: Implement session resume with --resume flag
-    // For now, show a message indicating this is coming
-    console.log("[RESUME] Session resume requested:", sessionId);
-    alert(`Session resume coming soon!\n\nSession ID: ${sessionId}`);
+    console.log("[RESUME] Resuming session:", sessionId);
+
+    // Clear current messages and reset state
+    streaming.setMessages([]);
+    streaming.resetStreamingState();
+    streaming.setError(null);
+
+    // Close the sidebar
+    sidebar.toggleSidebar();
+
+    const workingDir = session.workingDir();
+    if (!workingDir) {
+      streaming.setError("No working directory set");
+      return;
+    }
+
+    try {
+      // First, load the session history to display old messages
+      console.log("[RESUME] Loading session history...");
+      const history = await getSessionHistory(sessionId, workingDir);
+      console.log("[RESUME] Loaded", history.length, "messages from history");
+
+      // Convert history to our Message format and display them
+      const historyMessages = history.map((msg) => ({
+        id: msg.id || streaming.generateId(),
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      }));
+      streaming.setMessages(historyMessages);
+
+      // Scroll to bottom to show most recent messages
+      setForceScroll(true);
+      setTimeout(() => setForceScroll(false), 100);
+
+      // Now resume the Claude session (restarts CLI with --resume flag)
+      console.log("[RESUME] Resuming Claude session...");
+      await resumeSession(sessionId, handleEvent);
+      console.log("[RESUME] Session resumed successfully");
+
+      // Update session info with new session ID
+      session.setSessionInfo((prev) => ({
+        ...prev,
+        sessionId,
+      }));
+
+      // Refresh the sidebar to show updated list
+      sidebar.loadSessions();
+    } catch (e) {
+      console.error("[RESUME] Failed to resume session:", e);
+      streaming.setError(`Failed to resume session: ${e}`);
+    }
   };
 
   // Main message submission handler

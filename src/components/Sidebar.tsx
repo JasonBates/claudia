@@ -14,19 +14,21 @@ interface SidebarProps {
 }
 
 const Sidebar: Component<SidebarProps> = (props) => {
+  // Sort sessions with current session at top, then by modified date
+  const sortedSessions = () => {
+    const sessions = [...props.sessions];
+    return sessions.sort((a, b) => {
+      // Current session always first
+      if (a.sessionId === props.currentSessionId) return -1;
+      if (b.sessionId === props.currentSessionId) return 1;
+      // Then by modified date (newest first)
+      return b.modified.localeCompare(a.modified);
+    });
+  };
+
   return (
     <>
-      {/* Toggle button - always visible */}
-      <button
-        class="sidebar-toggle"
-        classList={{ "sidebar-expanded": !props.collapsed }}
-        onClick={props.onToggle}
-        title={props.collapsed ? "Show sessions (⌘⇧[)" : "Hide sessions (⌘⇧[)"}
-      >
-        {props.collapsed ? "›" : "‹"}
-      </button>
-
-      {/* Sidebar panel */}
+      {/* Sidebar panel - toggled via Cmd+Shift+[ or /resume command */}
       <div class="sidebar" classList={{ collapsed: props.collapsed }}>
         <div class="sidebar-header">
           <span class="sidebar-title">Sessions</span>
@@ -61,10 +63,10 @@ const Sidebar: Component<SidebarProps> = (props) => {
             </div>
           </Show>
 
-          {/* Session list */}
+          {/* Session list - current session at top */}
           <Show when={!props.isLoading && !props.error && props.sessions.length > 0}>
             <div class="session-list">
-              <For each={props.sessions}>
+              <For each={sortedSessions()}>
                 {(session) => (
                   <SessionItem
                     session={session}

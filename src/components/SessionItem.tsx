@@ -66,8 +66,7 @@ const SessionItem: Component<SessionItemProps> = (props) => {
       </div>
       <div class="session-meta">
         <span class="session-count">
-          <span class="session-count-icon">💬</span>
-          {props.session.messageCount}
+          {props.session.messageCount} msgs
         </span>
         <span class="session-time">
           {formatRelativeTime(props.session.modified)}

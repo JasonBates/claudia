@@ -43,6 +43,7 @@ pub fn run() {
             commands::session::is_session_active,
             commands::session::get_launch_dir,
             commands::session::clear_session,
+            commands::session::resume_session,
             // Messaging
             commands::messaging::send_message,
             // Configuration
@@ -62,6 +63,7 @@ pub fn run() {
             // Session listing (for sidebar)
             commands::session_list::list_sessions,
             commands::session_list::delete_session,
+            commands::session_list::get_session_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

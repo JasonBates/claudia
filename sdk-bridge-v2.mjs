@@ -83,8 +83,8 @@ async function main() {
   debugLog("TIMEZONE", userTimezone);
   debugLog("CLAUDE_PATH", claudePath);
 
-  // Let CLI load MCP servers and agents from user's global config (~/.claude/)
-  const claude = spawn(claudePath, [
+  // Build Claude args - optionally resume a previous session
+  const claudeArgs = [
     "--input-format", "stream-json",
     "--output-format", "stream-json",
     "--include-partial-messages",
@@ -93,7 +93,17 @@ async function main() {
     "--dangerously-skip-permissions",
     "--settings", JSON.stringify({ alwaysThinkingEnabled: true }),
     "--append-system-prompt", `User's timezone: ${userTimezone}`
-  ], {
+  ];
+
+  // If CLAUDE_RESUME_SESSION is set, add --resume flag
+  const resumeSessionId = process.env.CLAUDE_RESUME_SESSION;
+  if (resumeSessionId) {
+    debugLog("RESUME", `Resuming session: ${resumeSessionId}`);
+    claudeArgs.push("--resume", resumeSessionId);
+  }
+
+  // Let CLI load MCP servers and agents from user's global config (~/.claude/)
+  const claude = spawn(claudePath, claudeArgs, {
     stdio: ["pipe", "pipe", "pipe"],
     env: {
       ...process.env,

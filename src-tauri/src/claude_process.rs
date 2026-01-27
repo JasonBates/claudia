@@ -124,8 +124,17 @@ fn get_bridge_script_path() -> Result<PathBuf, String> {
 }
 
 impl ClaudeProcess {
+    /// Spawn a new Claude process
     pub fn spawn(working_dir: &Path) -> Result<Self, String> {
+        Self::spawn_with_resume(working_dir, None)
+    }
+
+    /// Spawn a Claude process, optionally resuming a previous session
+    pub fn spawn_with_resume(working_dir: &Path, resume_session_id: Option<&str>) -> Result<Self, String> {
         rust_debug_log("SPAWN", &format!("Starting spawn in dir: {:?}", working_dir));
+        if let Some(session_id) = resume_session_id {
+            rust_debug_log("SPAWN", &format!("Resuming session: {}", session_id));
+        }
 
         let node_path = find_node_binary().map_err(|e| {
             rust_debug_log("SPAWN_ERROR", &format!("Node binary not found: {}", e));
@@ -139,17 +148,24 @@ impl ClaudeProcess {
         })?;
         rust_debug_log("SPAWN", &format!("Bridge path: {:?}", bridge_path));
 
-        // Spawn the Node.js bridge script with unbuffered stdout
-        let mut child = Command::new(&node_path)
-            .arg("--no-warnings")
+        // Build command with optional resume session
+        let mut cmd = Command::new(&node_path);
+        cmd.arg("--no-warnings")
             .arg(&bridge_path)
             .current_dir(working_dir)
             .env("NODE_OPTIONS", "--no-warnings")
             .env("FORCE_COLOR", "0")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+            .stderr(Stdio::piped());
+
+        // Pass resume session ID via environment variable
+        if let Some(session_id) = resume_session_id {
+            cmd.env("CLAUDE_RESUME_SESSION", session_id);
+        }
+
+        // Spawn the Node.js bridge script
+        let mut child = cmd.spawn()
             .map_err(|e| {
                 rust_debug_log("SPAWN_ERROR", &format!("Failed: {}", e));
                 format!("Failed to spawn bridge: {}", e)

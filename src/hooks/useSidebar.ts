@@ -1,4 +1,4 @@
-import { createSignal, Accessor, onMount, Owner } from "solid-js";
+import { createSignal, Accessor, Owner } from "solid-js";
 import type { SessionEntry } from "../lib/types";
 import { listSessions, deleteSession } from "../lib/tauri";
 
@@ -23,6 +23,7 @@ export interface UseSidebarReturn {
   // Visibility state
   collapsed: Accessor<boolean>;
   toggleSidebar: () => void;
+  openSidebar: () => void;
 
   // Session data
   sessions: Accessor<SessionEntry[]>;
@@ -56,14 +57,9 @@ const STORAGE_KEY = "claudia-sidebar-collapsed";
  * by modification date (newest first).
  */
 export function useSidebar(options: UseSidebarOptions): UseSidebarReturn {
-  // Load initial collapsed state from localStorage
+  // Always start collapsed - user can open manually
   const loadCollapsedState = (): boolean => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored === "true";
-    } catch {
-      return false; // Default to expanded
-    }
+    return true;
   };
 
   // State signals
@@ -88,6 +84,24 @@ export function useSidebar(options: UseSidebarOptions): UseSidebarReturn {
     // Load sessions when expanding if not already loaded
     if (!newState && sessions().length === 0 && !isLoading()) {
       loadSessions();
+    }
+  };
+
+  /**
+   * Open the sidebar (used by /resume command).
+   */
+  const openSidebar = (): void => {
+    if (collapsed()) {
+      setCollapsed(false);
+      try {
+        localStorage.setItem(STORAGE_KEY, "false");
+      } catch {
+        // localStorage might be unavailable
+      }
+      // Load sessions if not already loaded
+      if (sessions().length === 0 && !isLoading()) {
+        loadSessions();
+      }
     }
   };
 
@@ -138,20 +152,14 @@ export function useSidebar(options: UseSidebarOptions): UseSidebarReturn {
     }
   };
 
-  // Load sessions on mount if sidebar is expanded
-  onMount(() => {
-    if (!collapsed()) {
-      // Small delay to ensure working directory is available
-      setTimeout(() => {
-        loadSessions();
-      }, 100);
-    }
-  });
+  // Sessions are loaded when sidebar is opened via openSidebar() or toggleSidebar()
+  // No auto-load on mount since sidebar is hidden by default
 
   return {
     // Visibility
     collapsed,
     toggleSidebar,
+    openSidebar,
 
     // Session data
     sessions,

@@ -514,6 +514,55 @@ verify_files() {
     fi
 }
 
+# Bidirectional sync (push then pull)
+sync_bidirectional() {
+    load_config
+    check_lock
+    create_lock
+
+    print_info "Starting bidirectional sync..."
+    print_info "Step 1: Pushing local changes to remote (to preserve local files)"
+    echo
+
+    # Build rsync command WITHOUT --delete for push (additive only)
+    local push_opts="-avz"
+    if [[ -f "$EXCLUDE_FILE" ]]; then
+        push_opts="$push_opts --exclude-from='$EXCLUDE_FILE'"
+    fi
+
+    # Push without --delete (additive merge)
+    eval "rsync $push_opts '$CLAUDE_DIR/' '$REMOTE_HOST:$REMOTE_PATH/'" || {
+        print_error "Push phase failed"
+        exit 1
+    }
+    print_success "Local changes pushed to remote"
+
+    echo
+    print_info "Step 2: Pulling remote changes to local"
+
+    # Create backup before pull
+    if [[ "${NO_BACKUP:-}" != "true" ]]; then
+        create_backup || {
+            print_error "Backup failed. Use --no-backup to skip"
+            exit 1
+        }
+    fi
+
+    # Pull WITH --delete (now safe because remote has all our files)
+    local pull_opts="$RSYNC_OPTS"
+    if [[ -f "$EXCLUDE_FILE" ]]; then
+        pull_opts="$pull_opts --exclude-from='$EXCLUDE_FILE'"
+    fi
+
+    eval "rsync $pull_opts '$REMOTE_HOST:$REMOTE_PATH/' '$CLAUDE_DIR/'" || {
+        print_error "Pull phase failed"
+        exit 1
+    }
+
+    print_success "Bidirectional sync complete!"
+    print_info "Both machines now have all files"
+}
+
 # Show help
 show_help() {
     cat << EOF
@@ -522,6 +571,7 @@ Claude Code Machine Sync (ccms) v$VERSION
 Usage: ccms [command] [options]
 
 Commands:
+  sync        Bidirectional sync (push then pull) - RECOMMENDED
   push        Push local ~/.claude to remote server
   pull        Pull from remote server to local ~/.claude
   status      Show differences between local and remote
@@ -537,10 +587,11 @@ Options:
   -v, --verbose     Show detailed output
 
 Examples:
+  ccms sync                    # Safe bidirectional sync (recommended)
+  ccms -f sync                 # Fast sync without prompts
   ccms config                  # Set up remote server
-  ccms push                    # Push changes to server
-  ccms pull                    # Pull changes from server
-  ccms -f -F pull              # Fast pull (no prompts, no checksums)
+  ccms push                    # Push changes to server (one-way)
+  ccms pull                    # Pull changes from server (one-way, can delete!)
   ccms status                  # Check sync status
   ccms verify                  # Verify file integrity
   ccms backup                  # Create manual backup
@@ -573,6 +624,11 @@ main() {
             -F|--fast)
                 FAST_MODE=true
                 shift
+                ;;
+            sync)
+                shift
+                sync_bidirectional
+                exit 0
                 ;;
             push)
                 shift

@@ -293,3 +293,39 @@ export async function listSessions(workingDir: string): Promise<SessionEntry[]> 
 export async function deleteSession(sessionId: string, workingDir: string): Promise<void> {
   await invoke("delete_session", { sessionId, workingDir });
 }
+
+/**
+ * Resume a previous session by ID.
+ * This restarts the Claude process with the --resume flag.
+ */
+export async function resumeSession(
+  sessionId: string,
+  onEvent: (event: ClaudeEvent) => void
+): Promise<string> {
+  const channel = new Channel<ClaudeEvent>();
+  channel.onmessage = onEvent;
+  return await invoke<string>("resume_session", { sessionId, channel });
+}
+
+/**
+ * Message from session history
+ */
+export interface HistoryMessage {
+  id: string;
+  role: string;
+  content: string;
+}
+
+/**
+ * Get the message history for a session.
+ * Reads the JSONL file and extracts user/assistant messages.
+ */
+export async function getSessionHistory(
+  sessionId: string,
+  workingDir: string
+): Promise<HistoryMessage[]> {
+  return await invoke<HistoryMessage[]>("get_session_history", {
+    sessionId,
+    workingDir,
+  });
+}

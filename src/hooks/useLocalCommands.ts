@@ -330,6 +330,15 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     }
   };
 
+  /**
+   * Open sidebar to show resumable sessions (/resume)
+   */
+  const handleResume = async () => {
+    if (sidebar) {
+      sidebar.openSidebar();
+    }
+  };
+
   // ==========================================================================
   // Command Registry
   // ==========================================================================
@@ -356,6 +365,11 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       description: "Toggle session sidebar",
       keybinding: "cmd+shift+[",
       handler: handleToggleSidebar,
+    },
+    {
+      name: "resume",
+      description: "Open sidebar to resume a session",
+      handler: handleResume,
     },
   ];
 

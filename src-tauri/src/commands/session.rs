@@ -87,6 +87,63 @@ pub async fn is_session_active(state: State<'_, AppState>) -> Result<bool, Strin
     Ok(process_guard.is_some())
 }
 
+/// Resume a previous session by its ID
+///
+/// This restarts the Claude process with the --resume flag
+#[tauri::command]
+pub async fn resume_session(
+    session_id: String,
+    channel: Channel<ClaudeEvent>,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    cmd_debug_log("RESUME", &format!("resume_session called with: {}", session_id));
+
+    // Use the launch directory
+    let working_dir = std::path::PathBuf::from(&state.launch_dir);
+    let dir_string = working_dir.to_string_lossy().to_string();
+
+    // Kill existing process
+    {
+        let mut process_guard = state.process.lock().await;
+        if process_guard.is_some() {
+            cmd_debug_log("RESUME", "Dropping existing process");
+            *process_guard = None;
+        }
+    }
+
+    // Small delay to ensure clean shutdown
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Spawn new Claude process with resume flag
+    let dir = working_dir.clone();
+    let sid = session_id.clone();
+    let process = tokio::task::spawn_blocking(move || {
+        ClaudeProcess::spawn_with_resume(&dir, Some(&sid))
+    })
+        .await
+        .map_err(|e| {
+            cmd_debug_log("RESUME", &format!("Task join error: {}", e));
+            format!("Task join error: {}", e)
+        })??;
+
+    cmd_debug_log("RESUME", "Process spawned with resume flag");
+
+    // Store the new process
+    let process_arc = state.process.clone();
+    {
+        let mut process_guard = process_arc.lock().await;
+        *process_guard = Some(process);
+    }
+
+    // Send done event
+    channel
+        .send(ClaudeEvent::Done)
+        .map_err(|e| e.to_string())?;
+
+    cmd_debug_log("RESUME", &format!("Session resumed: {}", session_id));
+    Ok(dir_string)
+}
+
 /// Clear the session by restarting the Claude process
 ///
 /// This is the only way to actually clear context in stream-json mode,
