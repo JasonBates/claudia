@@ -492,8 +492,29 @@ impl ClaudeProcess {
     }
 
     pub fn send_interrupt(&mut self) -> Result<(), String> {
-        // For the bridge, we could send a special message or use signals
-        // For now, this is a placeholder
+        rust_debug_log("INTERRUPT", "Sending interrupt signal to bridge");
+
+        let mut stdin = self.stdin.lock().map_err(|e| {
+            rust_debug_log("INTERRUPT", &format!("Lock error: {}", e));
+            format!("Lock error: {}", e)
+        })?;
+
+        // Send interrupt JSON message to the bridge
+        let interrupt_msg = r#"{"type":"interrupt"}"#;
+        stdin
+            .write_all(interrupt_msg.as_bytes())
+            .map_err(|e| {
+                rust_debug_log("INTERRUPT", &format!("Write error: {}", e));
+                format!("Write error: {}", e)
+            })?;
+        stdin
+            .write_all(b"\n")
+            .map_err(|e| format!("Write error: {}", e))?;
+        stdin
+            .flush()
+            .map_err(|e| format!("Flush error: {}", e))?;
+
+        rust_debug_log("INTERRUPT", "Interrupt sent successfully");
         Ok(())
     }
 

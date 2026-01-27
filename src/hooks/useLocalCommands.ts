@@ -2,7 +2,7 @@ import { Accessor, Owner } from "solid-js";
 import type { UseStreamingMessagesReturn } from "./useStreamingMessages";
 import type { UseSessionReturn } from "./useSession";
 import type { UseSidebarReturn } from "./useSidebar";
-import { runStreamingCommand, CommandEvent, ClaudeEvent, clearSession } from "../lib/tauri";
+import { runStreamingCommand, CommandEvent, ClaudeEvent, clearSession, sendInterrupt } from "../lib/tauri";
 import type { Message } from "../lib/types";
 
 // ============================================================================
@@ -292,6 +292,36 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
   };
 
   /**
+   * Handle Escape key - interrupt current response
+   * Only works when streaming is in progress
+   *
+   * Note: Interrupted responses are NOT saved to the Claude session file,
+   * so we mark them visually to indicate they won't be in Claude's memory.
+   */
+  const handleInterrupt = async () => {
+    if (!streaming.isLoading()) {
+      console.log("[INTERRUPT] Not loading, ignoring");
+      return;
+    }
+
+    console.log("[INTERRUPT] Sending interrupt signal");
+
+    // Immediately stop accepting new content to prevent stray text
+    streaming.setIsLoading(false);
+
+    try {
+      await sendInterrupt();
+      // The bridge will respawn Claude automatically
+      // Finalize the message with interrupted=true for visual indicator
+      streaming.finishStreaming(true);
+    } catch (e) {
+      console.error("[INTERRUPT] Error:", e);
+      // Still finalize even on error so UI isn't stuck
+      streaming.finishStreaming(true);
+    }
+  };
+
+  /**
    * Toggle thinking display (Alt+T)
    */
   const handleToggleThinking = async () => {
@@ -387,6 +417,16 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
    * Handle keyboard shortcuts. Returns true if handled.
    */
   const handleKeyDown = (e: KeyboardEvent): boolean => {
+    // Special case: Escape key to interrupt (only when streaming)
+    if (e.key === "Escape" && streaming.isLoading()) {
+      console.log("[COMMANDS] Escape pressed - interrupting");
+      e.preventDefault();
+      e.stopPropagation();
+      handleInterrupt();
+      return true;
+    }
+
+    // Check registered keybindings
     for (const [cmd, binding] of keybindingMap) {
       if (matchesKeybinding(e, binding)) {
         console.log(`[COMMANDS] Keybinding matched: ${cmd.keybinding} -> /${cmd.name}`);

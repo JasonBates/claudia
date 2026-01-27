@@ -193,13 +193,28 @@ fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, St
             }
 
             // Get first user message for firstPrompt and created timestamp
+            // Skip meta messages (isMeta: true) and slash commands (like /status)
             if entry_type == "user" && first_prompt.is_empty() {
-                first_prompt = entry
+                // Skip meta messages (like "Caveat: The messages below...")
+                let is_meta = entry.get("isMeta").and_then(|v| v.as_bool()).unwrap_or(false);
+                if is_meta {
+                    continue;
+                }
+
+                let content = entry
                     .get("message")
                     .and_then(|m| m.get("content"))
                     .and_then(|c| c.as_str())
-                    .unwrap_or("")
-                    .to_string();
+                    .unwrap_or("");
+
+                // Skip noise messages that aren't meaningful session titles:
+                // - Slash commands (like "/status" warmup)
+                // - Claude's error responses to slash commands
+                if content.starts_with('/') || content.starts_with("Unknown slash command") {
+                    continue;
+                }
+
+                first_prompt = content.to_string();
                 created = entry
                     .get("timestamp")
                     .and_then(|t| t.as_str())
@@ -386,6 +401,25 @@ fn get_session_history_sync(session_id: &str, working_dir: &str) -> Result<Vec<H
         let entry_type = entry.get("type").and_then(|t| t.as_str()).unwrap_or("");
         if entry_type != "user" && entry_type != "assistant" {
             continue;
+        }
+
+        // Skip noise messages (warmup commands and Claude SDK meta messages)
+        if entry_type == "user" {
+            // Skip meta messages (like "Caveat: The messages below...")
+            let is_meta = entry.get("isMeta").and_then(|v| v.as_bool()).unwrap_or(false);
+            if is_meta {
+                continue;
+            }
+
+            // Check content for slash commands and error responses
+            if let Some(content) = entry.get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_str())
+            {
+                if content.starts_with('/') || content.starts_with("Unknown slash command") {
+                    continue;
+                }
+            }
         }
 
         // Get the message content

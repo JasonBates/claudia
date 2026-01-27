@@ -96,7 +96,7 @@ const MessageList: Component<MessageListProps> = (props) => {
 
       <For each={props.messages}>
         {(message) => (
-          <div class={`message message-${message.role}${message.variant ? ` message-${message.variant}` : ''}${message.faded ? ' message-faded' : ''}`}>
+          <div class={`message message-${message.role}${message.variant ? ` message-${message.variant}` : ''}${message.faded ? ' message-faded' : ''}${message.interrupted ? ' message-interrupted' : ''}`}>
             <Show when={message.role === "user"}>
               <div class="message-role-indicator">You</div>
             </Show>

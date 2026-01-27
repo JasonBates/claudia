@@ -109,6 +109,15 @@ export async function stopSession(): Promise<void> {
 }
 
 /**
+ * Send an interrupt signal to stop the current Claude response.
+ * The bridge will respawn Claude internally so the next message is fast.
+ */
+export async function sendInterrupt(): Promise<void> {
+  console.log("[TAURI] Sending interrupt signal");
+  await invoke("send_interrupt");
+}
+
+/**
  * Clear the session by restarting the Claude process.
  * This is the only way to actually clear context in stream-json mode,
  * as slash commands don't work when sent as message content.

@@ -36,7 +36,7 @@ export interface UseStreamingMessagesReturn {
 
   // Actions
   generateId: () => string;
-  finishStreaming: () => void;
+  finishStreaming: (interrupted?: boolean) => void;
   resetStreamingState: () => void;
 }
 
@@ -105,9 +105,11 @@ export function useStreamingMessages(
    *
    * This prevents the UI from showing empty state between
    * clearing streaming and showing messages.
+   *
+   * @param interrupted - true if the response was interrupted by user (Escape key)
    */
-  const finishStreaming = () => {
-    console.log("[useStreamingMessages] finishStreaming called");
+  const finishStreaming = (interrupted = false) => {
+    console.log("[useStreamingMessages] finishStreaming called, interrupted:", interrupted);
     const content = streamingContent();
     const tools = [...currentToolUses()]; // Create copies to avoid reference issues
     const blocks = [...streamingBlocks()];
@@ -130,6 +132,7 @@ export function useStreamingMessages(
         content: content,
         toolUses: tools.length > 0 ? tools : undefined,
         contentBlocks: blocks.length > 0 ? blocks : undefined,
+        interrupted: interrupted || undefined,  // Only set if true
       };
 
       const currentMessages = messages();

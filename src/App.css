@@ -647,6 +647,26 @@ body {
   opacity: 0.4;
 }
 
+/* Interrupted messages - response was cut short, not saved to session */
+.message-interrupted {
+  opacity: 0.5;
+}
+
+.message-interrupted .message-body {
+  border-left: 3px dashed var(--yellow);
+  padding-left: 14px;
+}
+
+.message-interrupted .message-body::after {
+  content: "[interrupted]";
+  display: block;
+  font-size: 0.75rem;
+  color: var(--yellow);
+  opacity: 0.8;
+  margin-top: 0.5rem;
+  font-style: italic;
+}
+
 .streaming .message-body {
   border-left: 2px solid var(--accent);
   padding-left: 14px;

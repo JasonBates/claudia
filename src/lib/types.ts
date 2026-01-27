@@ -79,6 +79,7 @@ export interface Message {
   contentBlocks?: ContentBlock[];  // New: ordered blocks
   variant?: "divider" | "status" | "compaction" | "cleared";  // Optional styling variant
   faded?: boolean;  // Messages above a clear point (40% opacity)
+  interrupted?: boolean;  // Response was interrupted by user (not saved to session)
 }
 
 // ============================================================================
