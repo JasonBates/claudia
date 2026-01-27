@@ -256,47 +256,24 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     let output = "";
 
     try {
-      console.log("[SYNC] Starting streaming sync...");
+      console.log("[SYNC] Starting bidirectional sync...");
 
-      // Pull phase with streaming
-      output = "▶ Pulling from remote...\n";
+      // Use ccms sync which does push-then-pull safely
+      output = "▶ Syncing (push then pull)...\n";
       updateSyncResult(output);
 
       await runStreamingCommand(
         "ccms",
-        ["--force", "--fast", "--verbose", "pull"],
+        ["--force", "--fast", "--verbose", "sync"],
         (event: CommandEvent) => {
           if (event.type === "stdout" || event.type === "stderr") {
             output += (event.line || "") + "\n";
             updateSyncResult(output);
           } else if (event.type === "completed") {
-            output += event.success ? "✓ Pull complete\n" : "✗ Pull failed\n";
-            updateSyncResult(output);
-          } else if (event.type === "error") {
-            output += `✗ Pull error: ${event.message}\n`;
-            updateSyncResult(output);
-          }
-        },
-        undefined,
-        owner
-      );
-
-      // Push phase with streaming
-      output += "\n▶ Pushing to remote...\n";
-      updateSyncResult(output);
-
-      await runStreamingCommand(
-        "ccms",
-        ["--force", "--fast", "--verbose", "push"],
-        (event: CommandEvent) => {
-          if (event.type === "stdout" || event.type === "stderr") {
-            output += (event.line || "") + "\n";
-            updateSyncResult(output);
-          } else if (event.type === "completed") {
-            output += event.success ? "✓ Push complete\n" : "✗ Push failed\n";
+            output += event.success ? "✓ Sync complete\n" : "✗ Sync failed\n";
             updateSyncResult(output, false);
           } else if (event.type === "error") {
-            output += `✗ Push error: ${event.message}\n`;
+            output += `✗ Sync error: ${event.message}\n`;
             updateSyncResult(output, false);
           }
         },
@@ -304,7 +281,7 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
         owner
       );
 
-      console.log("[SYNC] Streaming sync complete");
+      console.log("[SYNC] Bidirectional sync complete");
     } catch (e) {
       console.error("[SYNC] Streaming sync error:", e);
       output += `\n✗ Error: ${e}`;
