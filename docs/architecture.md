@@ -122,7 +122,7 @@ Permission MCP Server (permission-mcp-server.mjs)
        │
        ▼
 Writes request to temp file:
-/tmp/claude-terminal-permission-request.json
+/tmp/claudia-permission-request.json
        │
        ▼
 Rust polls file (poll_permission_request command)
@@ -138,7 +138,7 @@ Frontend calls respondToPermission()
        │
        ▼
 Rust writes response to temp file:
-/tmp/claude-terminal-permission-response.json
+/tmp/claudia-permission-response.json
        │
        ▼
 MCP Server reads response, returns to Claude CLI

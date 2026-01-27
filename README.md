@@ -341,7 +341,7 @@ When `result` starts as `""` (empty string), the condition `"" && anything` shor
 ## File Structure
 
 ```
-claude-terminal/
+claudia/
 ├── src/                      # Frontend (SolidJS)
 │   ├── App.tsx              # Main app, event handling
 │   ├── App.css              # Styles

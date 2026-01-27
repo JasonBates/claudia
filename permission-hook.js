@@ -12,9 +12,9 @@ import * as os from 'os';
 
 // Get session ID from environment (set by Tauri when spawning bridge)
 // This ensures multi-instance safety by using unique file paths per app instance
-const SESSION_ID = process.env.CLAUDE_TERMINAL_SESSION_ID || 'default';
-const PERMISSION_REQUEST_FILE = path.join(os.tmpdir(), `claude-terminal-permission-request-${SESSION_ID}.json`);
-const PERMISSION_RESPONSE_FILE = path.join(os.tmpdir(), `claude-terminal-permission-response-${SESSION_ID}.json`);
+const SESSION_ID = process.env.CLAUDIA_SESSION_ID || 'default';
+const PERMISSION_REQUEST_FILE = path.join(os.tmpdir(), `claudia-permission-request-${SESSION_ID}.json`);
+const PERMISSION_RESPONSE_FILE = path.join(os.tmpdir(), `claudia-permission-response-${SESSION_ID}.json`);
 const TIMEOUT_MS = 60000; // 60 second timeout
 
 async function main() {

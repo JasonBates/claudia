@@ -161,7 +161,7 @@ impl ClaudeProcess {
             .env("NODE_OPTIONS", "--no-warnings")
             .env("FORCE_COLOR", "0")
             // Pass app session ID for multi-instance permission file safety
-            .env("CLAUDE_TERMINAL_SESSION_ID", app_session_id)
+            .env("CLAUDIA_SESSION_ID", app_session_id)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());

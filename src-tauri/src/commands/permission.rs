@@ -7,11 +7,11 @@ use super::{cmd_debug_log, AppState};
 /// Permission file paths (hook-based permission system)
 /// Uses session_id to prevent collisions between multiple app instances
 fn get_permission_request_path(session_id: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("claude-terminal-permission-request-{}.json", session_id))
+    std::env::temp_dir().join(format!("claudia-permission-request-{}.json", session_id))
 }
 
 fn get_permission_response_path(session_id: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("claude-terminal-permission-response-{}.json", session_id))
+    std::env::temp_dir().join(format!("claudia-permission-response-{}.json", session_id))
 }
 
 /// Check for pending permission request from hook

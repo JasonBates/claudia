@@ -36,7 +36,7 @@ pub struct SessionEntry {
 }
 
 /// Convert a working directory path to Claude's project directory name format.
-/// Example: "/Users/jasonbates/code/repos/claude-terminal" -> "-Users-jasonbates-code-repos-claude-terminal"
+/// Example: "/Users/jasonbates/code/repos/claudia" -> "-Users-jasonbates-code-repos-claudia"
 /// Example: "/Users/jasonbates/Obsidian/VAULTS/Trinity/000 Daily Notes" -> "-Users-jasonbates-Obsidian-VAULTS-Trinity-000-Daily-Notes"
 fn path_to_project_dir(path: &str) -> String {
     path.replace('/', "-").replace(' ', "-")
@@ -504,8 +504,8 @@ mod tests {
             "-Users-jasonbates"
         );
         assert_eq!(
-            path_to_project_dir("/Users/jasonbates/code/repos/claude-terminal"),
-            "-Users-jasonbates-code-repos-claude-terminal"
+            path_to_project_dir("/Users/jasonbates/code/repos/claudia"),
+            "-Users-jasonbates-code-repos-claudia"
         );
     }
 }
