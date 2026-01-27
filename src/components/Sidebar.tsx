@@ -7,10 +7,13 @@ interface SidebarProps {
   onToggle: () => void;
   sessions: SessionEntry[];
   currentSessionId: string | null;
+  launchSessionId: string | null;
   isLoading: boolean;
   error: string | null;
   onResume: (sessionId: string) => void;
   onDelete: (sessionId: string) => void;
+  onNewSession: () => void;
+  onReturnToOriginal: () => void;
 }
 
 const Sidebar: Component<SidebarProps> = (props) => {
@@ -24,6 +27,18 @@ const Sidebar: Component<SidebarProps> = (props) => {
       // Then by modified date (newest first)
       return b.modified.localeCompare(a.modified);
     });
+  };
+
+  // Show "Original Session" button when:
+  // 1. We have a launch session ID
+  // 2. Current session is different from launch session
+  // 3. Launch session exists in the session list (or hasn't been saved yet)
+  const showOriginalSession = () => {
+    const launch = props.launchSessionId;
+    const current = props.currentSessionId;
+    if (!launch || !current) return false;
+    if (launch === current) return false;
+    return true;
   };
 
   return (
@@ -61,6 +76,28 @@ const Sidebar: Component<SidebarProps> = (props) => {
                 Your conversations will appear here
               </span>
             </div>
+          </Show>
+
+          {/* New Session button - always visible at top */}
+          <button
+            type="button"
+            class="new-session-button"
+            onClick={() => props.onNewSession()}
+          >
+            <span class="new-session-icon">+</span>
+            <span class="new-session-label">New Session</span>
+          </button>
+
+          {/* Original Session button - shows when viewing a different session */}
+          <Show when={showOriginalSession()}>
+            <button
+              type="button"
+              class="original-session-button"
+              onClick={() => props.onReturnToOriginal()}
+            >
+              <span class="original-session-icon">⌂</span>
+              <span class="original-session-label">Original Session</span>
+            </button>
           </Show>
 
           {/* Session list - current session at top */}

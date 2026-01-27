@@ -113,6 +113,8 @@ async function main() {
 
   // Track session ID for message sending
   let currentSessionId = null;
+  // Track whether we've sent the ready event (to avoid duplicates)
+  let readySent = false;
 
   // Parse Claude's output
   const claudeRl = readline.createInterface({ input: claude.stdout });
@@ -128,7 +130,7 @@ async function main() {
 
       switch (msg.type) {
         case "system":
-          if (msg.subtype === "init") {
+          if (msg.subtype === "init" && !readySent) {
             // Store session ID for subsequent messages
             currentSessionId = msg.session_id;
             debugLog("SESSION_ID", currentSessionId);
@@ -137,6 +139,20 @@ async function main() {
               model: msg.model,
               tools: msg.tools?.length || 0
             });
+            readySent = true;
+          } else if (msg.subtype === "hook_response" && !readySent) {
+            // When resuming a session, Claude CLI doesn't send "init" - it sends hooks instead.
+            // Extract session_id from the SessionStart hook response to send a ready event.
+            if (msg.hook_event === "SessionStart" && msg.outcome === "success" && msg.session_id) {
+              currentSessionId = msg.session_id;
+              debugLog("SESSION_ID_FROM_HOOK", currentSessionId);
+              sendEvent("ready", {
+                sessionId: msg.session_id,
+                model: "opus",  // Model info not available in hook response
+                tools: 0        // Tool count not available in hook response
+              });
+              readySent = true;
+            }
           } else if (msg.subtype === "status") {
             // Forward status updates (e.g., "compacting")
             if (msg.status) {
@@ -398,6 +414,7 @@ async function main() {
             model: "opus",
             tools: 0  // Will be updated on next message
           });
+          readySent = true;  // Mark ready as sent for the new session
           sendEvent("done", {});
           return;
       }

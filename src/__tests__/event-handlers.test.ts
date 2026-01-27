@@ -47,6 +47,7 @@ function createMockDeps(): EventHandlerDeps & { state: Record<string, unknown> }
     lastCompactionPreTokens: null,
     compactionMessageId: null,
     warningDismissed: false,
+    launchSessionId: null,
   };
 
   // Helper to create a setter that updates state
@@ -85,6 +86,10 @@ function createMockDeps(): EventHandlerDeps & { state: Record<string, unknown> }
     setLastCompactionPreTokens: createSetter("lastCompactionPreTokens"),
     setCompactionMessageId: createSetter("compactionMessageId"),
     setWarningDismissed: createSetter("warningDismissed"),
+
+    // Launch session tracking
+    getLaunchSessionId: () => state.launchSessionId as string | null,
+    setLaunchSessionId: createSetter("launchSessionId"),
 
     getSessionInfo: () => state.sessionInfo as ReturnType<EventHandlerDeps["getSessionInfo"]>,
     getCurrentToolUses: () => state.currentToolUses as ReturnType<EventHandlerDeps["getCurrentToolUses"]>,
@@ -179,6 +184,7 @@ describe("handleReadyEvent", () => {
     expect(deps.setSessionActive).toHaveBeenCalledWith(true);
     expect(deps.setSessionInfo).toHaveBeenCalled();
     expect(deps.state.sessionInfo).toEqual({
+      sessionId: undefined,
       model: "claude-opus-4-5-20250514",
       totalContext: 0,
     });
@@ -194,8 +200,55 @@ describe("handleReadyEvent", () => {
     );
 
     expect(deps.state.sessionInfo).toEqual({
+      sessionId: undefined,
       model: "claude-sonnet-4-20250514",
       totalContext: 5000,
+    });
+  });
+
+  it("should capture session_id in sessionInfo", () => {
+    const deps = createMockDeps();
+
+    handleReadyEvent(
+      { type: "ready", model: "claude-sonnet-4", session_id: "sess-abc123" } as ClaudeEvent & { type: "ready" },
+      deps
+    );
+
+    expect(deps.state.sessionInfo).toEqual({
+      sessionId: "sess-abc123",
+      model: "claude-sonnet-4",
+      totalContext: 0,
+    });
+  });
+
+  it("should set launchSessionId on first ready event", () => {
+    const deps = createMockDeps();
+    expect(deps.state.launchSessionId).toBeNull();
+
+    handleReadyEvent(
+      { type: "ready", model: "claude-sonnet-4", session_id: "sess-first" } as ClaudeEvent & { type: "ready" },
+      deps
+    );
+
+    expect(deps.state.launchSessionId).toBe("sess-first");
+  });
+
+  it("should NOT overwrite launchSessionId on subsequent ready events", () => {
+    const deps = createMockDeps();
+    deps.state.launchSessionId = "sess-original";
+
+    handleReadyEvent(
+      { type: "ready", model: "claude-sonnet-4", session_id: "sess-resumed" } as ClaudeEvent & { type: "ready" },
+      deps
+    );
+
+    // launchSessionId should remain the original value
+    expect(deps.state.launchSessionId).toBe("sess-original");
+    // But sessionInfo should have the new session ID
+    expect(deps.state.sessionInfo).toEqual({
+      sessionId: "sess-resumed",
+      model: "claude-sonnet-4",
+      totalContext: 0,
     });
   });
 });

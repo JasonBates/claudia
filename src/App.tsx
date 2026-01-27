@@ -8,7 +8,7 @@ import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
 // import StartupSplash from "./components/StartupSplash";
-import { sendMessage, resumeSession, getSessionHistory } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { createEventHandler } from "./lib/event-handlers";
@@ -148,6 +148,10 @@ function App() {
     setError: streaming.setError,
     setIsLoading: streaming.setIsLoading,
 
+    // Launch session tracking (for "Original Session" feature)
+    getLaunchSessionId: session.launchSessionId,
+    setLaunchSessionId: session.setLaunchSessionId,
+
     // Compaction tracking (local state)
     setLastCompactionPreTokens,
     setCompactionMessageId,
@@ -187,6 +191,75 @@ function App() {
 
   const cycleMode = () => {
     setCurrentMode(getNextMode(currentMode()));
+  };
+
+  // Start a new session from the sidebar - completely blank screen
+  const handleNewSession = async () => {
+    console.log("[NEW_SESSION] Starting new session");
+
+    // Close the sidebar first
+    sidebar.toggleSidebar();
+
+    // Reset launch session ID so the new session becomes the "home"
+    session.setLaunchSessionId(null);
+
+    // Clear all messages completely (blank screen, no dividers)
+    streaming.setMessages([]);
+    streaming.resetStreamingState();
+    streaming.setError(null);
+
+    // Reset context display
+    session.setSessionInfo((prev) => ({
+      ...prev,
+      totalContext: prev.baseContext || 0,
+    }));
+
+    // Restart Claude to get a fresh session
+    // The ready event handler will capture the new session ID
+    await clearSession(handleEvent, owner);
+  };
+
+  // Return to the original session (the one created when app launched)
+  // This works even if the original session was blank (never saved)
+  const handleReturnToOriginal = async () => {
+    const launchId = session.launchSessionId();
+    if (!launchId) {
+      console.log("[ORIGINAL] No launch session ID");
+      return;
+    }
+
+    console.log("[ORIGINAL] Returning to original session:", launchId);
+
+    // Check if the launch session exists in the sessions list (has been saved)
+    const sessionExists = sidebar.sessions().some((s) => s.sessionId === launchId);
+
+    if (sessionExists) {
+      // Session was saved (user typed messages), resume it normally
+      console.log("[ORIGINAL] Session exists, resuming normally");
+      await handleResumeSession(launchId);
+    } else {
+      // Session was never saved (user never typed anything)
+      // Return to blank state without changing the launch session ID
+      console.log("[ORIGINAL] Session not saved, returning to blank state");
+
+      // Close the sidebar
+      sidebar.toggleSidebar();
+
+      // Clear all messages completely (blank screen)
+      streaming.setMessages([]);
+      streaming.resetStreamingState();
+      streaming.setError(null);
+
+      // Reset context display
+      session.setSessionInfo((prev) => ({
+        ...prev,
+        totalContext: prev.baseContext || 0,
+      }));
+
+      // Restart Claude to get a fresh blank session
+      // Keep the same launchSessionId so "Original Session" still works
+      await clearSession(handleEvent, owner);
+    }
   };
 
   // Resume a session from the sidebar
@@ -325,10 +398,13 @@ function App() {
         onToggle={sidebar.toggleSidebar}
         sessions={sidebar.sessions()}
         currentSessionId={session.sessionInfo().sessionId || null}
+        launchSessionId={session.launchSessionId()}
         isLoading={sidebar.isLoading()}
         error={sidebar.error()}
         onResume={handleResumeSession}
         onDelete={sidebar.handleDeleteSession}
+        onNewSession={handleNewSession}
+        onReturnToOriginal={handleReturnToOriginal}
       />
 
       {/* Main content area */}

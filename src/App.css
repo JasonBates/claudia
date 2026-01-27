@@ -131,6 +131,71 @@ body {
   padding: 8px;
 }
 
+/* Original Session button - "home" button to return to launch session */
+.original-session-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px dashed var(--cyan);
+  background: rgba(42, 161, 152, 0.08);
+  text-align: left;
+  font-family: inherit;
+  color: var(--cyan);
+}
+
+.original-session-button:hover {
+  background: rgba(42, 161, 152, 0.15);
+  border-style: solid;
+}
+
+.original-session-icon {
+  font-size: 14px;
+}
+
+.original-session-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* New Session button - start fresh conversation */
+.new-session-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px dashed var(--green);
+  background: rgba(133, 153, 0, 0.08);
+  text-align: left;
+  font-family: inherit;
+  color: var(--green);
+}
+
+.new-session-button:hover {
+  background: rgba(133, 153, 0, 0.15);
+  border-style: solid;
+}
+
+.new-session-icon {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.new-session-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
 /* Session list */
 .session-list {
   display: flex;

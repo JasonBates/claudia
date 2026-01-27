@@ -20,6 +20,7 @@ import { parseToolInput } from "./json-streamer";
  * Session info tracked across the conversation
  */
 export interface SessionInfo {
+  sessionId?: string;
   model?: string;
   totalContext?: number;
   outputTokens?: number;
@@ -73,6 +74,10 @@ export interface EventHandlerDeps {
   setSessionInfo: Setter<SessionInfo>;
   setError: Setter<string | null>;
   setIsLoading: Setter<boolean>;
+
+  // Launch session tracking (for "Original Session" feature)
+  getLaunchSessionId: () => string | null;
+  setLaunchSessionId: Setter<string | null>;
 
   // Compaction tracking
   setLastCompactionPreTokens: Setter<number | null>;
@@ -190,9 +195,16 @@ export function handleReadyEvent(
   deps.setSessionActive(true);
   deps.setSessionInfo((prev) => ({
     ...prev,
+    sessionId: event.session_id,
     model: event.model,
     totalContext: prev.totalContext || 0,
   }));
+
+  // Capture launch session ID on first ready event (for "Original Session" feature)
+  // This only sets once - subsequent ready events (from resuming) don't overwrite
+  if (event.session_id && !deps.getLaunchSessionId()) {
+    deps.setLaunchSessionId(event.session_id);
+  }
 }
 
 /**

@@ -11,6 +11,10 @@ export interface UseSessionReturn {
   sessionInfo: Accessor<SessionInfo>;
   setSessionInfo: Setter<SessionInfo>;
 
+  // Launch session tracking (for "Original Session" feature)
+  launchSessionId: Accessor<string | null>;
+  setLaunchSessionId: Setter<string | null>;
+
   // Actions
   startSession: () => Promise<void>;
 
@@ -34,6 +38,9 @@ export function useSession(): UseSessionReturn {
   const [workingDir, setWorkingDir] = createSignal<string | null>(null);
   const [sessionInfo, setSessionInfo] = createSignal<SessionInfo>({});
   const [sessionError, setSessionError] = createSignal<string | null>(null);
+
+  // Track the session ID created when the app launches (for "Original Session" feature)
+  const [launchSessionId, setLaunchSessionId] = createSignal<string | null>(null);
 
   // Helper to add timeout to a promise
   const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
@@ -82,6 +89,8 @@ export function useSession(): UseSessionReturn {
     workingDir,
     sessionInfo,
     setSessionInfo,
+    launchSessionId,
+    setLaunchSessionId,
     startSession,
     sessionError,
   };

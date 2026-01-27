@@ -63,6 +63,11 @@ describe("useSession", () => {
       const hook = createHook();
       expect(hook.sessionError()).toBeNull();
     });
+
+    it("should start with null launchSessionId", () => {
+      const hook = createHook();
+      expect(hook.launchSessionId()).toBeNull();
+    });
   });
 
   // ============================================================================
@@ -221,6 +226,25 @@ describe("useSession", () => {
       hook.setSessionInfo((prev) => ({ ...prev, totalContext: 10000 }));
 
       expect(hook.sessionInfo()).toEqual({ model: "claude-3", totalContext: 10000 });
+    });
+
+    it("should allow setting launchSessionId", () => {
+      const hook = createHook();
+
+      hook.setLaunchSessionId("session-abc123");
+
+      expect(hook.launchSessionId()).toBe("session-abc123");
+    });
+
+    it("should allow updating launchSessionId", () => {
+      const hook = createHook();
+
+      hook.setLaunchSessionId("session-1");
+      expect(hook.launchSessionId()).toBe("session-1");
+
+      // Note: In practice, launchSessionId is set once and not changed
+      hook.setLaunchSessionId("session-2");
+      expect(hook.launchSessionId()).toBe("session-2");
     });
   });
 });
