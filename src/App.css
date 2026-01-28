@@ -383,21 +383,23 @@ body {
 /* Settings button in top bar */
 .settings-btn {
   position: fixed;
-  top: 4px;
-  right: 70px;
-  width: 24px;
-  height: 24px;
+  top: 0;
+  right: 8px;
+  height: 32px;
+  width: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
   border-radius: 4px;
-  z-index: 50;
-  font-size: 16px;
+  z-index: 1000;
+  font-size: 20px;
+  line-height: 1;
   color: var(--fg-muted);
   cursor: pointer;
   transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
 }
 
 .settings-btn:hover {
@@ -409,12 +411,12 @@ body {
 .token-indicator {
   position: fixed;
   top: 0;
-  right: 12px;
+  right: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0 10px;
+  padding: 0 6px;
   background: transparent;
   border: none;
   z-index: 50;
