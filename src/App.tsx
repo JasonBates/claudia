@@ -560,10 +560,12 @@ function App() {
           colorScheme={settings.colorScheme()}
           availableSchemes={settings.availableSchemes()}
           availableFonts={settings.availableFonts}
+          saveLocally={settings.saveLocally()}
           onMarginChange={settings.setContentMargin}
           onFontChange={settings.setFontFamily}
           onFontSizeChange={settings.setFontSize}
           onColorSchemeChange={settings.setColorScheme}
+          onSaveLocallyChange={settings.setSaveLocally}
           onResetDefaults={settings.resetToDefaults}
           onClose={settings.closeSettings}
         />

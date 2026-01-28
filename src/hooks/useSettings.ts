@@ -2,6 +2,7 @@ import { createSignal, onMount, createEffect, Accessor } from "solid-js";
 import {
   getConfig,
   saveConfig,
+  hasLocalConfig,
   listColorSchemes,
   getSchemeColors,
   ColorSchemeInfo,
@@ -22,6 +23,7 @@ export interface UseSettingsReturn {
   colorScheme: Accessor<string | null>;
   availableSchemes: Accessor<ColorSchemeInfo[]>;
   availableFonts: FontOption[];
+  saveLocally: Accessor<boolean>;
 
   // Actions
   openSettings: () => void;
@@ -30,6 +32,7 @@ export interface UseSettingsReturn {
   setFontFamily: (font: string) => void;
   setFontSize: (size: number) => void;
   setColorScheme: (scheme: string | null) => void;
+  setSaveLocally: (locally: boolean) => void;
   resetToDefaults: () => void;
 }
 
@@ -63,6 +66,7 @@ export function useSettings(): UseSettingsReturn {
   const [availableSchemes, setAvailableSchemes] = createSignal<
     ColorSchemeInfo[]
   >([]);
+  const [saveLocally, setSaveLocallySignal] = createSignal(false);
 
   // Load settings on mount
   onMount(async () => {
@@ -73,6 +77,10 @@ export function useSettings(): UseSettingsReturn {
       setFontFamilySignal(config.font_family ?? DEFAULT_FONT);
       setFontSizeSignal(config.font_size ?? DEFAULT_FONT_SIZE);
       setColorSchemeSignal(config.color_scheme ?? DEFAULT_SCHEME);
+
+      // Check if we're using a local config
+      const isLocal = await hasLocalConfig();
+      setSaveLocallySignal(isLocal);
 
       // Apply settings to CSS
       applyMargin(config.content_margin ?? DEFAULT_MARGIN);
@@ -109,13 +117,16 @@ export function useSettings(): UseSettingsReturn {
   const persistSettings = async () => {
     try {
       const config = await getConfig();
-      await saveConfig({
-        ...config,
-        content_margin: contentMargin(),
-        font_family: fontFamily(),
-        font_size: fontSize(),
-        color_scheme: colorScheme() ?? undefined,
-      });
+      await saveConfig(
+        {
+          ...config,
+          content_margin: contentMargin(),
+          font_family: fontFamily(),
+          font_size: fontSize(),
+          color_scheme: colorScheme() ?? undefined,
+        },
+        saveLocally()
+      );
     } catch (e) {
       console.error("Failed to save settings:", e);
     }
@@ -144,6 +155,12 @@ export function useSettings(): UseSettingsReturn {
     persistSettings();
   };
 
+  const setSaveLocally = (locally: boolean) => {
+    setSaveLocallySignal(locally);
+    // Re-persist with new locality setting
+    persistSettings();
+  };
+
   const resetToDefaults = async () => {
     setContentMarginSignal(DEFAULT_MARGIN);
     setFontFamilySignal(DEFAULT_FONT);
@@ -161,12 +178,14 @@ export function useSettings(): UseSettingsReturn {
     colorScheme,
     availableSchemes,
     availableFonts: CURATED_FONTS,
+    saveLocally,
     openSettings: () => setIsOpen(true),
     closeSettings: () => setIsOpen(false),
     setContentMargin,
     setFontFamily,
     setFontSize,
     setColorScheme,
+    setSaveLocally,
     resetToDefaults,
   };
 }
