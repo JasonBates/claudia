@@ -385,17 +385,16 @@ function App() {
 
 // Debounced window resize handler using Tauri window API
   let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
-  const handleResize = () => {
-    if (resizeTimeout) clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(async () => {
-      try {
-        const win = getCurrentWindow();
-        const size = await win.innerSize();
+  let unlistenResize: (() => void) | null = null;
+
+  const setupResizeListener = async () => {
+    const win = getCurrentWindow();
+    unlistenResize = await win.onResized(({ payload: size }) => {
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
         saveWindowSize(size.width, size.height).catch(console.error);
-      } catch (e) {
-        console.error("Failed to get window size:", e);
-      }
-    }, 500); // Debounce 500ms
+      }, 500); // Debounce 500ms
+    });
   };
 
   onMount(async () => {
@@ -404,11 +403,8 @@ function App() {
     // Add keyboard listener for local commands
     window.addEventListener("keydown", handleKeyDown, true);
 
-    // Add click listener to refocus input
-    window.addEventListener("click", handleAppClick, true);
-
-    // Listen for window resize to save size
-    window.addEventListener("resize", handleResize);
+// Listen for window resize to save size (using Tauri event)
+    setupResizeListener();
 
     try {
       await session.startSession();
@@ -421,8 +417,7 @@ function App() {
   onCleanup(() => {
     permissions.stopPolling();
     window.removeEventListener("keydown", handleKeyDown, true);
-    window.removeEventListener("click", handleAppClick, true);
-    window.removeEventListener("resize", handleResize);
+if (unlistenResize) unlistenResize();
     if (resizeTimeout) clearTimeout(resizeTimeout);
   });
 
