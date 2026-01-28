@@ -463,6 +463,9 @@ function App() {
               {session.workingDir()!.split("/").pop() || session.workingDir()}
             </span>
           </Show>
+          <Show when={typeof __CT_WORKTREE__ !== "undefined" && __CT_WORKTREE__}>
+            <span class="worktree-indicator"> : {__CT_WORKTREE__}</span>
+          </Show>
         </div>
 
         {/* Right-aligned token usage */}

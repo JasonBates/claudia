@@ -56,7 +56,7 @@ run_dev() {
     echo -e "${BLUE}Cargo target: $CARGO_TARGET_DIR${NC}"
     echo ""
     check_deps
-    npm run tauri dev
+    node dev.mjs
 }
 
 run_build() {

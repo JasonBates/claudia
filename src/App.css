@@ -364,6 +364,12 @@ body {
   color: rgba(220, 50, 47, 0.7);  /* Solarized red */
 }
 
+/* Dev mode worktree indicator - inline with directory name */
+.worktree-indicator {
+  font-weight: 600;
+  color: #b58900;  /* Solarized yellow */
+}
+
 /* Right-aligned Token Indicator */
 .token-indicator {
   position: fixed;
