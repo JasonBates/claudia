@@ -1,282 +1,97 @@
-# Testing Plan: Maximum Coverage Benefit
+# Testing Plan: Claudia Test Suite
 
-This document prioritizes tests by impact-to-effort ratio. Each tier builds on the previous.
+This document describes the test coverage for the Claudia project.
 
 ## Current State
 
-| Category | Coverage | Notes |
-|----------|----------|-------|
-| Rust backend | ✅ 75 tests | Timeouts, events, streaming, sync |
-| Utility modules | ✅ 116 tests | Pure functions, easy to test |
-| Custom hooks | ❌ 0 tests | **Highest priority** - business logic |
-| Components | ❌ 0 tests | Lower priority - mostly rendering |
+| Category | Tests | Status |
+|----------|-------|--------|
+| Rust backend | ~75 | ✅ Complete |
+| Utility modules | ~80 | ✅ Complete |
+| Custom hooks | ~175 | ✅ Complete |
+| UI Components | ~61 | ✅ Complete |
+| **Total** | **407** | ✅ All passing |
 
-## Tier 1: Hook Tests (Highest Impact)
+## Test Infrastructure
 
-These tests validate the core business logic extracted in Phase 6. Each hook is testable in isolation with minimal mocking.
+### Frameworks
 
-### 1.1 `useSession.test.ts` (~8 tests)
+- **TypeScript**: Vitest with jsdom environment
+- **Rust**: Native cargo test framework
+- **Component Testing**: @solidjs/testing-library + @testing-library/jest-dom
 
-**Why**: Session lifecycle is critical path. Failures here break the entire app.
+### Configuration
 
-```typescript
-describe("useSession", () => {
-  // Happy path
-  it("should initialize with inactive session");
-  it("should set sessionActive=true after successful startSession");
-  it("should set launchDir and workingDir on success");
+- `vitest.config.ts` - Vitest configuration with SolidJS plugin
+- `src/__tests__/setup.ts` - Global mocks for Tauri APIs and jest-dom matchers
 
-  // Error handling
-  it("should set sessionError on failure");
-  it("should throw error for caller to handle");
-  it("should timeout after 15 seconds");
+### Running Tests
 
-  // State management
-  it("should allow external setSessionInfo updates");
-  it("should preserve sessionInfo across re-renders");
-});
-```
+```bash
+# Run all TypeScript tests
+npm run test:run
 
-**Mocks needed**: `startSession`, `getLaunchDir` from `../lib/tauri`
+# Run in watch mode
+npm test
 
----
+# Run Rust tests
+npm run test:rust
 
-### 1.2 `useStreamingMessages.test.ts` (~15 tests)
+# Run all tests (TS + Rust)
+npm run test:all
 
-**Why**: Most complex hook. Message streaming bugs are visible and frustrating.
-
-```typescript
-describe("useStreamingMessages", () => {
-  // Initialization
-  it("should start with empty messages array");
-  it("should start with isLoading=false");
-
-  // Message management
-  it("should add messages via setMessages");
-  it("should generate unique IDs");
-
-  // Streaming state
-  it("should reset streaming state with resetStreamingState");
-  it("should accumulate streamingContent");
-  it("should track streamingBlocks in order");
-
-  // Tool handling
-  it("should add tool to currentToolUses on tool_start");
-  it("should update tool result by ID");
-  it("should handle parallel tools correctly");
-
-  // Finish callback
-  it("should call onFinish callback when finishStreaming called");
-  it("should move streaming content to messages on finish");
-  it("should preserve contentBlocks order on finish");
-
-  // Thinking
-  it("should toggle showThinking state");
-  it("should accumulate streamingThinking content");
-});
-```
-
-**Mocks needed**: None (pure state management)
-
----
-
-### 1.3 `usePlanningMode.test.ts` (~10 tests)
-
-**Why**: Plan mode is a distinct workflow. Bugs here confuse users about app state.
-
-```typescript
-describe("usePlanningMode", () => {
-  // Initialization
-  it("should start with isPlanning=false");
-  it("should start with showPlanApproval=false");
-
-  // Plan approval flow
-  it("should call submitMessage('go') on approve");
-  it("should hide approval modal after approve");
-  it("should exit planning mode after approve");
-
-  // Plan rejection flow
-  it("should call submitMessage with changes request on reject");
-  it("should hide approval modal after reject");
-  it("should stay in planning mode after reject");
-
-  // Plan cancellation
-  it("should call submitMessage('reject') on cancel");
-  it("should exit planning mode on cancel");
-
-  // State updates
-  it("should allow external setPlanFilePath updates");
-});
-```
-
-**Mocks needed**: `submitMessage` callback (injected)
-
----
-
-### 1.4 `usePermissions.test.ts` (~12 tests)
-
-**Why**: Permission flow involves polling and auto-accept logic. Subtle bugs cause stuck states.
-
-```typescript
-describe("usePermissions", () => {
-  // Initialization
-  it("should start with null pendingPermission");
-
-  // Polling
-  it("should start polling on startPolling()");
-  it("should stop polling on stopPolling()");
-  it("should call pollPermissionRequest on interval");
-  it("should set pendingPermission when request found");
-
-  // Auto-accept mode
-  it("should auto-allow when mode is 'auto-accept'");
-  it("should NOT auto-allow when mode is 'normal'");
-  it("should NOT auto-allow when mode is 'plan'");
-
-  // Allow handler
-  it("should call respondToPermission with allow=true on allow");
-  it("should clear pendingPermission after allow");
-
-  // Deny handler
-  it("should call respondToPermission with allow=false on deny");
-  it("should clear pendingPermission after deny");
-});
-```
-
-**Mocks needed**: `pollPermissionRequest`, `respondToPermission` from `../lib/tauri`
-
----
-
-### 1.5 `useTodoPanel.test.ts` (~8 tests)
-
-**Why**: Auto-hide timer logic is tricky. Wrong timing = flickering UI.
-
-```typescript
-describe("useTodoPanel", () => {
-  // Initialization
-  it("should start with showTodoPanel=false");
-  it("should start with empty todos array");
-
-  // Show/hide
-  it("should show panel when todos added");
-  it("should start hide timer on startHideTimer()");
-  it("should set hiding=true during animation");
-  it("should set showTodoPanel=false after delay");
-
-  // Timer management
-  it("should cancel previous timer when new one starts");
-  it("should not hide if new todos added during timer");
-});
-```
-
-**Mocks needed**: `setTimeout` (via vi.useFakeTimers)
-
----
-
-### 1.6 `useQuestionPanel.test.ts` (~8 tests)
-
-**Why**: Question answering flow affects Claude's responses. Wrong answers = wrong behavior.
-
-```typescript
-describe("useQuestionPanel", () => {
-  // Initialization
-  it("should start with empty pendingQuestions");
-  it("should start with showQuestionPanel=false");
-
-  // Question handling
-  it("should show panel when questions added");
-  it("should format answers as JSON string");
-  it("should call submitMessage with formatted answers");
-  it("should hide panel after answer submitted");
-  it("should call focusInput after answer");
-
-  // Multi-question
-  it("should handle multiple questions in one panel");
-});
-```
-
-**Mocks needed**: `submitMessage`, `focusInput` callbacks (injected)
-
----
-
-## Tier 2: Integration Tests (Medium Impact)
-
-### 2.1 Event Handler Integration (~5 tests)
-
-Test that events flow correctly from handler to hooks:
-
-```typescript
-describe("event handler integration", () => {
-  it("should update session info on context_update event");
-  it("should add tool to streaming on tool_start event");
-  it("should update tool result on tool_result event");
-  it("should finish streaming on done event");
-  it("should handle parallel tool events correctly");
-});
+# Run specific test file
+npm run test -- src/__tests__/useSession.test.ts
 ```
 
 ---
 
-## Tier 3: Component Tests (Lower Priority)
+## Test Files
 
-Components are mostly rendering logic. Test if:
-- They have complex conditional rendering
-- They have user interaction handlers
-- They've had bugs before
+### Utility Modules (`src/__tests__/`)
 
-### Candidates
+| File | Tests | Coverage |
+|------|-------|----------|
+| `context-utils.test.ts` | 14 | Token tracking, context thresholds |
+| `mode-utils.test.ts` | 14 | Mode cycling (auto/plan), validation |
+| `json-streamer.test.ts` | 32 | JSON accumulation, parsing, validation |
+| `solid-utils.test.ts` | 16 | SolidJS utility functions |
+| `event-handlers.test.ts` | 50 | Event processing, race conditions |
+| `highlight.test.ts` | 7 | Syntax highlighting, HTML escaping |
 
-| Component | Complexity | Bug History | Priority |
-|-----------|------------|-------------|----------|
-| `ToolResult` | Medium (expand/collapse, loading states) | Yes (short-circuit bug) | Medium |
-| `CommandInput` | Low (controlled input, mode badge) | No | Low |
-| `PermissionDialog` | Low (buttons, display) | No | Low |
-| `MessageList` | High (streaming, blocks) | No | Medium |
+### Custom Hooks (`src/__tests__/`)
 
----
+| File | Tests | Coverage |
+|------|-------|----------|
+| `useSession.test.ts` | 22 | Session lifecycle, startup, errors |
+| `useStreamingMessages.test.ts` | 44 | Message streaming, tool handling |
+| `usePlanningMode.test.ts` | 24 | Plan approval workflow |
+| `usePermissions.test.ts` | 23 | Permission polling, auto-accept |
+| `useTodoPanel.test.ts` | 16 | Todo panel state, auto-hide timer |
+| `useQuestionPanel.test.ts` | 14 | Question panel, answer submission |
+| `useLocalCommands.test.ts` | 39 | Slash commands, keyboard shortcuts |
+| `useSidebar.test.ts` | 27 | Sidebar toggle, session management |
 
-## Implementation Order
+### UI Components (`src/__tests__/components/`)
 
-1. **Quick wins first**: `usePlanningMode`, `useQuestionPanel` (simple, ~30 min each)
-2. **Critical path**: `useSession` (session startup is critical)
-3. **Complex logic**: `usePermissions` (polling, auto-accept)
-4. **High complexity**: `useStreamingMessages` (most state, most tests)
-5. **Timer logic**: `useTodoPanel` (requires fake timers)
-
----
-
-## Estimated Effort
-
-| Hook | Tests | Time Estimate |
-|------|-------|---------------|
-| `usePlanningMode` | 10 | 30 min |
-| `useQuestionPanel` | 8 | 30 min |
-| `useSession` | 8 | 45 min |
-| `usePermissions` | 12 | 1 hour |
-| `useStreamingMessages` | 15 | 1.5 hours |
-| `useTodoPanel` | 8 | 45 min |
-| **Total** | **61** | **~5 hours** |
+| File | Tests | Coverage |
+|------|-------|----------|
+| `CommandInput.test.tsx` | 21 | Mode display, submit, Shift+Tab, history |
+| `PermissionDialog.test.tsx` | 20 | Buttons, icons, tool input formatting |
+| `TodoPanel.test.tsx` | 20 | Todo list, status icons, counts, hiding |
 
 ---
 
-## Test File Template
+## Key Test Patterns
+
+### Testing SolidJS Hooks
 
 ```typescript
-import { createRoot, onCleanup } from "solid-js";
+import { createRoot } from "solid-js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { useMyHook } from "../hooks/useMyHook";
-
-// Mock external dependencies
-vi.mock("../lib/tauri", () => ({
-  someFunction: vi.fn(),
-}));
 
 describe("useMyHook", () => {
   let dispose: () => void;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
 
   afterEach(() => {
     dispose?.();
@@ -295,17 +110,114 @@ describe("useMyHook", () => {
 });
 ```
 
+### Testing Components
+
+```tsx
+import { render, screen, fireEvent, cleanup } from "@solidjs/testing-library";
+import { describe, it, expect, vi, afterEach } from "vitest";
+
+describe("MyComponent", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("should handle click", () => {
+    const onClick = vi.fn();
+    render(() => <MyComponent onClick={onClick} />);
+
+    fireEvent.click(screen.getByRole("button"));
+
+    expect(onClick).toHaveBeenCalled();
+  });
+});
+```
+
+### Mocking Tauri APIs
+
+```typescript
+vi.mock("../lib/tauri", () => ({
+  someFunction: vi.fn(),
+  anotherFunction: vi.fn(),
+}));
+
+import { someFunction } from "../lib/tauri";
+
+beforeEach(() => {
+  vi.mocked(someFunction).mockResolvedValue(mockResult);
+});
+```
+
+### Testing with Fake Timers
+
+```typescript
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+it("should auto-hide after delay", async () => {
+  // ... setup
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(hook.isHiding()).toBe(true);
+});
+```
+
 ---
 
-## Running Specific Tests
+## Coverage by Feature
 
-```bash
-# Run a specific test file
-npm run test -- src/__tests__/useSession.test.ts
+### Session Management
+- Session startup and initialization
+- Launch directory detection
+- Session info updates
+- Error handling and timeouts
 
-# Run tests matching a pattern
-npm run test -- --grep "useSession"
+### Message Streaming
+- Streaming content accumulation
+- Tool use tracking (start, input, result)
+- Parallel tool execution
+- Race condition handling (result before start)
+- Thinking content
 
-# Run with verbose output
-npm run test -- --reporter=verbose
-```
+### Planning Mode
+- Plan file detection
+- Approval/rejection/cancel workflows
+- Plan content loading
+
+### Permissions
+- Permission polling
+- Auto-accept mode
+- Allow/deny handlers
+- Dialog display
+
+### Local Commands
+- Slash command dispatch (/clear, /sync, /thinking, /sidebar, /resume, /exit)
+- Keyboard shortcuts (Alt+T, Alt+Q, Cmd+Shift+[, Escape)
+- Error handling
+
+### Sidebar
+- Toggle/open states
+- Session listing
+- Session deletion
+- localStorage persistence
+
+### UI Components
+- Input handling and submission
+- Mode switching
+- Status indicators
+- Button actions
+
+---
+
+## Remaining Coverage Opportunities
+
+### Medium Priority
+- Additional component tests (Sidebar, PlanApprovalModal, MessageList)
+- Rust tests for session parsing functions
+
+### Lower Priority
+- Integration tests for full workflows
+- E2E tests with Tauri test framework
