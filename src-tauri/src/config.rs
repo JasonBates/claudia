@@ -10,10 +10,30 @@ pub struct Config {
     pub default_working_dir: Option<String>,
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_content_margin")]
+    pub content_margin: u32,
+    #[serde(default = "default_font_family")]
+    pub font_family: String,
+    #[serde(default = "default_font_size")]
+    pub font_size: u32,
+    #[serde(default)]
+    pub color_scheme: Option<String>,
 }
 
 fn default_theme() -> String {
     "dark".to_string()
+}
+
+fn default_content_margin() -> u32 {
+    16
+}
+
+fn default_font_family() -> String {
+    "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif".to_string()
+}
+
+fn default_font_size() -> u32 {
+    16
 }
 
 impl Config {
