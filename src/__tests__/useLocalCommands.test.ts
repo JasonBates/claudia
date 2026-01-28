@@ -8,6 +8,8 @@ import {
 import type { UseStreamingMessagesReturn } from "../hooks/useStreamingMessages";
 import type { UseSessionReturn } from "../hooks/useSession";
 import type { UseSidebarReturn } from "../hooks/useSidebar";
+import type { Message, ToolUse, ContentBlock, SessionEntry } from "../lib/types";
+import type { SessionInfo } from "../lib/event-handlers";
 
 // Mock the tauri module
 vi.mock("../lib/tauri", () => ({
@@ -29,12 +31,12 @@ import {
  * Create a minimal mock of UseStreamingMessagesReturn for testing
  */
 function createMockStreaming(): UseStreamingMessagesReturn {
-  const [messages, setMessages] = createSignal<{ id: string; role: string; content: string }[]>([]);
+  const [messages, setMessages] = createSignal<Message[]>([]);
   const [streamingContent, setStreamingContent] = createSignal("");
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
-  const [currentToolUses, setCurrentToolUses] = createSignal<unknown[]>([]);
-  const [streamingBlocks, setStreamingBlocks] = createSignal<unknown[]>([]);
+  const [currentToolUses, setCurrentToolUses] = createSignal<ToolUse[]>([]);
+  const [streamingBlocks, setStreamingBlocks] = createSignal<ContentBlock[]>([]);
   const [streamingThinking, setStreamingThinking] = createSignal("");
   const [showThinking, setShowThinking] = createSignal(false);
 
@@ -72,10 +74,10 @@ function createMockStreaming(): UseStreamingMessagesReturn {
  */
 function createMockSession(): UseSessionReturn {
   const [sessionActive, setSessionActive] = createSignal(true);
-  const [launchDir, setLaunchDir] = createSignal<string | null>("/launch");
-  const [workingDir, setWorkingDir] = createSignal<string | null>("/work");
-  const [sessionInfo, setSessionInfo] = createSignal<Record<string, unknown>>({});
-  const [sessionError, setSessionError] = createSignal<string | null>(null);
+  const [launchDir] = createSignal<string | null>("/launch");
+  const [workingDir] = createSignal<string | null>("/work");
+  const [sessionInfo, setSessionInfo] = createSignal<SessionInfo>({});
+  const [sessionError] = createSignal<string | null>(null);
   const [launchSessionId, setLaunchSessionId] = createSignal<string | null>(null);
 
   return {
@@ -97,9 +99,9 @@ function createMockSession(): UseSessionReturn {
  */
 function createMockSidebar(): UseSidebarReturn {
   const [collapsed, setCollapsed] = createSignal(true);
-  const [sessions, setSessions] = createSignal<unknown[]>([]);
-  const [isLoading, setIsLoading] = createSignal(false);
-  const [error, setError] = createSignal<string | null>(null);
+  const [sessions] = createSignal<SessionEntry[]>([]);
+  const [isLoading] = createSignal(false);
+  const [error] = createSignal<string | null>(null);
 
   return {
     collapsed,
@@ -443,7 +445,7 @@ describe("useLocalCommands", () => {
       });
 
       let hook: UseLocalCommandsReturn;
-      createRoot((d) => {
+      createRoot((_d) => {
         hook = useLocalCommands({
           streaming: loadingStreaming!,
           session,

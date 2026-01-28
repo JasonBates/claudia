@@ -107,6 +107,10 @@ function createMockDeps(): EventHandlerDeps & { state: Record<string, unknown> }
 
     generateMessageId: vi.fn(() => `msg-${Date.now()}`),
     finishStreaming: vi.fn(),
+
+    // Permission handling
+    getCurrentMode: () => "plan" as const,
+    sendPermissionResponse: vi.fn().mockResolvedValue(undefined),
   };
 }
 
