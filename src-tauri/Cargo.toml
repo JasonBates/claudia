@@ -31,4 +31,5 @@ chrono = "0.4"
 uuid = { version = "1", features = ["v4"] }
 thiserror = "2"
 plist = "1"
+tauri-plugin-window-state = "2"
 

@@ -194,10 +194,6 @@ export async function hasLocalConfig(): Promise<boolean> {
   return await invoke("has_local_config");
 }
 
-export async function saveWindowSize(width: number, height: number): Promise<void> {
-  await invoke("save_window_size", { width, height });
-}
-
 export async function isSessionActive(): Promise<boolean> {
   return await invoke("is_session_active");
 }

@@ -8,8 +8,7 @@ import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
 // import StartupSplash from "./components/StartupSplash";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, saveWindowSize } from "./lib/tauri";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { createEventHandler } from "./lib/event-handlers";
@@ -383,28 +382,12 @@ function App() {
   // Lifecycle
   // ============================================================================
 
-  // Debounced window resize handler using Tauri window API
-  let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
-  let unlistenResize: (() => void) | null = null;
-
-  const setupResizeListener = async () => {
-    const win = getCurrentWindow();
-    unlistenResize = await win.onResized(({ payload: size }) => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        saveWindowSize(size.width, size.height).catch(console.error);
-      }, 500); // Debounce 500ms
-    });
-  };
 
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
 
     // Add keyboard listener for local commands
     window.addEventListener("keydown", handleKeyDown, true);
-
-    // Listen for window resize to save size (using Tauri event)
-    setupResizeListener();
 
     try {
       await session.startSession();
@@ -417,8 +400,6 @@ function App() {
   onCleanup(() => {
     permissions.stopPolling();
     window.removeEventListener("keydown", handleKeyDown, true);
-    if (unlistenResize) unlistenResize();
-    if (resizeTimeout) clearTimeout(resizeTimeout);
   });
 
   // ============================================================================
