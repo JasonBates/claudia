@@ -95,6 +95,7 @@ async function main() {
   let isInterrupting = false;
   let pendingMessages = [];  // Queue messages during respawn
   let isWarmingUp = false;   // Suppress events during warmup
+  let currentToolId = null;  // Track current tool ID for tool_result matching
 
   // Build Claude args - optionally resume a session
   function buildClaudeArgs(resumeSessionId = null) {
@@ -138,6 +139,7 @@ async function main() {
     switch (event.type) {
       case "content_block_start":
         if (event.content_block?.type === "tool_use") {
+          currentToolId = event.content_block.id;  // Track for tool_result matching
           sendEvent("tool_start", {
             id: event.content_block.id,
             name: event.content_block.name
@@ -329,11 +331,14 @@ async function main() {
 
           case "tool_result":
             // Standalone tool result - tool completed successfully
+            // Include currentToolId so frontend can match result to tool
             sendEvent("tool_result", {
+              tool_use_id: currentToolId,
               stdout: msg.content || msg.output || "",
               stderr: msg.error || "",
               isError: !!msg.is_error
             });
+            currentToolId = null;  // Clear after use
             break;
 
           case "control_request":
