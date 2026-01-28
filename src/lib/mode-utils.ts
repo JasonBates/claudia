@@ -3,13 +3,17 @@
  * (similar to Claude Code's Shift+Tab functionality)
  */
 
-export type Mode = 'auto' | 'plan';
+export type Mode = 'auto' | 'request' | 'plan';
 
 /**
  * Available modes in cycling order
  * Object.freeze ensures runtime immutability (as const is compile-time only)
+ *
+ * - auto: Auto-approve tool permissions, run without prompts
+ * - request: Show permission dialog for each tool use
+ * - plan: Prepend planning instruction to prompt (also shows permission dialogs)
  */
-export const MODES: readonly Mode[] = Object.freeze(['auto', 'plan'] as const);
+export const MODES: readonly Mode[] = Object.freeze(['auto', 'request', 'plan'] as const);
 
 /**
  * Gets the next mode in the cycle
@@ -57,6 +61,8 @@ export function getModeLabel(mode: Mode): string {
   switch (mode) {
     case 'auto':
       return 'Auto';
+    case 'request':
+      return 'Request';
     case 'plan':
       return 'Plan';
     default:

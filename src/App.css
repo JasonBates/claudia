@@ -1780,6 +1780,16 @@ del {
   color: var(--accent);
 }
 
+.mode-request {
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 15%, transparent);
+}
+
+.mode-request .mode-icon,
+.mode-request .mode-label {
+  color: var(--warning);
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;

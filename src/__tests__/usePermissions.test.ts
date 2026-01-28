@@ -254,6 +254,18 @@ describe("usePermissions", () => {
       expect(mockRespondToPermission).not.toHaveBeenCalled();
       expect(hook.pendingPermission()).not.toBeNull();
     });
+
+    it("should NOT auto-allow when mode is 'request'", async () => {
+      vi.mocked(mockPollPermissionRequest).mockResolvedValue(sampleRequest);
+      modeSignal[1]("request");
+      const hook = createHook();
+
+      hook.startPolling();
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(mockRespondToPermission).not.toHaveBeenCalled();
+      expect(hook.pendingPermission()).not.toBeNull();
+    });
   });
 
   // ============================================================================

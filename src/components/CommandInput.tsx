@@ -1,6 +1,6 @@
 import { Component, createSignal, onMount, onCleanup } from "solid-js";
 
-type Mode = "auto" | "plan";
+type Mode = "auto" | "request" | "plan";
 
 export interface CommandInputHandle {
   focus: () => void;
@@ -68,6 +68,8 @@ const CommandInput: Component<CommandInputProps> = (props) => {
 
   const getModeInfo = () => {
     switch (props.mode) {
+      case "request":
+        return { label: "Request", icon: "?", class: "mode-request" };
       case "plan":
         return { label: "Plan", icon: "◇", class: "mode-plan" };
       case "auto":

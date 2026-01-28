@@ -68,7 +68,7 @@ export interface EventHandlerDeps {
 
   // Permission state
   setPendingPermission: Setter<PermissionRequest | null>;
-  getCurrentMode: () => "auto" | "plan";
+  getCurrentMode: () => "auto" | "request" | "plan";
   sendPermissionResponse: (requestId: string, allow: boolean, remember?: boolean, toolInput?: unknown) => Promise<void>;
 
   // Session state
