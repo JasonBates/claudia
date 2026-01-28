@@ -95,12 +95,6 @@ impl Config {
         self.save_to_path(&path)
     }
 
-    /// Save to the global config path
-    pub fn save_global(&self) -> Result<(), String> {
-        let path = Self::global_path();
-        self.save_to_path(&path)
-    }
-
     fn save_to_path(&self, path: &PathBuf) -> Result<(), String> {
         // Create parent directories if needed
         if let Some(parent) = path.parent() {

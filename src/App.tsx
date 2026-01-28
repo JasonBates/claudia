@@ -7,10 +7,8 @@ import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-import ConnectionErrorOverlay from "./components/ConnectionErrorOverlay";
 // import StartupSplash from "./components/StartupSplash";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, saveWindowSize } from "./lib/tauri";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { createEventHandler } from "./lib/event-handlers";
@@ -327,16 +325,6 @@ function App() {
     }
   };
 
-  // Retry connection when backend fails to start
-  const handleRetryConnection = async () => {
-    try {
-      await session.startSession();
-      permissions.startPolling();
-    } catch (e) {
-      // Error is already set in useSession
-    }
-  };
-
   // Main message submission handler
   const handleSubmit = async (text: string) => {
     // Handle local commands (slash commands like /sync, /clear, etc.)
@@ -394,28 +382,12 @@ function App() {
   // Lifecycle
   // ============================================================================
 
-// Debounced window resize handler using Tauri window API
-  let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
-  let unlistenResize: (() => void) | null = null;
-
-  const setupResizeListener = async () => {
-    const win = getCurrentWindow();
-    unlistenResize = await win.onResized(({ payload: size }) => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        saveWindowSize(size.width, size.height).catch(console.error);
-      }, 500); // Debounce 500ms
-    });
-  };
 
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
 
     // Add keyboard listener for local commands
     window.addEventListener("keydown", handleKeyDown, true);
-
-// Listen for window resize to save size (using Tauri event)
-    setupResizeListener();
 
     try {
       await session.startSession();
@@ -428,8 +400,6 @@ function App() {
   onCleanup(() => {
     permissions.stopPolling();
     window.removeEventListener("keydown", handleKeyDown, true);
-if (unlistenResize) unlistenResize();
-    if (resizeTimeout) clearTimeout(resizeTimeout);
   });
 
   // ============================================================================
@@ -472,9 +442,6 @@ if (unlistenResize) unlistenResize();
             <span class="working-dir" title={session.workingDir()!}>
               {session.workingDir()!.split("/").pop() || session.workingDir()}
             </span>
-          </Show>
-          <Show when={typeof __CT_WORKTREE__ !== "undefined" && __CT_WORKTREE__}>
-            <span class="worktree-indicator"> : {__CT_WORKTREE__}</span>
           </Show>
         </div>
 
@@ -616,14 +583,6 @@ if (unlistenResize) unlistenResize();
             onDeny={permissions.handlePermissionDeny}
           />
         </div>
-      </Show>
-
-      {/* Connection Error Overlay - shows when backend fails to start */}
-      <Show when={!session.sessionActive() && session.sessionError()}>
-        <ConnectionErrorOverlay
-          error={session.sessionError()!}
-          onRetry={handleRetryConnection}
-        />
       </Show>
 
     </div>
