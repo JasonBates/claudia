@@ -18,9 +18,11 @@ A native macOS desktop app that wraps Claude Code CLI, providing a streamlined t
 | Document | Description |
 |----------|-------------|
 | **README.md** (this file) | Overview, quick start, lessons learned |
-| **[docs/architecture.md](docs/architecture.md)** | Data flow, event types, state management, key files |
+| **[docs/architecture.md](docs/architecture.md)** | Data flow, event types, state management, testing |
 | **[docs/streaming.md](docs/streaming.md)** | Streaming command runner pattern (reusable) |
 | **[docs/troubleshooting.md](docs/troubleshooting.md)** | Common issues, debugging techniques |
+| **[docs/rfcs/](docs/rfcs/)** | Implementation plans and research documents |
+| **[CHANGELOG.md](CHANGELOG.md)** | Version history and release notes |
 
 ## Architecture
 
@@ -173,28 +175,6 @@ This opens Claudia with that directory as the working directory, allowing Claude
 
 Multiple instances can run simultaneously (`-n` flag), each in their own project.
 
-### Startup Branding (Optional)
-
-A retro-style branding component is available but currently disabled. To enable:
-
-1. Uncomment the import in `src/App.tsx`:
-   ```tsx
-   import StartupSplash from "./components/StartupSplash";
-   ```
-
-2. Add the `header` prop to MessageList:
-   ```tsx
-   <MessageList
-     ...
-     header={<StartupSplash workingDir={session.launchDir() || session.workingDir()} />}
-   />
-   ```
-
-Features:
-- Pixel art Claudia logo
-- ASCII block-style "CLAUDIA" text in cyan
-- Scrolls with message content (not fixed)
-
 ### Testing
 
 The project has comprehensive tests for both Rust backend and TypeScript frontend:
@@ -213,18 +193,11 @@ npm run test:rust
 npm test
 ```
 
-**Test Coverage:**
-
-| Component | Tests | Focus |
-|-----------|-------|-------|
-| `claude_process.rs` | 25 | Bridge message parsing for all 15 event types |
-| `events.rs` | 7 | serde serialization with `#[serde(tag)]` |
-| `config.rs` | 6 | Tilde expansion, serde defaults, paths |
-| `streaming.rs` | 4 | Binary resolution, program paths |
-| `context-utils.ts` | 14 | Token thresholds, formatting |
-| `mode-utils.ts` | 17 | Mode cycling, validation |
+**Test Coverage:** 542 tests total (97 Rust + 445 TypeScript)
 
 Tests run automatically on push/PR via GitHub Actions (`.github/workflows/test.yml`).
+
+See [docs/architecture.md](docs/architecture.md#testing) for detailed test breakdown.
 
 ## Lessons Learned
 

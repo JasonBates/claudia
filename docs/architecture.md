@@ -2,6 +2,24 @@
 
 A Tauri desktop application that wraps the Claude Code CLI, providing a native GUI for interacting with Claude.
 
+## Table of Contents
+
+- [Technology Stack](#technology-stack)
+- [High-Level Architecture](#high-level-architecture)
+- [Field Name Casing (Critical)](#-critical-field-name-casing-mismatch-)
+- [Data Flow](#data-flow)
+- [Key Files](#key-files)
+- [Event Types](#event-types)
+- [Context Window & Token Tracking](#context-window--token-tracking)
+- [State Management](#state-management)
+- [ContentBlock System](#contentblock-system)
+- [Permission System](#permission-system)
+- [Benefits of the Hooks Architecture](#benefits-of-the-hooks-architecture)
+- [Testing](#testing)
+- [Building](#building)
+
+---
+
 ## Technology Stack
 
 - **Frontend**: SolidJS + TypeScript + Vite
@@ -636,11 +654,11 @@ New developers understand the app's capabilities by listing the hooks directory.
 
 | Layer | Tests | Status |
 |-------|-------|--------|
-| **Rust backend** | ~75 tests | ✅ Complete |
-| **Frontend utilities** | ~80 tests | ✅ Complete |
-| **Frontend hooks** | ~175 tests | ✅ Complete |
-| **UI Components** | ~60 tests | ✅ Key components covered |
-| **Total** | **438 tests** | All passing |
+| **Rust backend** | 97 tests | ✅ Complete |
+| **Frontend utilities** | ~133 tests | ✅ Complete |
+| **Frontend hooks** | ~209 tests | ✅ Complete |
+| **UI Components** | ~96 tests | ✅ Key components covered |
+| **Total** | **542 tests** | All passing |
 
 ### Running Tests
 
@@ -720,9 +738,9 @@ describe("useMyHook", () => {
 });
 ```
 
-### Test Coverage Details
+### Test Patterns
 
-See [testing-plan.md](testing-plan.md) for complete test inventory and patterns.
+For examples of testing hooks, components, and mocking patterns, see the test files in `src/__tests__/`.
 
 ## Building
 
