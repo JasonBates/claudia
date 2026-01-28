@@ -1064,6 +1064,18 @@ del {
   /* No visual change, stays consistent */
 }
 
+/* Grouped Task tools container */
+.tool-group-container {
+  padding: 8px 10px;
+}
+
+.tool-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
 .tool-header {
   display: flex;
   align-items: center;
@@ -1079,6 +1091,11 @@ del {
 
 .tool-result.loading .tool-icon {
   animation: spin 1s linear infinite;
+}
+
+.tool-icon.complete {
+  color: var(--success, #4ade80);
+  opacity: 1;
 }
 
 .tool-name {
@@ -2731,4 +2748,111 @@ del {
 .settings-reset-btn:hover {
   border-color: var(--fg-muted);
   color: var(--fg);
+}
+
+/* ============================================================================
+   Subagent Tree View (inside Task tool boxes)
+   ============================================================================ */
+
+.subagent-tree {
+  margin-top: 6px;
+  padding: 6px 0 2px 2px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.subagent-tree.complete {
+  opacity: 0.7;
+}
+
+.subagent-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.subagent-status {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.subagent-tree.complete .subagent-status {
+  color: var(--fg-muted);
+}
+
+.subagent-type {
+  color: var(--cyan);
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.subagent-tree.complete .subagent-type {
+  color: var(--fg-muted);
+}
+
+.subagent-branch {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--fg);
+}
+
+.tree-char {
+  font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+  color: var(--base01);
+  flex-shrink: 0;
+}
+
+.subagent-desc {
+  color: var(--fg);
+}
+
+.subagent-spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+  color: var(--accent);
+}
+
+.subagent-check {
+  color: var(--success, #4ade80);
+  font-size: 12px;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.subagent-activity-box {
+  margin: 6px 0 2px 16px;
+  padding: 6px 10px;
+  background: var(--bg);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  min-height: 4.8em; /* ~4 lines */
+  max-height: 4.8em;
+  overflow: hidden;
+}
+
+.subagent-activity-line {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.activity-tool-name {
+  color: var(--cyan);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.activity-tool-detail {
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

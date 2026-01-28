@@ -335,7 +335,10 @@ impl ClaudeProcess {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                Some(ClaudeEvent::ToolStart { id, name })
+                let parent_tool_use_id = json.get("parent_tool_use_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                Some(ClaudeEvent::ToolStart { id, name, parent_tool_use_id })
             }
 
             "tool_input" => {
@@ -455,6 +458,70 @@ impl ClaudeProcess {
                 rust_debug_log("CONTEXT_UPDATE", &format!("total={}, raw={}, cache_read={}, cache_write={}",
                     input_tokens, raw_input_tokens, cache_read, cache_write));
                 Some(ClaudeEvent::ContextUpdate { input_tokens, raw_input_tokens, cache_read, cache_write })
+            }
+
+            "subagent_start" => {
+                let id = json.get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let agent_type = json.get("agentType")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let description = json.get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let prompt = json.get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                rust_debug_log("SUBAGENT_START", &format!("id={}, type={}", id, agent_type));
+                Some(ClaudeEvent::SubagentStart { id, agent_type, description, prompt })
+            }
+
+            "subagent_progress" => {
+                let subagent_id = json.get("subagentId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let tool_name = json.get("toolName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let tool_detail = json.get("toolDetail")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let tool_count = json.get("toolCount")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
+                rust_debug_log("SUBAGENT_PROGRESS", &format!("id={}, tool={}, detail={}, count={}", subagent_id, tool_name, tool_detail, tool_count));
+                Some(ClaudeEvent::SubagentProgress { subagent_id, tool_name, tool_detail, tool_count })
+            }
+
+            "subagent_end" => {
+                let id = json.get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let agent_type = json.get("agentType")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let duration = json.get("duration")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                let tool_count = json.get("toolCount")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
+                let result = json.get("result")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                rust_debug_log("SUBAGENT_END", &format!("id={}, type={}, duration={}ms, tools={}", id, agent_type, duration, tool_count));
+                Some(ClaudeEvent::SubagentEnd { id, agent_type, duration, tool_count, result })
             }
 
             _ => None,
@@ -602,11 +669,30 @@ mod tests {
             "id": "tool_123",
             "name": "Read"
         }));
-        assert!(matches!(
-            event,
-            Some(ClaudeEvent::ToolStart { id, name })
-            if id == "tool_123" && name == "Read"
-        ));
+        if let Some(ClaudeEvent::ToolStart { id, name, parent_tool_use_id }) = event {
+            assert_eq!(id, "tool_123");
+            assert_eq!(name, "Read");
+            assert!(parent_tool_use_id.is_none());
+        } else {
+            panic!("Expected ToolStart event");
+        }
+    }
+
+    #[test]
+    fn parse_tool_start_with_parent() {
+        let event = parse(json!({
+            "type": "tool_start",
+            "id": "tool_456",
+            "name": "Glob",
+            "parent_tool_use_id": "tool_123"
+        }));
+        if let Some(ClaudeEvent::ToolStart { id, name, parent_tool_use_id }) = event {
+            assert_eq!(id, "tool_456");
+            assert_eq!(name, "Glob");
+            assert_eq!(parent_tool_use_id, Some("tool_123".to_string()));
+        } else {
+            panic!("Expected ToolStart event");
+        }
     }
 
     // ==================== tool_input ====================
@@ -940,5 +1026,64 @@ mod tests {
             "message": "no type field"
         }));
         assert!(event.is_none());
+    }
+
+    // ==================== subagent events ====================
+
+    #[test]
+    fn parse_subagent_start() {
+        let event = parse(json!({
+            "type": "subagent_start",
+            "id": "tool_123",
+            "agentType": "Explore",
+            "description": "Find error handling code",
+            "prompt": "Search the codebase for..."
+        }));
+        if let Some(ClaudeEvent::SubagentStart { id, agent_type, description, prompt }) = event {
+            assert_eq!(id, "tool_123");
+            assert_eq!(agent_type, "Explore");
+            assert_eq!(description, "Find error handling code");
+            assert!(prompt.starts_with("Search"));
+        } else {
+            panic!("Expected SubagentStart event");
+        }
+    }
+
+    #[test]
+    fn parse_subagent_progress() {
+        let event = parse(json!({
+            "type": "subagent_progress",
+            "subagentId": "tool_123",
+            "toolName": "Glob",
+            "toolCount": 3
+        }));
+        if let Some(ClaudeEvent::SubagentProgress { subagent_id, tool_name, tool_count }) = event {
+            assert_eq!(subagent_id, "tool_123");
+            assert_eq!(tool_name, "Glob");
+            assert_eq!(tool_count, 3);
+        } else {
+            panic!("Expected SubagentProgress event");
+        }
+    }
+
+    #[test]
+    fn parse_subagent_end() {
+        let event = parse(json!({
+            "type": "subagent_end",
+            "id": "tool_123",
+            "agentType": "Explore",
+            "duration": 5234,
+            "toolCount": 7,
+            "result": "Found 5 files containing error handling..."
+        }));
+        if let Some(ClaudeEvent::SubagentEnd { id, agent_type, duration, tool_count, result }) = event {
+            assert_eq!(id, "tool_123");
+            assert_eq!(agent_type, "Explore");
+            assert_eq!(duration, 5234);
+            assert_eq!(tool_count, 7);
+            assert!(result.starts_with("Found"));
+        } else {
+            panic!("Expected SubagentEnd event");
+        }
     }
 }

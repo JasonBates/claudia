@@ -35,7 +35,37 @@ pub enum ClaudeEvent {
     ThinkingDelta { thinking: String },
 
     /// Tool invocation started
-    ToolStart { id: String, name: String },
+    ToolStart {
+        id: String,
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        parent_tool_use_id: Option<String>,
+    },
+
+    /// Subagent (Task tool) started
+    SubagentStart {
+        id: String,
+        agent_type: String,
+        description: String,
+        prompt: String,
+    },
+
+    /// Subagent progress - nested tool execution
+    SubagentProgress {
+        subagent_id: String,
+        tool_name: String,
+        tool_detail: String,
+        tool_count: u32,
+    },
+
+    /// Subagent completed
+    SubagentEnd {
+        id: String,
+        agent_type: String,
+        duration: u64,
+        tool_count: u32,
+        result: String,
+    },
 
     /// Streaming tool input JSON
     ToolInput { json: String },
@@ -212,5 +242,82 @@ mod tests {
         assert!(json.contains("\"type\":\"completed\""));
         assert!(json.contains("\"exit_code\":0"));
         assert!(json.contains("\"success\":true"));
+    }
+
+    // ==================== Subagent event serialization ====================
+
+    #[test]
+    fn subagent_start_serializes() {
+        let event = ClaudeEvent::SubagentStart {
+            id: "tool_123".to_string(),
+            agent_type: "Explore".to_string(),
+            description: "Find files".to_string(),
+            prompt: "Search codebase".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert!(json.contains("\"type\":\"subagent_start\""));
+        assert!(json.contains("\"id\":\"tool_123\""));
+        assert!(json.contains("\"agent_type\":\"Explore\""));
+    }
+
+    #[test]
+    fn subagent_progress_serializes() {
+        let event = ClaudeEvent::SubagentProgress {
+            subagent_id: "tool_123".to_string(),
+            tool_name: "Glob".to_string(),
+            tool_detail: "**/*.ts".to_string(),
+            tool_count: 5,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert!(json.contains("\"type\":\"subagent_progress\""));
+        assert!(json.contains("\"subagent_id\":\"tool_123\""));
+        assert!(json.contains("\"tool_name\":\"Glob\""));
+        assert!(json.contains("\"tool_detail\":\"**/*.ts\""));
+        assert!(json.contains("\"tool_count\":5"));
+    }
+
+    #[test]
+    fn subagent_end_serializes() {
+        let event = ClaudeEvent::SubagentEnd {
+            id: "tool_123".to_string(),
+            agent_type: "Explore".to_string(),
+            duration: 5000,
+            tool_count: 7,
+            result: "Found files".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert!(json.contains("\"type\":\"subagent_end\""));
+        assert!(json.contains("\"duration\":5000"));
+        assert!(json.contains("\"tool_count\":7"));
+    }
+
+    #[test]
+    fn tool_start_with_parent_serializes() {
+        let event = ClaudeEvent::ToolStart {
+            id: "tool_456".to_string(),
+            name: "Glob".to_string(),
+            parent_tool_use_id: Some("tool_123".to_string()),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert!(json.contains("\"type\":\"tool_start\""));
+        assert!(json.contains("\"parent_tool_use_id\":\"tool_123\""));
+    }
+
+    #[test]
+    fn tool_start_without_parent_skips_field() {
+        let event = ClaudeEvent::ToolStart {
+            id: "tool_456".to_string(),
+            name: "Glob".to_string(),
+            parent_tool_use_id: None,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+
+        assert!(json.contains("\"type\":\"tool_start\""));
+        // None field should be omitted
+        assert!(!json.contains("parent_tool_use_id"));
     }
 }

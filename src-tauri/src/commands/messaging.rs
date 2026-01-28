@@ -192,7 +192,7 @@ pub async fn send_message(
                 // Track pending tools count for parallel tool support
                 // Increment on ToolStart, decrement on ToolResult (only with tool_use_id to avoid duplicates)
                 // Task tools (subagents) are tracked separately for longer timeouts
-                if let ClaudeEvent::ToolStart { ref id, ref name } = event {
+                if let ClaudeEvent::ToolStart { ref id, ref name, .. } = event {
                     if name == "Task" {
                         pending_subagent_count += 1;
                         subagent_tool_ids.insert(id.clone());

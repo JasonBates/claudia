@@ -49,6 +49,27 @@ export interface Question {
 // ============================================================================
 
 /**
+ * Nested tool execution within a subagent.
+ */
+export interface SubagentNestedTool {
+  name: string;
+  input?: string;  // Short preview of input (e.g., file path, search pattern)
+}
+
+/**
+ * Subagent state for Task tools.
+ */
+export interface SubagentInfo {
+  agentType: string;           // "Explore", "Plan", "deep-research", etc.
+  description: string;         // Short description from Task input
+  status: "starting" | "running" | "complete" | "error";
+  startTime: number;           // Unix timestamp
+  duration?: number;           // Calculated on completion (ms)
+  nestedTools: SubagentNestedTool[];  // Tools executed within (if streamed)
+  toolCount?: number;          // Total tool count from result (nested tools aren't always streamed)
+}
+
+/**
  * A tool use within a message.
  */
 export interface ToolUse {
@@ -58,6 +79,7 @@ export interface ToolUse {
   result?: string;
   isLoading?: boolean;
   autoExpanded?: boolean;  // Forces expanded state (survives component recreation)
+  subagent?: SubagentInfo; // Subagent state (only for Task tools)
 }
 
 /**
@@ -103,6 +125,72 @@ export interface PermissionRequestEvent extends BaseClaudeEvent {
   tool_name: string;
   tool_input?: unknown;
   description: string;
+}
+
+// ============================================================================
+// Subagent Types (for Task tool tracking)
+// ============================================================================
+
+/**
+ * A nested tool execution within a subagent.
+ * Tracks individual tool calls made by the subagent.
+ */
+export interface NestedToolState {
+  id: string;
+  name: string;
+  status: "pending" | "running" | "complete" | "error";
+  startTime: number;
+  duration?: number;
+}
+
+/**
+ * State of an active or completed subagent (Task tool).
+ * Used by: SubagentPanel, useSubagentPanel
+ */
+export interface SubagentState {
+  id: string;                    // tool_use_id of the Task call
+  agentType: string;             // "Explore", "Plan", "deep-research", etc.
+  description: string;           // Short description from Task input
+  prompt: string;                // Full prompt (truncated for display)
+  status: "starting" | "running" | "complete" | "error";
+  startTime: number;             // Unix timestamp
+  duration?: number;             // Calculated on completion (ms)
+  parentToolId: string | null;   // For nested subagents
+  nestedTools: NestedToolState[];// Tools executed within this subagent
+  result?: string;               // Final output (truncated)
+}
+
+/**
+ * Subagent start event from backend.
+ */
+export interface SubagentStartEvent extends BaseClaudeEvent {
+  type: "subagent_start";
+  id: string;
+  agent_type: string;
+  description: string;
+  prompt: string;
+}
+
+/**
+ * Subagent progress event from backend.
+ */
+export interface SubagentProgressEvent extends BaseClaudeEvent {
+  type: "subagent_progress";
+  subagent_id: string;
+  tool_name: string;
+  tool_count: number;
+}
+
+/**
+ * Subagent end event from backend.
+ */
+export interface SubagentEndEvent extends BaseClaudeEvent {
+  type: "subagent_end";
+  id: string;
+  agent_type: string;
+  duration: number;
+  tool_count: number;
+  result: string;
 }
 
 // ============================================================================

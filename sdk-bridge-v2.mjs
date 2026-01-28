@@ -96,6 +96,12 @@ async function main() {
   let pendingMessages = [];  // Queue messages during respawn
   let isWarmingUp = false;   // Suppress events during warmup
   let currentToolId = null;  // Track current tool ID for tool_result matching
+  let currentToolName = null; // Track current tool name for subagent detection
+
+  // Subagent tracking state
+  let activeSubagents = new Map();  // tool_use_id -> subagentInfo
+  // No stack - use Map ordering for oldest-first attribution
+  let taskInputBuffer = "";         // Accumulate JSON for Task tool input parsing
 
   // Build Claude args - optionally resume a session
   function buildClaudeArgs(resumeSessionId = null) {
@@ -139,11 +145,65 @@ async function main() {
     switch (event.type) {
       case "content_block_start":
         if (event.content_block?.type === "tool_use") {
-          currentToolId = event.content_block.id;  // Track for tool_result matching
-          sendEvent("tool_start", {
-            id: event.content_block.id,
-            name: event.content_block.name
-          });
+          const toolId = event.content_block.id;
+          const toolName = event.content_block.name;
+          currentToolId = toolId;  // Track for tool_result matching
+          currentToolName = toolName;  // Track for subagent detection
+
+          // Detect Task (subagent) invocation
+          if (toolName === "Task") {
+            taskInputBuffer = "";  // Reset buffer for new Task
+            activeSubagents.set(toolId, {
+              id: toolId,
+              startTime: Date.now(),
+              nestedToolCount: 0,
+              status: "starting",
+              agentType: null,
+              description: null,
+              prompt: null
+            });
+            debugLog("SUBAGENT_DETECTED", { toolId, activeCount: activeSubagents.size });
+            sendEvent("tool_start", {
+              id: toolId,
+              name: toolName,
+              parent_tool_use_id: null
+            });
+          } else {
+            // Non-Task tool - check if it's running inside a subagent context
+            // Find the OLDEST active subagent in "running" status (input fully received)
+            let parentSubagentId = null;
+            let oldestStartTime = Infinity;
+            for (const [id, info] of activeSubagents) {
+              if (info.status === "running" && info.startTime < oldestStartTime) {
+                oldestStartTime = info.startTime;
+                parentSubagentId = id;
+              }
+            }
+
+            if (parentSubagentId) {
+              // Track nested tool within subagent
+              const subagent = activeSubagents.get(parentSubagentId);
+              subagent.nestedToolCount++;
+              subagent.currentNestedToolId = toolId;  // Track for input capture
+              sendEvent("subagent_progress", {
+                subagentId: parentSubagentId,
+                toolName: toolName,
+                toolId: toolId,
+                toolCount: subagent.nestedToolCount
+              });
+              debugLog("SUBAGENT_PROGRESS", {
+                subagentId: parentSubagentId,
+                toolName,
+                toolCount: subagent.nestedToolCount
+              });
+            }
+
+            sendEvent("tool_start", {
+              id: toolId,
+              name: toolName,
+              parent_tool_use_id: parentSubagentId
+            });
+          }
         }
         // Handle thinking block start
         if (event.content_block?.type === "thinking") {
@@ -159,6 +219,38 @@ async function main() {
         if (event.delta?.type === "input_json_delta") {
           // Tool input streaming
           sendEvent("tool_input", { json: event.delta.partial_json });
+
+          // Accumulate JSON for Task tools to extract subagent details
+          if (currentToolName === "Task" && currentToolId) {
+            const subagent = activeSubagents.get(currentToolId);
+            if (subagent && subagent.status === "starting") {
+              taskInputBuffer += event.delta.partial_json;
+              // Try to parse accumulated JSON to extract subagent details
+              try {
+                const parsed = JSON.parse(taskInputBuffer);
+                if (parsed.subagent_type) {
+                  subagent.agentType = parsed.subagent_type;
+                  subagent.description = parsed.description || "";
+                  subagent.prompt = parsed.prompt || "";
+                  subagent.status = "running";
+
+                  sendEvent("subagent_start", {
+                    id: currentToolId,
+                    agentType: parsed.subagent_type,
+                    description: parsed.description || "",
+                    prompt: (parsed.prompt || "").slice(0, 200)
+                  });
+                  debugLog("SUBAGENT_START", {
+                    id: currentToolId,
+                    agentType: parsed.subagent_type,
+                    description: parsed.description
+                  });
+                }
+              } catch {
+                // JSON incomplete, keep accumulating
+              }
+            }
+          }
         }
         // Handle thinking delta
         if (event.delta?.type === "thinking_delta") {
@@ -299,7 +391,66 @@ async function main() {
             break;
 
           case "assistant":
-            // Full message - we already streamed chunks, skip
+            // Check for nested tool calls from subagents
+            // Claude CLI provides parent_tool_use_id in the message to identify which subagent
+            // spawned this tool call - use it for correct attribution
+            if (msg.message?.content && Array.isArray(msg.message.content)) {
+              // Use parent_tool_use_id from message for correct subagent attribution
+              const parentSubagentId = msg.parent_tool_use_id;
+
+              for (const block of msg.message.content) {
+                if (block.type === "tool_use") {
+                  // Skip Task tools - they create new subagents, not nested tool calls
+                  if (block.name === "Task") {
+                    debugLog("SKIPPING_TASK_AS_NESTED", { toolId: block.id });
+                    continue;
+                  }
+
+                  // Only track as nested if we have a valid parent subagent
+                  if (parentSubagentId && activeSubagents.has(parentSubagentId)) {
+                    const subagent = activeSubagents.get(parentSubagentId);
+                    subagent.nestedToolCount++;
+
+                    // Extract a short description from tool input
+                    let toolDetail = "";
+                    const input = block.input || {};
+                    if (block.name === "Bash" && input.description) {
+                      toolDetail = input.description;
+                    } else if (block.name === "Bash" && input.command) {
+                      toolDetail = input.command.slice(0, 50) + (input.command.length > 50 ? "..." : "");
+                    } else if (block.name === "Glob" && input.pattern) {
+                      toolDetail = input.pattern;
+                    } else if (block.name === "Grep" && input.pattern) {
+                      toolDetail = `"${input.pattern}"`;
+                    } else if (block.name === "Read" && input.file_path) {
+                      toolDetail = input.file_path.split("/").pop(); // Just filename
+                    } else if (block.name === "Edit" && input.file_path) {
+                      toolDetail = input.file_path.split("/").pop();
+                    } else if (block.name === "Write" && input.file_path) {
+                      toolDetail = input.file_path.split("/").pop();
+                    } else if (block.name === "WebFetch" && input.url) {
+                      toolDetail = new URL(input.url).hostname;
+                    } else if (block.name === "WebSearch" && input.query) {
+                      toolDetail = `"${input.query.slice(0, 40)}"`;
+                    }
+
+                    sendEvent("subagent_progress", {
+                      subagentId: parentSubagentId,
+                      toolName: block.name,
+                      toolId: block.id,
+                      toolDetail: toolDetail,
+                      toolCount: subagent.nestedToolCount
+                    });
+                    debugLog("SUBAGENT_PROGRESS_FROM_ASSISTANT", {
+                      subagentId: parentSubagentId,
+                      toolName: block.name,
+                      toolDetail: toolDetail,
+                      toolCount: subagent.nestedToolCount
+                    });
+                  }
+                }
+              }
+            }
             break;
 
           case "user":
@@ -310,6 +461,31 @@ async function main() {
                 debugLog("USER_CONTENT_ITEM", { type: item.type, hasContent: !!item.content });
                 if (item.type === "tool_result") {
                   debugLog("TOOL_RESULT_FROM_USER", { toolUseId: item.tool_use_id, contentLength: item.content?.length });
+
+                  // Check if this completes a subagent (Task tool)
+                  const completedToolId = item.tool_use_id;
+                  if (completedToolId && activeSubagents.has(completedToolId)) {
+                    const subagent = activeSubagents.get(completedToolId);
+                    subagent.status = "complete";
+                    const duration = Date.now() - subagent.startTime;
+
+                    sendEvent("subagent_end", {
+                      id: completedToolId,
+                      agentType: subagent.agentType || "unknown",
+                      duration: duration,
+                      toolCount: subagent.nestedToolCount,
+                      result: (typeof item.content === 'string' ? item.content : JSON.stringify(item.content)).slice(0, 500)
+                    });
+                    debugLog("SUBAGENT_END_FROM_USER", {
+                      id: completedToolId,
+                      agentType: subagent.agentType,
+                      duration,
+                      toolCount: subagent.nestedToolCount
+                    });
+
+                    activeSubagents.delete(completedToolId);
+                  }
+
                   sendEvent("tool_result", {
                     tool_use_id: item.tool_use_id,
                     stdout: typeof item.content === 'string' ? item.content : JSON.stringify(item.content),
@@ -331,14 +507,42 @@ async function main() {
 
           case "tool_result":
             // Standalone tool result - tool completed successfully
+            // Use tool_use_id from message if available (more reliable for parallel tools)
+            const completedToolId = msg.tool_use_id || currentToolId;
+            debugLog("TOOL_RESULT_STANDALONE", { msgToolUseId: msg.tool_use_id, currentToolId, completedToolId });
+
+            // Check if this completes a subagent (Task tool)
+            if (activeSubagents.has(completedToolId)) {
+              const subagent = activeSubagents.get(completedToolId);
+              subagent.status = "complete";
+              const duration = Date.now() - subagent.startTime;
+
+              sendEvent("subagent_end", {
+                id: completedToolId,
+                agentType: subagent.agentType || "unknown",
+                duration: duration,
+                toolCount: subagent.nestedToolCount,
+                result: (msg.content || msg.output || "").slice(0, 500)
+              });
+              debugLog("SUBAGENT_END", {
+                id: completedToolId,
+                agentType: subagent.agentType,
+                duration,
+                toolCount: subagent.nestedToolCount
+              });
+
+              activeSubagents.delete(completedToolId);
+            }
+
             // Include currentToolId so frontend can match result to tool
             sendEvent("tool_result", {
-              tool_use_id: currentToolId,
+              tool_use_id: completedToolId,
               stdout: msg.content || msg.output || "",
               stderr: msg.error || "",
               isError: !!msg.is_error
             });
             currentToolId = null;  // Clear after use
+            currentToolName = null;  // Clear tool name
             break;
 
           case "control_request":

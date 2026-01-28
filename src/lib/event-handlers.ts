@@ -13,7 +13,7 @@
 
 import type { Setter } from "solid-js";
 import type { ClaudeEvent } from "./tauri";
-import type { Todo, Question, Message, ToolUse, ContentBlock } from "./types";
+import type { Todo, Question, Message, ToolUse, ContentBlock, SubagentInfo } from "./types";
 import { parseToolInput } from "./json-streamer";
 
 /**
@@ -324,6 +324,9 @@ export function handleToolStartEvent(
 
 /**
  * Handle tool input events (accumulate JSON chunks)
+ *
+ * We incrementally update the tool's input so the UI can show
+ * useful info (like the command being run) while streaming.
  */
 export function handleToolInputEvent(
   event: ClaudeEvent,
@@ -354,6 +357,33 @@ export function handleToolInputEvent(
     }
   } else {
     deps.toolInputRef.current += json;
+
+    // Incrementally update tool input so UI shows command/description while streaming
+    // parseToolInput handles partial JSON gracefully
+    const parsedInput = parseToolInput(deps.toolInputRef.current);
+
+    deps.setCurrentToolUses((prev) => {
+      if (prev.length === 0) return prev;
+      const updated = [...prev];
+      const lastTool = updated[updated.length - 1];
+      updated[updated.length - 1] = { ...lastTool, input: parsedInput };
+      return updated;
+    });
+
+    deps.setStreamingBlocks((prev) => {
+      const blocks = [...prev];
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        if (blocks[i].type === "tool_use") {
+          const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
+          blocks[i] = {
+            type: "tool_use",
+            tool: { ...toolBlock.tool, input: parsedInput },
+          };
+          break;
+        }
+      }
+      return blocks;
+    });
   }
 }
 
@@ -613,6 +643,156 @@ export function handleErrorEvent(
 }
 
 /**
+ * Handle subagent start events (Task tool started)
+ * Attaches subagent info to the matching Task tool_use
+ */
+export function handleSubagentStartEvent(
+  event: ClaudeEvent,
+  deps: EventHandlerDeps
+): void {
+  const taskId = event.id || "";
+  console.log("[SUBAGENT_START] Looking for Task with id:", taskId);
+
+  const subagentInfo: SubagentInfo = {
+    agentType: event.agent_type || "unknown",
+    description: event.description || "",
+    status: "running" as const,
+    startTime: Date.now(),
+    nestedTools: [],
+  };
+
+  // Update currentToolUses
+  deps.setCurrentToolUses((prev) => {
+    console.log("[SUBAGENT_START] currentToolUses:", prev.map(t => ({ id: t.id, name: t.name })));
+    const updated = [...prev];
+    const taskIndex = updated.findIndex((t) => t.id === taskId);
+    console.log("[SUBAGENT_START] Found at index:", taskIndex);
+    if (taskIndex !== -1) {
+      updated[taskIndex] = { ...updated[taskIndex], subagent: subagentInfo };
+      console.log("[SUBAGENT_START] Updated tool with subagent info");
+    }
+    return updated;
+  });
+
+  // Update streamingBlocks
+  deps.setStreamingBlocks((prev) => {
+    const blocks = [...prev];
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].type === "tool_use") {
+        const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
+        if (toolBlock.tool.id === taskId) {
+          blocks[i] = {
+            type: "tool_use",
+            tool: { ...toolBlock.tool, subagent: subagentInfo },
+          };
+          break;
+        }
+      }
+    }
+    return blocks;
+  });
+}
+
+/**
+ * Handle subagent progress events (nested tool executing)
+ * Updates the nested tools list in the matching Task tool_use
+ */
+export function handleSubagentProgressEvent(
+  event: ClaudeEvent,
+  deps: EventHandlerDeps
+): void {
+  const taskId = event.subagent_id || "";
+  const newTool = {
+    name: event.tool_name || "unknown",
+    input: event.tool_detail || undefined,
+  };
+
+  // Update currentToolUses
+  deps.setCurrentToolUses((prev) => {
+    const updated = [...prev];
+    const taskIndex = updated.findIndex((t) => t.id === taskId);
+    if (taskIndex !== -1 && updated[taskIndex].subagent) {
+      const subagent = { ...updated[taskIndex].subagent! };
+      subagent.nestedTools = [...subagent.nestedTools, newTool];
+      updated[taskIndex] = { ...updated[taskIndex], subagent };
+    }
+    return updated;
+  });
+
+  // Update streamingBlocks
+  deps.setStreamingBlocks((prev) => {
+    const blocks = [...prev];
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].type === "tool_use") {
+        const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
+        if (toolBlock.tool.id === taskId && toolBlock.tool.subagent) {
+          const subagent = { ...toolBlock.tool.subagent };
+          subagent.nestedTools = [...subagent.nestedTools, newTool];
+          blocks[i] = {
+            type: "tool_use",
+            tool: { ...toolBlock.tool, subagent },
+          };
+          break;
+        }
+      }
+    }
+    return blocks;
+  });
+}
+
+/**
+ * Handle subagent end events (Task tool completed)
+ * Marks the subagent as complete in the matching Task tool_use
+ */
+export function handleSubagentEndEvent(
+  event: ClaudeEvent,
+  deps: EventHandlerDeps
+): void {
+  const taskId = event.id || "";
+  const duration = event.duration || 0;
+  const toolCount = event.tool_count || 0;
+
+  // Update currentToolUses - preserve existing nestedTools from progress events
+  deps.setCurrentToolUses((prev) => {
+    const updated = [...prev];
+    const taskIndex = updated.findIndex((t) => t.id === taskId);
+    if (taskIndex !== -1 && updated[taskIndex].subagent) {
+      const subagent = { ...updated[taskIndex].subagent! };
+      subagent.status = "complete";
+      subagent.duration = duration;
+      // Keep existing nestedTools if we have them, otherwise store the count
+      // (nested tools from subagents aren't streamed, so we often just have the count)
+      subagent.toolCount = toolCount;
+      updated[taskIndex] = { ...updated[taskIndex], subagent };
+    }
+    return updated;
+  });
+
+  // Update streamingBlocks - preserve existing nestedTools from progress events
+  deps.setStreamingBlocks((prev) => {
+    const blocks = [...prev];
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].type === "tool_use") {
+        const toolBlock = blocks[i] as { type: "tool_use"; tool: ToolUse };
+        if (toolBlock.tool.id === taskId && toolBlock.tool.subagent) {
+          const subagent = { ...toolBlock.tool.subagent };
+          subagent.status = "complete";
+          subagent.duration = duration;
+          // Keep existing nestedTools if we have them, otherwise store the count
+          subagent.toolCount = toolCount;
+          blocks[i] = {
+            type: "tool_use",
+            tool: { ...toolBlock.tool, subagent },
+          };
+          break;
+        }
+      }
+    }
+    return blocks;
+  });
+}
+
+/**
  * Create the main event handler function.
  *
  * This factory creates a handler that dispatches events to the
@@ -672,6 +852,15 @@ export function createEventHandler(deps: EventHandlerDeps) {
         break;
       case "error":
         handleErrorEvent(event, deps);
+        break;
+      case "subagent_start":
+        handleSubagentStartEvent(event, deps);
+        break;
+      case "subagent_progress":
+        handleSubagentProgressEvent(event, deps);
+        break;
+      case "subagent_end":
+        handleSubagentEndEvent(event, deps);
         break;
     }
   };

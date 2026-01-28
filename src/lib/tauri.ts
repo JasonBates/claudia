@@ -21,7 +21,10 @@ export interface ClaudeEvent {
     | "result"
     | "done"
     | "closed"
-    | "error";
+    | "error"
+    | "subagent_start"
+    | "subagent_progress"
+    | "subagent_end";
   // Status/Ready
   // snake_case from Rust/Tauri backend, camelCase from JS SDK bridge
   message?: string;
@@ -80,6 +83,14 @@ export interface ClaudeEvent {
   rawInputTokens?: number;
   // Closed
   code?: number;
+  // SubagentStart
+  agent_type?: string;
+  // SubagentProgress
+  subagent_id?: string;
+  tool_detail?: string;
+  tool_count?: number;
+  // SubagentEnd (uses existing duration, result fields)
+  result?: string;
 }
 
 export interface Config {

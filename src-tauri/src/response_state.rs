@@ -207,6 +207,7 @@ mod tests {
         let event = ClaudeEvent::ToolStart {
             id: "123".to_string(),
             name: "Bash".to_string(),
+            parent_tool_use_id: None,
         };
         assert_eq!(state.transition(&event), ResponseState::Streaming);
     }
