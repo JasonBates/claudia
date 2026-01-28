@@ -86,7 +86,7 @@ const ToolResult: Component<ToolResultProps> = (props) => {
         </Show>
         <Show when={!props.isLoading && (hasInput() || props.result)}>
           <button
-            class="tool-toggle-btn"
+            class="tool-toggle-btn refocus-after"
             onClick={toggleExpanded}
             title={isExpanded() ? "Collapse" : "Expand"}
           >

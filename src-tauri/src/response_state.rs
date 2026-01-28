@@ -153,15 +153,15 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_pending_timeout_is_5s() {
+    fn test_tool_pending_timeout_is_10s() {
         let state = ResponseState::ToolPending;
-        assert_eq!(state.timeout(), Duration::from_secs(5));
+        assert_eq!(state.timeout(), Duration::from_secs(10));
     }
 
     #[test]
-    fn test_compacting_timeout_is_5s() {
+    fn test_compacting_timeout_is_10s() {
         let state = ResponseState::Compacting;
-        assert_eq!(state.timeout(), Duration::from_secs(5));
+        assert_eq!(state.timeout(), Duration::from_secs(10));
     }
 
     // ==================== Max idle tests ====================
@@ -179,9 +179,9 @@ mod tests {
     }
 
     #[test]
-    fn test_tool_pending_max_idle_is_24() {
+    fn test_tool_pending_max_idle_is_30() {
         let state = ResponseState::ToolPending;
-        assert_eq!(state.max_idle(), 24);
+        assert_eq!(state.max_idle(), 30);
     }
 
     #[test]

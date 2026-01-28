@@ -13,16 +13,21 @@ use crate::events::ClaudeEvent;
 // These constants control how long we wait for events in different phases.
 // The event loop uses adaptive timeouts to balance responsiveness with patience.
 
-/// Timeout when tools are executing or compaction is in progress (5 seconds)
+/// Timeout for subagents (Task tool) and compaction (10 seconds)
+const TIMEOUT_SUBAGENT_MS: u64 = 10000;
+/// Timeout for regular tool execution (5 seconds)
 const TIMEOUT_TOOL_EXEC_MS: u64 = 5000;
 /// Timeout when streaming content (2 seconds between chunks)
 const TIMEOUT_STREAMING_MS: u64 = 2000;
 /// Timeout when waiting for first content (500ms polling)
 const TIMEOUT_WAITING_MS: u64 = 500;
 
-/// Max idle count during compaction (~2.5 minutes at 5s intervals)
+/// Max idle count during compaction (~5 minutes at 10s intervals)
 const MAX_IDLE_COMPACTION: u32 = 30;
-/// Max idle count while tools pending (~2 minutes at 5s intervals)
+/// Max idle count for subagents (~5 minutes at 10s intervals)
+/// Task agents can take several minutes for codebase analysis
+const MAX_IDLE_SUBAGENT: u32 = 30;
+/// Max idle count for regular tools (~2 minutes at 5s intervals)
 const MAX_IDLE_TOOLS: u32 = 24;
 /// Max idle count while streaming (~6 seconds at 2s intervals)
 const MAX_IDLE_STREAMING: u32 = 3;
@@ -35,11 +40,19 @@ const MAX_IDLE_INITIAL: u32 = 60;
 ///
 /// # State Priority (highest to lowest)
 /// 1. Compacting - longest timeout, context compaction can take 60+ seconds
-/// 2. Tools pending - long timeout, tool execution varies widely
-/// 3. Got first content - short timeout, streaming should be continuous
-/// 4. Waiting for response - medium timeout, initial response can take time
-pub fn calculate_timeouts(compacting: bool, tools_pending: bool, got_first_content: bool) -> (u64, u32) {
-    let timeout_ms = if compacting || tools_pending {
+/// 2. Subagent pending - long timeout, Task agents can take several minutes
+/// 3. Tools pending - medium-long timeout, regular tool execution
+/// 4. Got first content - short timeout, streaming should be continuous
+/// 5. Waiting for response - medium timeout, initial response can take time
+pub fn calculate_timeouts(
+    compacting: bool,
+    subagent_pending: bool,
+    tools_pending: bool,
+    got_first_content: bool,
+) -> (u64, u32) {
+    let timeout_ms = if compacting || subagent_pending {
+        TIMEOUT_SUBAGENT_MS
+    } else if tools_pending {
         TIMEOUT_TOOL_EXEC_MS
     } else if got_first_content {
         TIMEOUT_STREAMING_MS
@@ -49,6 +62,8 @@ pub fn calculate_timeouts(compacting: bool, tools_pending: bool, got_first_conte
 
     let max_idle = if compacting {
         MAX_IDLE_COMPACTION
+    } else if subagent_pending {
+        MAX_IDLE_SUBAGENT
     } else if tools_pending {
         MAX_IDLE_TOOLS
     } else if got_first_content {
@@ -132,7 +147,9 @@ pub async fn send_message(
     let mut idle_count = 0;
     let mut event_count = 0;
     let mut got_first_content = false;
-    let mut pending_tool_count: usize = 0; // Count of tools awaiting results (for parallel tool support)
+    let mut pending_tool_count: usize = 0; // Count of regular tools awaiting results
+    let mut pending_subagent_count: usize = 0; // Count of Task (subagent) tools - these get longer timeouts
+    let mut subagent_tool_ids: std::collections::HashSet<String> = std::collections::HashSet::new(); // Track which tool IDs are subagents
     let mut compacting = false; // Track if compaction is in progress (can take 60+ seconds)
 
     cmd_debug_log("LOOP", "Starting event receive loop");
@@ -149,8 +166,9 @@ pub async fn send_message(
 
         // Calculate adaptive timeout based on current state
         let tools_pending = pending_tool_count > 0;
+        let subagent_pending = pending_subagent_count > 0;
         let (current_timeout, current_max_idle) =
-            calculate_timeouts(compacting, tools_pending, got_first_content);
+            calculate_timeouts(compacting, subagent_pending, tools_pending, got_first_content);
 
         // Try to receive with timeout
         match timeout(
@@ -173,9 +191,22 @@ pub async fn send_message(
 
                 // Track pending tools count for parallel tool support
                 // Increment on ToolStart, decrement on ToolResult (only with tool_use_id to avoid duplicates)
-                if matches!(event, ClaudeEvent::ToolStart { .. }) {
-                    pending_tool_count += 1;
-                    cmd_debug_log("TOOL", &format!("Tool started - pending count: {}", pending_tool_count));
+                // Task tools (subagents) are tracked separately for longer timeouts
+                if let ClaudeEvent::ToolStart { ref id, ref name } = event {
+                    if name == "Task" {
+                        pending_subagent_count += 1;
+                        subagent_tool_ids.insert(id.clone());
+                        cmd_debug_log(
+                            "TOOL",
+                            &format!("Subagent started (id={}) - pending: {} subagents, {} tools", id, pending_subagent_count, pending_tool_count),
+                        );
+                    } else {
+                        pending_tool_count += 1;
+                        cmd_debug_log(
+                            "TOOL",
+                            &format!("Tool '{}' started (id={}) - pending: {} subagents, {} tools", name, id, pending_subagent_count, pending_tool_count),
+                        );
+                    }
                 }
 
                 // Tool result decrements count (only if it has a tool_use_id - duplicates don't have one)
@@ -194,16 +225,36 @@ pub async fn send_message(
                         ),
                     );
                     // Only decrement for results with tool_use_id (not duplicates)
-                    if tool_use_id.is_some() && pending_tool_count > 0 {
-                        pending_tool_count -= 1;
-                        cmd_debug_log("TOOL", &format!("Tool completed - pending count: {}", pending_tool_count));
+                    if let Some(ref id) = tool_use_id {
+                        if subagent_tool_ids.remove(id) {
+                            // This was a subagent
+                            if pending_subagent_count > 0 {
+                                pending_subagent_count -= 1;
+                            }
+                            cmd_debug_log(
+                                "TOOL",
+                                &format!("Subagent completed (id={}) - pending: {} subagents, {} tools", id, pending_subagent_count, pending_tool_count),
+                            );
+                        } else if pending_tool_count > 0 {
+                            // Regular tool
+                            pending_tool_count -= 1;
+                            cmd_debug_log(
+                                "TOOL",
+                                &format!("Tool completed (id={}) - pending: {} subagents, {} tools", id, pending_subagent_count, pending_tool_count),
+                            );
+                        }
                     }
                 }
 
                 // Text after tools means all tools are done
-                if matches!(event, ClaudeEvent::TextDelta { .. }) && pending_tool_count > 0 {
-                    cmd_debug_log("TOOL", &format!("All tools completed (via text) - was pending: {}", pending_tool_count));
+                if matches!(event, ClaudeEvent::TextDelta { .. }) && (pending_tool_count > 0 || pending_subagent_count > 0) {
+                    cmd_debug_log(
+                        "TOOL",
+                        &format!("All tools completed (via text) - was pending: {} subagents, {} tools", pending_subagent_count, pending_tool_count),
+                    );
                     pending_tool_count = 0;
+                    pending_subagent_count = 0;
+                    subagent_tool_ids.clear();
                 }
 
                 // Track compaction state (can take 60+ seconds)
@@ -285,8 +336,8 @@ pub async fn send_message(
                 cmd_debug_log(
                     "TIMEOUT",
                     &format!(
-                        "Idle count: {}/{} (got_content: {}, pending_tools: {})",
-                        idle_count, current_max_idle, got_first_content, pending_tool_count
+                        "Idle count: {}/{} (got_content: {}, subagents: {}, tools: {})",
+                        idle_count, current_max_idle, got_first_content, pending_subagent_count, pending_tool_count
                     ),
                 );
                 if idle_count >= current_max_idle {
@@ -320,23 +371,32 @@ mod tests {
     #[test]
     fn timeout_compaction_takes_highest_priority() {
         // Compaction should use longest timeout even when other flags are set
-        let (timeout, max_idle) = calculate_timeouts(true, true, true);
-        assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
+        // Args: compacting, subagent_pending, tools_pending, got_first_content
+        let (timeout, max_idle) = calculate_timeouts(true, true, true, true);
+        assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
         assert_eq!(max_idle, MAX_IDLE_COMPACTION);
     }
 
     #[test]
-    fn timeout_tools_pending_second_priority() {
-        // Tools pending should use long timeout when not compacting
-        let (timeout, max_idle) = calculate_timeouts(false, true, true);
+    fn timeout_subagent_takes_second_priority() {
+        // Subagent pending should use long timeout when not compacting
+        let (timeout, max_idle) = calculate_timeouts(false, true, true, true);
+        assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
+        assert_eq!(max_idle, MAX_IDLE_SUBAGENT);
+    }
+
+    #[test]
+    fn timeout_tools_pending_third_priority() {
+        // Regular tools use medium-long timeout
+        let (timeout, max_idle) = calculate_timeouts(false, false, true, true);
         assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
         assert_eq!(max_idle, MAX_IDLE_TOOLS);
     }
 
     #[test]
-    fn timeout_streaming_third_priority() {
+    fn timeout_streaming_fourth_priority() {
         // Streaming mode when no tools or compaction
-        let (timeout, max_idle) = calculate_timeouts(false, false, true);
+        let (timeout, max_idle) = calculate_timeouts(false, false, false, true);
         assert_eq!(timeout, TIMEOUT_STREAMING_MS);
         assert_eq!(max_idle, MAX_IDLE_STREAMING);
     }
@@ -344,7 +404,7 @@ mod tests {
     #[test]
     fn timeout_waiting_lowest_priority() {
         // Waiting for first content - default state
-        let (timeout, max_idle) = calculate_timeouts(false, false, false);
+        let (timeout, max_idle) = calculate_timeouts(false, false, false, false);
         assert_eq!(timeout, TIMEOUT_WAITING_MS);
         assert_eq!(max_idle, MAX_IDLE_INITIAL);
     }
@@ -356,15 +416,23 @@ mod tests {
     #[test]
     fn timeout_compaction_without_content() {
         // Compaction can happen before any content received
-        let (timeout, max_idle) = calculate_timeouts(true, false, false);
-        assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
+        let (timeout, max_idle) = calculate_timeouts(true, false, false, false);
+        assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
         assert_eq!(max_idle, MAX_IDLE_COMPACTION);
+    }
+
+    #[test]
+    fn timeout_subagent_without_content() {
+        // Subagent can start before text content
+        let (timeout, max_idle) = calculate_timeouts(false, true, false, false);
+        assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
+        assert_eq!(max_idle, MAX_IDLE_SUBAGENT);
     }
 
     #[test]
     fn timeout_tools_without_content() {
         // Tools can start before text content (e.g., planning mode)
-        let (timeout, max_idle) = calculate_timeouts(false, true, false);
+        let (timeout, max_idle) = calculate_timeouts(false, false, true, false);
         assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
         assert_eq!(max_idle, MAX_IDLE_TOOLS);
     }
@@ -376,9 +444,11 @@ mod tests {
     #[test]
     fn timeout_values_are_reasonable() {
         // Sanity checks on the actual timeout values
+        assert!(TIMEOUT_SUBAGENT_MS >= 5000, "Subagent execution needs >= 5s timeout");
         assert!(TIMEOUT_TOOL_EXEC_MS >= 5000, "Tool execution needs >= 5s timeout");
         assert!(TIMEOUT_STREAMING_MS >= 1000, "Streaming needs >= 1s timeout");
         assert!(TIMEOUT_WAITING_MS >= 100, "Waiting needs >= 100ms polling");
+        assert!(TIMEOUT_SUBAGENT_MS >= TIMEOUT_TOOL_EXEC_MS, "Subagent timeout >= tool timeout");
         assert!(TIMEOUT_TOOL_EXEC_MS > TIMEOUT_STREAMING_MS, "Tool timeout > streaming");
         assert!(TIMEOUT_STREAMING_MS > TIMEOUT_WAITING_MS, "Streaming timeout > waiting");
     }
@@ -386,9 +456,13 @@ mod tests {
     #[test]
     fn max_idle_provides_sufficient_wait_time() {
         // Verify total wait times are sufficient for each phase
-        // Compaction: 30 * 5000ms = 150 seconds (~2.5 minutes)
-        let compaction_wait = MAX_IDLE_COMPACTION as u64 * TIMEOUT_TOOL_EXEC_MS;
+        // Compaction: 30 * 10000ms = 300 seconds (5 minutes)
+        let compaction_wait = MAX_IDLE_COMPACTION as u64 * TIMEOUT_SUBAGENT_MS;
         assert!(compaction_wait >= 120_000, "Compaction should wait >= 2 minutes");
+
+        // Subagent: 30 * 10000ms = 300 seconds (5 minutes)
+        let subagent_wait = MAX_IDLE_SUBAGENT as u64 * TIMEOUT_SUBAGENT_MS;
+        assert!(subagent_wait >= 120_000, "Subagent should wait >= 2 minutes");
 
         // Tools: 24 * 5000ms = 120 seconds (2 minutes)
         let tools_wait = MAX_IDLE_TOOLS as u64 * TIMEOUT_TOOL_EXEC_MS;
@@ -409,7 +483,7 @@ mod tests {
 
     #[test]
     fn timeout_all_flags_false() {
-        let (timeout, max_idle) = calculate_timeouts(false, false, false);
+        let (timeout, max_idle) = calculate_timeouts(false, false, false, false);
         assert_eq!(timeout, 500);
         assert_eq!(max_idle, 60);
     }
@@ -417,8 +491,8 @@ mod tests {
     #[test]
     fn timeout_all_flags_true() {
         // Compaction takes priority over everything
-        let (timeout, max_idle) = calculate_timeouts(true, true, true);
-        assert_eq!(timeout, 5000);
+        let (timeout, max_idle) = calculate_timeouts(true, true, true, true);
+        assert_eq!(timeout, 10000);
         assert_eq!(max_idle, 30);
     }
 }

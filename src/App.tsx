@@ -376,11 +376,37 @@ function App() {
   // Lifecycle
   // ============================================================================
 
+  // Refocus input after clicks complete (but not for interactive elements)
+  const handleAppClick = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+
+    // Always allow refocus for buttons marked with refocus-after class (toggle buttons)
+    const refocusButton = target.closest('.refocus-after');
+    if (refocusButton) {
+      setTimeout(() => {
+        commandInputRef?.focus();
+      }, 10);
+      return;
+    }
+
+    // Don't refocus if clicking on interactive elements that need focus
+    const interactive = target.closest('button, input, textarea, select, [role="button"], a, .question-panel, .plan-approval-modal, .permission-dialog');
+    if (interactive) return;
+
+    // Small delay to let click complete, then refocus
+    setTimeout(() => {
+      commandInputRef?.focus();
+    }, 10);
+  };
+
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
 
     // Add keyboard listener for local commands
     window.addEventListener("keydown", handleKeyDown, true);
+
+    // Add click listener to refocus input
+    window.addEventListener("click", handleAppClick, true);
 
     try {
       await session.startSession();
@@ -393,6 +419,7 @@ function App() {
   onCleanup(() => {
     permissions.stopPolling();
     window.removeEventListener("keydown", handleKeyDown, true);
+    window.removeEventListener("click", handleAppClick, true);
   });
 
   // ============================================================================
