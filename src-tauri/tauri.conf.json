@@ -16,7 +16,8 @@
         "width": 800,
         "height": 600,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "backgroundColor": "#002b36"
       }
     ],
     "security": {
