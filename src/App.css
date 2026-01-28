@@ -2271,7 +2271,7 @@ del {
   justify-content: center;  /* Center horizontally */
   gap: 6px;
   font-size: 14px;
-  z-index: 60;  /* Above drag region */
+  z-index: 1000;  /* Above drag region (which is z-index: 999) */
   cursor: pointer;
   opacity: 0.85;
   transition: opacity 0.15s;

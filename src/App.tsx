@@ -383,11 +383,32 @@ function App() {
   // ============================================================================
 
 
+  // Handler for maintaining focus on the message input
+  // Refocus the input after any click, unless clicking on an element that needs focus
+  const handleRefocusClick = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+
+    // Don't refocus if clicking on elements that need their own focus
+    // (other inputs, textareas, selects, or contenteditable elements)
+    const focusableSelector = 'input:not(.command-input), select, [contenteditable="true"]';
+    if (target.matches(focusableSelector) || target.closest(focusableSelector)) {
+      return;
+    }
+
+    // Refocus the command input after the click completes
+    requestAnimationFrame(() => {
+      commandInputRef?.focus();
+    });
+  };
+
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
 
     // Add keyboard listener for local commands
     window.addEventListener("keydown", handleKeyDown, true);
+
+    // Add click listener for refocusing input after UI interactions
+    document.addEventListener("click", handleRefocusClick, true);
 
     try {
       await session.startSession();
@@ -400,6 +421,7 @@ function App() {
   onCleanup(() => {
     permissions.stopPolling();
     window.removeEventListener("keydown", handleKeyDown, true);
+    document.removeEventListener("click", handleRefocusClick, true);
   });
 
   // ============================================================================
