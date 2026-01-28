@@ -458,20 +458,16 @@ function App() {
         {/* Drag region for window */}
         <div class="drag-region" data-tauri-drag-region="true"></div>
 
-        {/* Centered directory indicator */}
-        <div
-          class="dir-indicator"
-          classList={{ connected: session.sessionActive(), disconnected: !session.sessionActive() }}
-        >
-          <Show when={session.sessionActive()} fallback={<span class="status-icon">⊘</span>}>
-            <span class="status-icon">⚡</span>
-          </Show>
-          <Show when={session.workingDir()}>
-            <span class="working-dir" title={session.workingDir()!}>
-              {session.workingDir()!.split("/").pop() || session.workingDir()}
-            </span>
-          </Show>
-        </div>
+        {/* Centered working directory */}
+        <Show when={session.workingDir()}>
+          <div class="dir-indicator" title={session.workingDir()!}>
+            <Show when={__CT_WORKTREE__}>
+              <span class="worktree-indicator">{__CT_WORKTREE__}</span>
+              <span class="worktree-separator">:</span>
+            </Show>
+            {session.workingDir()!.split("/").pop() || session.workingDir()}
+          </div>
+        </Show>
 
         {/* Settings button */}
         <button
@@ -482,6 +478,17 @@ function App() {
         >
           ⚙
         </button>
+
+        {/* Connection status icon - right of settings cog */}
+        <div
+          class="connection-icon"
+          classList={{ connected: session.sessionActive(), disconnected: !session.sessionActive() }}
+          title={session.sessionActive() ? "Connected" : "Disconnected"}
+        >
+          <Show when={session.sessionActive()} fallback="⊘">
+            ⚡
+          </Show>
+        </div>
 
         {/* Right-aligned token usage */}
         <Show when={session.sessionActive()}>
