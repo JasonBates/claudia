@@ -5,10 +5,17 @@ import solid from "vite-plugin-solid";
 const host = process.env.TAURI_DEV_HOST;
 // @ts-expect-error process is a nodejs global
 const port = parseInt(process.env.CT_PORT || "1420", 10);
+// @ts-expect-error process is a nodejs global
+const worktree = process.env.CT_WORKTREE || "";
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [solid()],
+
+  // Expose dev mode worktree name to the frontend
+  define: {
+    __CT_WORKTREE__: JSON.stringify(worktree),
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

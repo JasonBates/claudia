@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createServer } from "net";
 import { spawn } from "child_process";
+import { basename } from "path";
 
 const BASE_PORT = 1420;
 const MAX_PORT = 1500;
@@ -21,7 +22,8 @@ function isPortAvailable(port) {
       server.close();
       resolve(true);
     });
-    server.listen(port);
+    // Bind to localhost explicitly (same as Vite)
+    server.listen(port, "localhost");
   });
 }
 
@@ -37,7 +39,8 @@ async function findAvailablePort() {
 
 async function main() {
   const port = await findAvailablePort();
-  console.log(`Starting CT on port ${port}`);
+  const worktree = basename(process.cwd());
+  console.log(`Starting CT on port ${port} (worktree: ${worktree})`);
 
   const child = spawn(
     "npx",
@@ -49,7 +52,7 @@ async function main() {
     ],
     {
       stdio: "inherit",
-      env: { ...process.env, CT_PORT: String(port) },
+      env: { ...process.env, CT_PORT: String(port), CT_WORKTREE: worktree },
     }
   );
 
