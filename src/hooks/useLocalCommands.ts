@@ -29,6 +29,10 @@ export interface UseLocalCommandsOptions {
    * This should be the same handler used for normal message submission.
    */
   onCliEvent?: (event: ClaudeEvent) => void;
+  /**
+   * Callback to open settings modal.
+   */
+  onOpenSettings?: () => void;
 }
 
 export interface UseLocalCommandsReturn {
@@ -127,7 +131,7 @@ function matchesKeybinding(e: KeyboardEvent, binding: ParsedKeybinding): boolean
  * - Unified system: commands can have both slash and keybinding
  */
 export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalCommandsReturn {
-  const { streaming, session, owner, sidebar, onCliEvent } = options;
+  const { streaming, session, owner, sidebar, onCliEvent, onOpenSettings } = options;
 
   // ==========================================================================
   // Command Handlers
@@ -354,6 +358,14 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     await quitApp();
   };
 
+  /**
+   * Open settings modal (Cmd+,)
+   */
+  const handleOpenSettings = async () => {
+    console.log("[COMMANDS] Opening settings");
+    onOpenSettings?.();
+  };
+
   // ==========================================================================
   // Command Registry
   // ==========================================================================
@@ -396,6 +408,12 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       name: "quit",
       description: "Close the application",
       handler: handleQuit,
+    },
+    {
+      name: "settings",
+      description: "Open appearance settings",
+      keybinding: "cmd+,",
+      handler: handleOpenSettings,
     },
   ];
 

@@ -65,6 +65,9 @@ pub fn run() {
             commands::session_list::list_sessions,
             commands::session_list::delete_session,
             commands::session_list::get_session_history,
+            // Appearance commands
+            commands::appearance_cmd::list_color_schemes,
+            commands::appearance_cmd::get_scheme_colors,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

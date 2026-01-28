@@ -71,6 +71,35 @@ export interface Config {
   anthropic_api_key?: string;
   default_working_dir?: string;
   theme: string;
+  content_margin: number;
+  font_family: string;
+  font_size: number;
+  color_scheme?: string;
+}
+
+export interface ColorSchemeInfo {
+  name: string;
+  path?: string;
+  is_bundled: boolean;
+}
+
+export interface ColorSchemeColors {
+  bg: string;
+  bg_secondary: string;
+  bg_tertiary: string;
+  fg: string;
+  fg_muted: string;
+  accent: string;
+  red: string;
+  green: string;
+  yellow: string;
+  blue: string;
+  cyan: string;
+  magenta: string;
+  violet: string;
+  border: string;
+  user_bg: string;
+  code_bg: string;
 }
 
 export async function startSession(workingDir?: string): Promise<string> {
@@ -345,4 +374,22 @@ export async function getSessionHistory(
  */
 export async function quitApp(): Promise<void> {
   await getCurrentWindow().close();
+}
+
+// ============================================================================
+// Appearance Commands
+// ============================================================================
+
+/**
+ * List available color schemes (bundled + user .itermcolors files)
+ */
+export async function listColorSchemes(): Promise<ColorSchemeInfo[]> {
+  return await invoke<ColorSchemeInfo[]>("list_color_schemes");
+}
+
+/**
+ * Get color values for a specific scheme
+ */
+export async function getSchemeColors(name: string): Promise<ColorSchemeColors> {
+  return await invoke<ColorSchemeColors>("get_scheme_colors", { name });
 }

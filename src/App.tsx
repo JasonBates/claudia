@@ -21,7 +21,9 @@ import {
   useQuestionPanel,
   useLocalCommands,
   useSidebar,
+  useSettings,
 } from "./hooks";
+import SettingsModal from "./components/SettingsModal";
 import "./App.css";
 
 function App() {
@@ -76,12 +78,16 @@ function App() {
     workingDir: () => session.workingDir(),
   });
 
+  // Settings modal
+  const settings = useSettings();
+
   // Local commands (slash commands + keyboard shortcuts)
   const localCommands = useLocalCommands({
     streaming,
     session,
     sidebar,
     owner,
+    onOpenSettings: settings.openSettings,
   });
 
   // ============================================================================
@@ -438,6 +444,16 @@ function App() {
           </Show>
         </div>
 
+        {/* Settings button */}
+        <button
+          class="settings-btn"
+          onClick={settings.openSettings}
+          title="Settings (Cmd+,)"
+          aria-label="Open settings"
+        >
+          ⚙
+        </button>
+
         {/* Right-aligned token usage */}
         <Show when={session.sessionActive()}>
           <div
@@ -532,6 +548,24 @@ function App() {
           onApprove={planning.handlePlanApprove}
           onRequestChanges={planning.handlePlanRequestChanges}
           onCancel={planning.handlePlanCancel}
+        />
+      </Show>
+
+      {/* Settings Modal */}
+      <Show when={settings.isOpen()}>
+        <SettingsModal
+          contentMargin={settings.contentMargin()}
+          fontFamily={settings.fontFamily()}
+          fontSize={settings.fontSize()}
+          colorScheme={settings.colorScheme()}
+          availableSchemes={settings.availableSchemes()}
+          availableFonts={settings.availableFonts}
+          onMarginChange={settings.setContentMargin}
+          onFontChange={settings.setFontFamily}
+          onFontSizeChange={settings.setFontSize}
+          onColorSchemeChange={settings.setColorScheme}
+          onResetDefaults={settings.resetToDefaults}
+          onClose={settings.closeSettings}
         />
       </Show>
 

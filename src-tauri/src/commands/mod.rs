@@ -8,6 +8,7 @@
 //! - `sync_cmd` - CCMS sync operations
 //! - `streaming_cmd` - External command streaming
 
+pub mod appearance_cmd;
 pub mod config_cmd;
 pub mod messaging;
 pub mod permission;
