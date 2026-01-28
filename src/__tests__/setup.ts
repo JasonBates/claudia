@@ -10,6 +10,12 @@ vi.mock('@tauri-apps/api/core', () => ({
   })),
 }));
 
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: vi.fn().mockReturnValue({
+    onFocusChanged: vi.fn().mockResolvedValue(() => {}),
+  }),
+}));
+
 // Mock window.matchMedia for components that may use it
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

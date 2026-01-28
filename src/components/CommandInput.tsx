@@ -1,4 +1,5 @@
 import { Component, createSignal, onMount, onCleanup } from "solid-js";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 type Mode = "auto" | "request" | "plan";
 
@@ -26,15 +27,26 @@ const CommandInput: Component<CommandInputProps> = (props) => {
     textareaRef?.focus();
   };
 
+  let unlistenFocus: (() => void) | undefined;
+
   onMount(() => {
     focusInput();
-    window.addEventListener("focus", focusInput);
-    // Expose focus method to parent via ref callback
+    // Expose focus method to parent via ref callback (synchronous)
     props.ref?.({ focus: focusInput });
+    // Use Tauri's native window focus event instead of browser's window focus
+    // The browser's window.focus event doesn't fire when the native window is activated
+    const appWindow = getCurrentWindow();
+    appWindow.onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        focusInput();
+      }
+    }).then((unlisten) => {
+      unlistenFocus = unlisten;
+    });
   });
 
   onCleanup(() => {
-    window.removeEventListener("focus", focusInput);
+    unlistenFocus?.();
   });
 
   const handleKeyDown = (e: KeyboardEvent) => {
