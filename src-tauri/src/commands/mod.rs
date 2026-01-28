@@ -8,6 +8,7 @@
 //! - `sync_cmd` - CCMS sync operations
 //! - `streaming_cmd` - External command streaming
 
+pub mod appearance_cmd;
 pub mod config_cmd;
 pub mod messaging;
 pub mod permission;
@@ -41,7 +42,6 @@ pub struct AppState {
 impl AppState {
     /// Create new AppState with optional CLI-provided directory
     pub fn new(cli_dir: Option<String>) -> Self {
-        let config = Config::load().unwrap_or_default();
         // Use CLI directory if provided, otherwise default to home directory
         // This ensures a predictable experience when launched from desktop/Finder
         let launch_dir = cli_dir
@@ -56,6 +56,9 @@ impl AppState {
                     .map(|p| p.to_string_lossy().to_string())
                     .unwrap_or_else(|| ".".to_string())
             });
+
+        // Load config using launch_dir to check for local config first
+        let config = Config::load(Some(&launch_dir)).unwrap_or_default();
 
         // Generate unique session ID for multi-instance safety
         // This ensures permission files don't collide between app windows

@@ -166,6 +166,31 @@ function processCallouts(content: string): string {
       continue;
     }
 
+    // Check for regular blockquote (not a callout): > text
+    const blockquoteMatch = line.match(/^>\s?(.*)$/);
+    if (blockquoteMatch) {
+      // Collect all consecutive blockquote lines
+      const quoteLines: string[] = [blockquoteMatch[1]];
+      let j = i + 1;
+      while (j < lines.length) {
+        const nextLine = lines[j];
+        const nextMatch = nextLine.match(/^>\s?(.*)$/);
+        if (nextMatch) {
+          quoteLines.push(nextMatch[1]);
+          j++;
+        } else {
+          break;
+        }
+      }
+
+      // Build blockquote HTML
+      const quoteContent = quoteLines.join('<br>');
+      result.push(`<blockquote class="md-quote">${quoteContent}</blockquote>`);
+
+      i = j;
+      continue;
+    }
+
     result.push(line);
     i++;
   }
@@ -238,9 +263,6 @@ const TextBlock: Component<{ content: string }> = (props) => {
     text = text.replace(/^# (.+)$/gm, '<h2 class="md-h1">$1</h2>');
     text = text.replace(/^## (.+)$/gm, '<h3 class="md-h2">$1</h3>');
     text = text.replace(/^### (.+)$/gm, '<h4 class="md-h3">$1</h4>');
-
-    // Blockquotes
-    text = text.replace(/^> (.+)$/gm, '<blockquote class="md-quote">$1</blockquote>');
 
     // Task lists
     text = text.replace(/^- \[x\] (.+)$/gim, '<div class="md-task md-task-done">✓ $1</div>');
