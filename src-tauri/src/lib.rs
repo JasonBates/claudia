@@ -18,6 +18,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_cli::init())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             // Parse CLI arguments to get optional directory
             let cli_dir = app

@@ -397,6 +397,16 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       description: "Close the application",
       handler: handleQuit,
     },
+    {
+      name: "x",
+      description: "Close the application",
+      handler: handleQuit,
+    },
+    {
+      name: "q",
+      description: "Close the application",
+      handler: handleQuit,
+    },
   ];
 
   // Pre-parse keybindings for faster matching
