@@ -2,7 +2,7 @@ import { Accessor, Owner } from "solid-js";
 import type { UseStreamingMessagesReturn } from "./useStreamingMessages";
 import type { UseSessionReturn } from "./useSession";
 import type { UseSidebarReturn } from "./useSidebar";
-import { runStreamingCommand, CommandEvent, ClaudeEvent, clearSession, sendInterrupt } from "../lib/tauri";
+import { runStreamingCommand, CommandEvent, ClaudeEvent, clearSession, sendInterrupt, quitApp } from "../lib/tauri";
 import type { Message } from "../lib/types";
 
 // ============================================================================
@@ -346,6 +346,14 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     }
   };
 
+  /**
+   * Quit the application (/exit, /quit, Alt+Q)
+   */
+  const handleQuit = async () => {
+    console.log("[COMMANDS] Quitting application");
+    await quitApp();
+  };
+
   // ==========================================================================
   // Command Registry
   // ==========================================================================
@@ -377,6 +385,17 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       name: "resume",
       description: "Open sidebar to resume a session",
       handler: handleResume,
+    },
+    {
+      name: "exit",
+      description: "Close the application",
+      keybinding: "alt+q",
+      handler: handleQuit,
+    },
+    {
+      name: "quit",
+      description: "Close the application",
+      handler: handleQuit,
     },
   ];
 

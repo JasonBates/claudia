@@ -1,4 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { runWithOwner, batch, Owner } from "solid-js";
 import type { SessionEntry } from "./types";
 
@@ -337,4 +338,11 @@ export async function getSessionHistory(
     sessionId,
     workingDir,
   });
+}
+
+/**
+ * Close the application window
+ */
+export async function quitApp(): Promise<void> {
+  await getCurrentWindow().close();
 }
