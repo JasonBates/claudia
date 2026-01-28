@@ -1,4 +1,4 @@
-import { Component, For, Show, onMount, onCleanup, createEffect, createSignal, createMemo } from "solid-js";
+import { Component, For, Show, onMount, onCleanup, createEffect, createSignal } from "solid-js";
 import MessageContent from "./MessageContent";
 import ToolResult from "./ToolResult";
 import ThinkingPreview from "./ThinkingPreview";

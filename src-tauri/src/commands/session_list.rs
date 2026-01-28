@@ -39,7 +39,7 @@ pub struct SessionEntry {
 /// Example: "/Users/jasonbates/code/repos/claudia" -> "-Users-jasonbates-code-repos-claudia"
 /// Example: "/Users/jasonbates/Obsidian/VAULTS/Trinity/000 Daily Notes" -> "-Users-jasonbates-Obsidian-VAULTS-Trinity-000-Daily-Notes"
 fn path_to_project_dir(path: &str) -> String {
-    path.replace('/', "-").replace(' ', "-")
+    path.replace(['/', ' '], "-")
 }
 
 /// Get the Claude projects directory (~/.claude/projects)
@@ -159,7 +159,8 @@ fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, St
     let reader = BufReader::new(file);
 
     // Read all lines (we need first, last, and count)
-    let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+    // Use map_while to stop on first read error instead of potentially looping forever
+    let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
 
     if lines.is_empty() {
         return Err("Empty file".to_string());

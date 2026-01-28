@@ -1057,7 +1057,7 @@ mod tests {
             "toolName": "Glob",
             "toolCount": 3
         }));
-        if let Some(ClaudeEvent::SubagentProgress { subagent_id, tool_name, tool_count }) = event {
+        if let Some(ClaudeEvent::SubagentProgress { subagent_id, tool_name, tool_count, .. }) = event {
             assert_eq!(subagent_id, "tool_123");
             assert_eq!(tool_name, "Glob");
             assert_eq!(tool_count, 3);

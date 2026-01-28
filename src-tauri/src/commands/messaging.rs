@@ -228,9 +228,7 @@ pub async fn send_message(
                     if let Some(ref id) = tool_use_id {
                         if subagent_tool_ids.remove(id) {
                             // This was a subagent
-                            if pending_subagent_count > 0 {
-                                pending_subagent_count -= 1;
-                            }
+                            pending_subagent_count = pending_subagent_count.saturating_sub(1);
                             cmd_debug_log(
                                 "TOOL",
                                 &format!("Subagent completed (id={}) - pending: {} subagents, {} tools", id, pending_subagent_count, pending_tool_count),
