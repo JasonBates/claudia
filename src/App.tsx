@@ -9,6 +9,7 @@ import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
 // import StartupSplash from "./components/StartupSplash";
 import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, saveWindowSize } from "./lib/tauri";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { createEventHandler } from "./lib/event-handlers";
@@ -382,37 +383,18 @@ function App() {
   // Lifecycle
   // ============================================================================
 
-  // Refocus input after clicks complete (but not for interactive elements)
-  const handleAppClick = (e: MouseEvent) => {
-    const target = e.target as HTMLElement;
-
-    // Always allow refocus for buttons marked with refocus-after class (toggle buttons)
-    const refocusButton = target.closest('.refocus-after');
-    if (refocusButton) {
-      setTimeout(() => {
-        commandInputRef?.focus();
-      }, 10);
-      return;
-    }
-
-    // Don't refocus if clicking on interactive elements that need focus
-    const interactive = target.closest('button, input, textarea, select, [role="button"], a, .question-panel, .plan-approval-modal, .permission-dialog');
-    if (interactive) return;
-
-    // Small delay to let click complete, then refocus
-    setTimeout(() => {
-      commandInputRef?.focus();
-    }, 10);
-  };
-
-  // Debounced window resize handler
+// Debounced window resize handler using Tauri window API
   let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
   const handleResize = () => {
     if (resizeTimeout) clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-      const width = window.outerWidth;
-      const height = window.outerHeight;
-      saveWindowSize(width, height).catch(console.error);
+    resizeTimeout = setTimeout(async () => {
+      try {
+        const win = getCurrentWindow();
+        const size = await win.innerSize();
+        saveWindowSize(size.width, size.height).catch(console.error);
+      } catch (e) {
+        console.error("Failed to get window size:", e);
+      }
     }, 500); // Debounce 500ms
   };
 
