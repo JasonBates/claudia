@@ -7,12 +7,14 @@ import type { Mode } from "../lib/mode-utils";
 vi.mock("../lib/tauri", () => ({
   pollPermissionRequest: vi.fn(),
   respondToPermission: vi.fn(),
+  sendPermissionResponse: vi.fn(),
 }));
 
 // Import mocked functions
 import {
   pollPermissionRequest as mockPollPermissionRequest,
   respondToPermission as mockRespondToPermission,
+  sendPermissionResponse as mockSendPermissionResponse,
 } from "../lib/tauri";
 
 describe("usePermissions", () => {
@@ -49,7 +51,7 @@ describe("usePermissions", () => {
     vi.useRealTimers();
   });
 
-  const createHook = () => {
+  const createHook = (overrides?: { useStreamBasedResponse?: boolean }) => {
     let hook: UsePermissionsReturn;
     createRoot((d) => {
       const prevDispose = dispose;
@@ -60,6 +62,7 @@ describe("usePermissions", () => {
       hook = usePermissions({
         owner: null,
         getCurrentMode: modeSignal[0],
+        ...overrides,
       });
     });
     return hook!;
@@ -251,6 +254,18 @@ describe("usePermissions", () => {
       expect(mockRespondToPermission).not.toHaveBeenCalled();
       expect(hook.pendingPermission()).not.toBeNull();
     });
+
+    it("should NOT auto-allow when mode is 'request'", async () => {
+      vi.mocked(mockPollPermissionRequest).mockResolvedValue(sampleRequest);
+      modeSignal[1]("request");
+      const hook = createHook();
+
+      hook.startPolling();
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(mockRespondToPermission).not.toHaveBeenCalled();
+      expect(hook.pendingPermission()).not.toBeNull();
+    });
   });
 
   // ============================================================================
@@ -258,18 +273,20 @@ describe("usePermissions", () => {
   // ============================================================================
 
   describe("handlePermissionAllow", () => {
-    it("should call respondToPermission with allow=true", async () => {
+    it("should call sendPermissionResponse for stream-based permissions", async () => {
       const hook = createHook();
+      const toolInput = { command: "test" };
       hook.setPendingPermission({
         requestId: "test-id",
         toolName: "Test",
-        toolInput: {},
+        toolInput,
         description: "Test",
       });
 
       await hook.handlePermissionAllow(false);
 
-      expect(mockRespondToPermission).toHaveBeenCalledWith(true);
+      // With requestId present, uses stream-based sendPermissionResponse
+      expect(mockSendPermissionResponse).toHaveBeenCalledWith("test-id", true, false, toolInput);
     });
 
     it("should clear pendingPermission after allow", async () => {
@@ -291,11 +308,27 @@ describe("usePermissions", () => {
 
       await hook.handlePermissionAllow(false);
 
+      expect(mockSendPermissionResponse).not.toHaveBeenCalled();
       expect(mockRespondToPermission).not.toHaveBeenCalled();
     });
 
-    it("should accept remember parameter (reserved for future use)", async () => {
+    it("should pass remember parameter to sendPermissionResponse", async () => {
       const hook = createHook();
+      const toolInput = { command: "test" };
+      hook.setPendingPermission({
+        requestId: "test-id",
+        toolName: "Test",
+        toolInput,
+        description: "Test",
+      });
+
+      await hook.handlePermissionAllow(true);
+
+      expect(mockSendPermissionResponse).toHaveBeenCalledWith("test-id", true, true, toolInput);
+    });
+
+    it("should fall back to file-based response when useStreamBasedResponse is false", async () => {
+      const hook = createHook({ useStreamBasedResponse: false });
       hook.setPendingPermission({
         requestId: "test-id",
         toolName: "Test",
@@ -303,10 +336,10 @@ describe("usePermissions", () => {
         description: "Test",
       });
 
-      // Should not throw with remember=true
-      await hook.handlePermissionAllow(true);
+      await hook.handlePermissionAllow(false);
 
       expect(mockRespondToPermission).toHaveBeenCalledWith(true);
+      expect(mockSendPermissionResponse).not.toHaveBeenCalled();
     });
   });
 
@@ -315,18 +348,20 @@ describe("usePermissions", () => {
   // ============================================================================
 
   describe("handlePermissionDeny", () => {
-    it("should call respondToPermission with allow=false and message", async () => {
+    it("should call sendPermissionResponse for stream-based permissions", async () => {
       const hook = createHook();
+      const toolInput = { command: "test" };
       hook.setPendingPermission({
         requestId: "test-id",
         toolName: "Test",
-        toolInput: {},
+        toolInput,
         description: "Test",
       });
 
       await hook.handlePermissionDeny();
 
-      expect(mockRespondToPermission).toHaveBeenCalledWith(false, "User denied permission");
+      // With requestId present, uses stream-based sendPermissionResponse
+      expect(mockSendPermissionResponse).toHaveBeenCalledWith("test-id", false, false, toolInput);
     });
 
     it("should clear pendingPermission after deny", async () => {
@@ -348,7 +383,23 @@ describe("usePermissions", () => {
 
       await hook.handlePermissionDeny();
 
+      expect(mockSendPermissionResponse).not.toHaveBeenCalled();
       expect(mockRespondToPermission).not.toHaveBeenCalled();
+    });
+
+    it("should fall back to file-based response when useStreamBasedResponse is false", async () => {
+      const hook = createHook({ useStreamBasedResponse: false });
+      hook.setPendingPermission({
+        requestId: "test-id",
+        toolName: "Test",
+        toolInput: {},
+        description: "Test",
+      });
+
+      await hook.handlePermissionDeny();
+
+      expect(mockRespondToPermission).toHaveBeenCalledWith(false, "User denied permission");
+      expect(mockSendPermissionResponse).not.toHaveBeenCalled();
     });
   });
 
@@ -357,9 +408,10 @@ describe("usePermissions", () => {
   // ============================================================================
 
   describe("full workflow", () => {
-    it("should handle complete permission allow flow", async () => {
+    it("should handle complete permission allow flow (file-based polling)", async () => {
       vi.mocked(mockPollPermissionRequest).mockResolvedValue(sampleRequest);
-      const hook = createHook();
+      // Use file-based response for hook-based permission flow
+      const hook = createHook({ useStreamBasedResponse: false });
 
       // Start polling
       hook.startPolling();
@@ -368,15 +420,16 @@ describe("usePermissions", () => {
       await vi.advanceTimersByTimeAsync(200);
       expect(hook.pendingPermission()).not.toBeNull();
 
-      // User allows
+      // User allows - uses file-based respondToPermission
       await hook.handlePermissionAllow(false);
       expect(hook.pendingPermission()).toBeNull();
       expect(mockRespondToPermission).toHaveBeenCalledWith(true);
     });
 
-    it("should handle complete permission deny flow", async () => {
+    it("should handle complete permission deny flow (file-based polling)", async () => {
       vi.mocked(mockPollPermissionRequest).mockResolvedValue(sampleRequest);
-      const hook = createHook();
+      // Use file-based response for hook-based permission flow
+      const hook = createHook({ useStreamBasedResponse: false });
 
       hook.startPolling();
       await vi.advanceTimersByTimeAsync(200);
@@ -385,6 +438,26 @@ describe("usePermissions", () => {
 
       expect(hook.pendingPermission()).toBeNull();
       expect(mockRespondToPermission).toHaveBeenCalledWith(false, "User denied permission");
+    });
+
+    it("should handle complete stream-based permission allow flow", async () => {
+      const hook = createHook();
+      const toolInput = { command: "test" };
+
+      // Simulate stream-based permission request (set directly via setPendingPermission)
+      hook.setPendingPermission({
+        requestId: "stream-request-id",
+        toolName: "Bash",
+        toolInput,
+        description: "Allow Bash?",
+      });
+
+      expect(hook.pendingPermission()).not.toBeNull();
+
+      // User allows - uses stream-based sendPermissionResponse
+      await hook.handlePermissionAllow(true);
+      expect(hook.pendingPermission()).toBeNull();
+      expect(mockSendPermissionResponse).toHaveBeenCalledWith("stream-request-id", true, true, toolInput);
     });
   });
 });

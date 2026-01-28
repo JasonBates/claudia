@@ -10,8 +10,8 @@ import {
 
 describe('mode-utils', () => {
   describe('MODES constant', () => {
-    it('contains both modes in correct order', () => {
-      expect(MODES).toEqual(['auto', 'plan']);
+    it('contains all three modes in correct order', () => {
+      expect(MODES).toEqual(['auto', 'request', 'plan']);
     });
 
     it('is readonly (frozen)', () => {
@@ -20,8 +20,12 @@ describe('mode-utils', () => {
   });
 
   describe('getNextMode', () => {
-    it('cycles from auto to plan', () => {
-      expect(getNextMode('auto')).toBe('plan');
+    it('cycles from auto to request', () => {
+      expect(getNextMode('auto')).toBe('request');
+    });
+
+    it('cycles from request to plan', () => {
+      expect(getNextMode('request')).toBe('plan');
     });
 
     it('cycles from plan back to auto (wraps)', () => {
@@ -34,6 +38,7 @@ describe('mode-utils', () => {
 
     it('completes a full cycle correctly', () => {
       let mode: Mode = 'auto';
+      mode = getNextMode(mode); // request
       mode = getNextMode(mode); // plan
       mode = getNextMode(mode); // auto
       expect(mode).toBe('auto');
@@ -45,8 +50,12 @@ describe('mode-utils', () => {
       expect(getPreviousMode('auto')).toBe('plan');
     });
 
-    it('cycles from plan to auto', () => {
-      expect(getPreviousMode('plan')).toBe('auto');
+    it('cycles from request to auto', () => {
+      expect(getPreviousMode('request')).toBe('auto');
+    });
+
+    it('cycles from plan to request', () => {
+      expect(getPreviousMode('plan')).toBe('request');
     });
 
     it('returns first mode for invalid input', () => {
@@ -64,6 +73,7 @@ describe('mode-utils', () => {
   describe('isValidMode', () => {
     it('returns true for valid modes', () => {
       expect(isValidMode('auto')).toBe(true);
+      expect(isValidMode('request')).toBe(true);
       expect(isValidMode('plan')).toBe(true);
     });
 
@@ -72,6 +82,7 @@ describe('mode-utils', () => {
       expect(isValidMode('')).toBe(false);
       expect(isValidMode('AUTO')).toBe(false); // case sensitive
       expect(isValidMode('Plan')).toBe(false);
+      expect(isValidMode('Request')).toBe(false); // case sensitive
       expect(isValidMode('normal')).toBe(false); // old mode name
       expect(isValidMode('auto-accept')).toBe(false); // old mode name
     });
@@ -80,6 +91,10 @@ describe('mode-utils', () => {
   describe('getModeLabel', () => {
     it('returns correct label for auto mode', () => {
       expect(getModeLabel('auto')).toBe('Auto');
+    });
+
+    it('returns correct label for request mode', () => {
+      expect(getModeLabel('request')).toBe('Request');
     });
 
     it('returns correct label for plan mode', () => {

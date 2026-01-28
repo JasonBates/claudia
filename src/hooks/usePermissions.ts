@@ -1,5 +1,5 @@
 import { createSignal, Accessor, Setter, runWithOwner, batch, Owner } from "solid-js";
-import { pollPermissionRequest, respondToPermission } from "../lib/tauri";
+import { pollPermissionRequest, respondToPermission, sendPermissionResponse } from "../lib/tauri";
 import type { Mode } from "../lib/mode-utils";
 import type { PermissionRequest } from "../lib/event-handlers";
 
@@ -28,6 +28,14 @@ export interface UsePermissionsOptions {
    * Accessor for the current mode (used for auto behavior).
    */
   getCurrentMode: Accessor<Mode>;
+
+  /**
+   * Whether to use stream-based permission responses (control_response via stdin).
+   * If true, uses sendPermissionResponse (stream-based).
+   * If false, uses respondToPermission (file-based for MCP hooks).
+   * Default: true (stream-based is the primary mechanism now)
+   */
+  useStreamBasedResponse?: boolean;
 }
 
 /**
@@ -102,16 +110,24 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
 
   /**
    * Allow the current permission request.
-   * @param _remember - Reserved for future "remember this permission" feature
+   * @param remember - Whether to remember this permission for future requests
    */
-  const handlePermissionAllow = async (_remember: boolean): Promise<void> => {
+  const handlePermissionAllow = async (remember: boolean): Promise<void> => {
     const permission = pendingPermission();
     if (!permission) return;
 
     setPendingPermission(null);
-    // Use hook-based response (writes to file for hook to read)
-    await respondToPermission(true);
-    console.log("[usePermissions] Allowed:", permission.toolName);
+
+    // Use stream-based response by default (control_response via stdin)
+    // Fall back to file-based response for MCP hook compatibility
+    const useStreamBased = options.useStreamBasedResponse !== false;
+    if (useStreamBased && permission.requestId) {
+      await sendPermissionResponse(permission.requestId, true, remember, permission.toolInput);
+      console.log("[usePermissions] Allowed (stream):", permission.toolName);
+    } else {
+      await respondToPermission(true);
+      console.log("[usePermissions] Allowed (file):", permission.toolName);
+    }
   };
 
   /**
@@ -122,9 +138,17 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
     if (!permission) return;
 
     setPendingPermission(null);
-    // Use hook-based response (writes to file for hook to read)
-    await respondToPermission(false, "User denied permission");
-    console.log("[usePermissions] Denied:", permission.toolName);
+
+    // Use stream-based response by default (control_response via stdin)
+    // Fall back to file-based response for MCP hook compatibility
+    const useStreamBased = options.useStreamBasedResponse !== false;
+    if (useStreamBased && permission.requestId) {
+      await sendPermissionResponse(permission.requestId, false, false, permission.toolInput);
+      console.log("[usePermissions] Denied (stream):", permission.toolName);
+    } else {
+      await respondToPermission(false, "User denied permission");
+      console.log("[usePermissions] Denied (file):", permission.toolName);
+    }
   };
 
   return {

@@ -23,6 +23,75 @@ Open DevTools (Cmd+Option+I in dev mode) to see:
 
 ## Common Issues
 
+### ⚠️ Event Fields Undefined (camelCase vs snake_case)
+
+**Symptom**: Event handlers receive `undefined` for fields that should have values. For example:
+- Permission requests fail silently (empty `requestId`)
+- Session info not showing (undefined `sessionId`)
+- Context tracking broken (undefined `inputTokens`)
+- Tool errors not displaying (undefined `isError`)
+
+**Cause**: The JS bridge (`sdk-bridge-v2.mjs`) sends events with **camelCase** fields, but TypeScript code may only check for **snake_case** fields.
+
+```javascript
+// Bridge sends (camelCase):
+sendEvent("permission_request", { requestId, toolName, toolInput });
+
+// TypeScript checks (snake_case only - WRONG):
+const requestId = event.request_id;  // undefined!
+```
+
+**Solution**: Always check BOTH naming conventions:
+
+```typescript
+// ✅ CORRECT - handles both sources
+const requestId = event.request_id || event.requestId || "";
+const sessionId = event.session_id || event.sessionId;
+const isError = event.is_error || event.isError || false;
+```
+
+**Files**:
+- `src/lib/tauri.ts` - `ClaudeEvent` interface must include both field names
+- `src/lib/event-handlers.ts` - handlers must check both with `||` fallbacks
+
+**Full list of affected fields**: See [architecture.md](architecture.md#-critical-field-name-casing-mismatch-) for complete table.
+
+---
+
+### ⚠️ Permission Response ZodError / Tool Hangs After Approval
+
+**Symptom**: After approving a tool permission, Claude reports "ZodError in the tool permission request validation" or the tool just hangs forever showing "Running...".
+
+**Cause**: The `control_response` sent to Claude CLI has the wrong JSON structure. The SDK uses Zod schema validation and silently rejects malformed responses.
+
+**Solution**: The control_response must have this exact nested structure:
+
+```json
+{
+  "type": "control_response",
+  "response": {
+    "subtype": "success",
+    "request_id": "uuid-from-original-request",
+    "response": {
+      "behavior": "allow",
+      "updatedInput": { /* original tool input */ }
+    }
+  }
+}
+```
+
+Common mistakes:
+- Missing `subtype: "success"` wrapper
+- `request_id` at wrong nesting level
+- Using `decision` instead of `response` for the inner object
+- Using `response.response.response` (wrong nesting)
+
+**File**: `sdk-bridge-v2.mjs` lines 512-537
+
+**Reference**: https://platform.claude.com/docs/en/agent-sdk/user-input
+
+---
+
 ### Tool Results Not Showing During Progress
 
 **Symptom**: Tool results (like sync output) appear only after completion, not during execution.

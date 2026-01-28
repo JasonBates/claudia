@@ -104,7 +104,11 @@ async function main() {
       "--include-partial-messages",
       "--model", "opus",
       "--verbose",
-      "--dangerously-skip-permissions",
+      // Permission handling via control_request events in the stream protocol
+      // --permission-prompt-tool stdio enables the control protocol for tool permissions
+      // See handlePermissionRequestEvent in event-handlers.ts
+      "--permission-prompt-tool", "stdio",
+      "--permission-mode", "default",
       "--settings", JSON.stringify({ alwaysThinkingEnabled: true }),
       "--append-system-prompt", `User's timezone: ${userTimezone}`
     ];
@@ -513,16 +517,21 @@ async function main() {
         if (parsed.type === "control_response") {
           debugLog("CONTROL_RESPONSE_FROM_UI", parsed);
 
-          // Send control_response to Claude
+          // Send control_response to Claude - format matches SDK's internal structure:
+          // { type: "control_response", response: { subtype: "success", request_id, response: {...} } }
+          // The inner response must match canUseTool callback return format:
+          // For "allow": { behavior: "allow", updatedInput: {...} }
+          // For "deny": { behavior: "deny", message: "..." }
+          const permissionResponse = parsed.allow
+            ? { behavior: "allow", updatedInput: parsed.tool_input || {} }
+            : { behavior: "deny", message: "User denied permission" };
+
           const msg = JSON.stringify({
             type: "control_response",
-            request_id: parsed.request_id,
             response: {
               subtype: "success",
-              response: {
-                behavior: parsed.allow ? "allow" : "deny",
-                ...(parsed.remember && { updatedPermissions: true })
-              }
+              request_id: parsed.request_id,
+              response: permissionResponse
             }
           }) + "\n";
 
