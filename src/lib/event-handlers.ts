@@ -9,12 +9,33 @@
  * 1. Test handlers with mock setters
  * 2. Reuse handlers across different components
  * 3. Keep App.tsx focused on UI composition
+ *
+ * IMPORTANT: All handlers receive NORMALIZED events (from claude-event-normalizer.ts).
+ * The normalization happens at the boundary in App.tsx handleEvent wrapper.
+ * This means handlers use consistent camelCase field names with no fallback logic.
  */
 
 import type { Setter } from "solid-js";
-import type { ClaudeEvent } from "./tauri";
 import type { Todo, Question, Message, ToolUse, ContentBlock, SubagentInfo } from "./types";
 import { parseToolInput } from "./json-streamer";
+import type {
+  NormalizedEvent,
+  NormalizedStatusEvent,
+  NormalizedReadyEvent,
+  NormalizedThinkingDeltaEvent,
+  NormalizedTextDeltaEvent,
+  NormalizedToolStartEvent,
+  NormalizedToolInputEvent,
+  NormalizedPermissionRequestEvent,
+  NormalizedToolResultEvent,
+  NormalizedContextUpdateEvent,
+  NormalizedResultEvent,
+  NormalizedClosedEvent,
+  NormalizedErrorEvent,
+  NormalizedSubagentStartEvent,
+  NormalizedSubagentProgressEvent,
+  NormalizedSubagentEndEvent,
+} from "./claude-event-normalizer";
 
 /**
  * Session info tracked across the conversation
@@ -112,9 +133,12 @@ export interface EventHandlerDeps {
 
 /**
  * Handle status events (status messages, compaction)
+ *
+ * Receives normalized event with consistent camelCase fields:
+ * - isCompaction, preTokens, postTokens (no snake_case fallbacks needed)
  */
 export function handleStatusEvent(
-  event: ClaudeEvent,
+  event: NormalizedStatusEvent,
   deps: EventHandlerDeps
 ): void {
   if (!event.message) return;
@@ -138,10 +162,10 @@ export function handleStatusEvent(
     return;
   }
 
-  // Compaction completed (support both snake_case and camelCase from JS bridge)
-  if (event.is_compaction || event.isCompaction) {
-    const preTokens = deps.getLastCompactionPreTokens() || event.pre_tokens || event.preTokens || 0;
-    const summaryTokens = event.post_tokens || event.postTokens || 0;
+  // Compaction completed - normalized event has consistent camelCase fields
+  if (event.isCompaction) {
+    const preTokens = deps.getLastCompactionPreTokens() || event.preTokens;
+    const summaryTokens = event.postTokens;
     const baseContext = deps.getSessionInfo().baseContext || 0;
     const estimatedContext = baseContext + summaryTokens;
 
@@ -189,13 +213,14 @@ export function handleStatusEvent(
 
 /**
  * Handle ready event (session established)
+ *
+ * Receives normalized event with sessionId (no session_id fallback needed)
  */
 export function handleReadyEvent(
-  event: ClaudeEvent,
+  event: NormalizedReadyEvent,
   deps: EventHandlerDeps
 ): void {
-  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
-  const sessionId = event.session_id || event.sessionId;
+  const sessionId = event.sessionId;
 
   deps.setSessionActive(true);
   deps.setSessionInfo((prev) => ({
@@ -220,10 +245,10 @@ export function handleThinkingStartEvent(deps: EventHandlerDeps): void {
 }
 
 export function handleThinkingDeltaEvent(
-  event: ClaudeEvent,
+  event: NormalizedThinkingDeltaEvent,
   deps: EventHandlerDeps
 ): void {
-  const thinking = event.thinking || "";
+  const thinking = event.thinking;
   deps.setStreamingThinking((prev) => prev + thinking);
 
   deps.setStreamingBlocks((prev) => {
@@ -245,10 +270,10 @@ export function handleThinkingDeltaEvent(
  * Handle text delta events (streaming text)
  */
 export function handleTextDeltaEvent(
-  event: ClaudeEvent,
+  event: NormalizedTextDeltaEvent,
   deps: EventHandlerDeps
 ): void {
-  const text = event.text || "";
+  const text = event.text;
 
   // NOTE: Tool loading state is NOT cleared here on text arrival.
   // Tools remain in loading state until their tool_result event arrives.
@@ -283,7 +308,7 @@ export function handleTextDeltaEvent(
  * Handle tool start events
  */
 export function handleToolStartEvent(
-  event: ClaudeEvent,
+  event: NormalizedToolStartEvent,
   deps: EventHandlerDeps
 ): void {
   deps.toolInputRef.current = "";
@@ -301,7 +326,7 @@ export function handleToolStartEvent(
   } else if (event.name === "ExitPlanMode") {
     deps.setShowPlanApproval(true);
   } else {
-    const toolId = event.id || "";
+    const toolId = event.id;
 
     // Check if we have a pending result for this tool (race condition recovery)
     const pendingResult = toolId ? deps.pendingResultsRef.current.get(toolId) : undefined;
@@ -312,7 +337,7 @@ export function handleToolStartEvent(
 
     const newTool: ToolUse = {
       id: toolId,
-      name: event.name || "unknown",
+      name: event.name,
       input: {},
       isLoading: pendingResult ? false : true,
       result: pendingResult?.result,
@@ -329,10 +354,10 @@ export function handleToolStartEvent(
  * useful info (like the command being run) while streaming.
  */
 export function handleToolInputEvent(
-  event: ClaudeEvent,
+  event: NormalizedToolInputEvent,
   deps: EventHandlerDeps
 ): void {
-  const json = event.json || "";
+  const json = event.json;
 
   if (deps.isCollectingTodoRef.current) {
     deps.todoJsonRef.current += json;
@@ -439,17 +464,14 @@ export function handleToolPendingEvent(deps: EventHandlerDeps): void {
 
 /**
  * Handle permission request events
+ *
+ * Receives normalized event with requestId, toolName, toolInput (no snake_case fallbacks)
  */
 export function handlePermissionRequestEvent(
-  event: ClaudeEvent,
+  event: NormalizedPermissionRequestEvent,
   deps: EventHandlerDeps
 ): void {
-  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge) field names
-  const requestId = event.request_id || event.requestId || "";
-  const toolName = event.tool_name || event.toolName || "unknown";
-
-  // Support both snake_case and camelCase for toolInput
-  const toolInput = event.tool_input ?? event.toolInput;
+  const { requestId, toolName, toolInput, description } = event;
 
   // In auto mode, immediately approve without showing dialog
   if (deps.getCurrentMode() === "auto") {
@@ -463,15 +485,17 @@ export function handlePermissionRequestEvent(
     requestId,
     toolName,
     toolInput,
-    description: event.description || "",
+    description,
   });
 }
 
 /**
  * Handle tool result events
+ *
+ * Receives normalized event with toolUseId, isError (no snake_case fallbacks)
  */
 export function handleToolResultEvent(
-  event: ClaudeEvent,
+  event: NormalizedToolResultEvent,
   deps: EventHandlerDeps
 ): void {
   if (deps.isCollectingTodoRef.current) {
@@ -487,20 +511,19 @@ export function handleToolResultEvent(
   // The CLI sends duplicate tool_result events: first with tool_use_id, then
   // without it but with the same content. We ONLY process results that have
   // a tool_use_id to avoid corrupting other tools' results.
-  const targetToolId = event.tool_use_id;
+  const targetToolId = event.toolUseId;
   if (!targetToolId) {
     // No tool_use_id = duplicate event, skip it
     return;
   }
 
-  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
-  const isError = event.is_error || event.isError || false;
+  // Normalized event has isError directly
   const resultData = {
-    result: isError
+    result: event.isError
       ? `Error: ${event.stderr || event.stdout}`
       : event.stdout || event.stderr || "",
     isLoading: false,
-    isError,
+    isError: event.isError,
   };
 
   // Check if tool exists yet - if not, store result for later (race condition handling)
@@ -577,17 +600,16 @@ export function handleToolResultEvent(
 
 /**
  * Handle context update events
+ *
+ * Receives normalized event with inputTokens, cacheRead, cacheWrite (no snake_case fallbacks)
  */
 export function handleContextUpdateEvent(
-  event: ClaudeEvent,
+  event: NormalizedContextUpdateEvent,
   deps: EventHandlerDeps
 ): void {
-  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
-  const contextTotal = event.input_tokens || event.inputTokens || 0;
+  const contextTotal = event.inputTokens;
   if (contextTotal > 0) {
-    const cacheRead = event.cache_read || event.cacheRead || 0;
-    const cacheWrite = event.cache_write || event.cacheWrite || 0;
-    const cacheSize = Math.max(cacheRead, cacheWrite);
+    const cacheSize = Math.max(event.cacheRead, event.cacheWrite);
     deps.setSessionInfo((prev) => ({
       ...prev,
       totalContext: contextTotal,
@@ -598,13 +620,14 @@ export function handleContextUpdateEvent(
 
 /**
  * Handle result events (response complete)
+ *
+ * Receives normalized event with outputTokens (no snake_case fallbacks)
  */
 export function handleResultEvent(
-  event: ClaudeEvent,
+  event: NormalizedResultEvent,
   deps: EventHandlerDeps
 ): void {
-  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
-  const newOutputTokens = event.output_tokens || event.outputTokens || 0;
+  const newOutputTokens = event.outputTokens;
   deps.setSessionInfo((prev) => ({
     ...prev,
     totalContext: (prev.totalContext || 0) + newOutputTokens,
@@ -624,7 +647,7 @@ export function handleDoneEvent(deps: EventHandlerDeps): void {
  * Handle closed events (session terminated)
  */
 export function handleClosedEvent(
-  event: ClaudeEvent,
+  event: NormalizedClosedEvent,
   deps: EventHandlerDeps
 ): void {
   deps.setSessionActive(false);
@@ -635,27 +658,29 @@ export function handleClosedEvent(
  * Handle error events
  */
 export function handleErrorEvent(
-  event: ClaudeEvent,
+  event: NormalizedErrorEvent,
   deps: EventHandlerDeps
 ): void {
-  deps.setError(event.message || "Unknown error");
+  deps.setError(event.message);
   deps.finishStreaming();
 }
 
 /**
  * Handle subagent start events (Task tool started)
  * Attaches subagent info to the matching Task tool_use
+ *
+ * Receives normalized event with agentType (no agent_type fallback)
  */
 export function handleSubagentStartEvent(
-  event: ClaudeEvent,
+  event: NormalizedSubagentStartEvent,
   deps: EventHandlerDeps
 ): void {
-  const taskId = event.id || "";
+  const taskId = event.id;
   console.log("[SUBAGENT_START] Looking for Task with id:", taskId);
 
   const subagentInfo: SubagentInfo = {
-    agentType: event.agent_type || "unknown",
-    description: event.description || "",
+    agentType: event.agentType,
+    description: event.description,
     status: "running" as const,
     startTime: Date.now(),
     nestedTools: [],
@@ -696,15 +721,17 @@ export function handleSubagentStartEvent(
 /**
  * Handle subagent progress events (nested tool executing)
  * Updates the nested tools list in the matching Task tool_use
+ *
+ * Receives normalized event with subagentId, toolName, toolDetail, toolCount
  */
 export function handleSubagentProgressEvent(
-  event: ClaudeEvent,
+  event: NormalizedSubagentProgressEvent,
   deps: EventHandlerDeps
 ): void {
-  const taskId = event.subagent_id || "";
+  const taskId = event.subagentId;
   const newTool = {
-    name: event.tool_name || "unknown",
-    input: event.tool_detail || undefined,
+    name: event.toolName,
+    input: event.toolDetail || undefined,
   };
 
   // Update currentToolUses
@@ -743,14 +770,16 @@ export function handleSubagentProgressEvent(
 /**
  * Handle subagent end events (Task tool completed)
  * Marks the subagent as complete in the matching Task tool_use
+ *
+ * Receives normalized event with agentType, duration, toolCount
  */
 export function handleSubagentEndEvent(
-  event: ClaudeEvent,
+  event: NormalizedSubagentEndEvent,
   deps: EventHandlerDeps
 ): void {
-  const taskId = event.id || "";
-  const duration = event.duration || 0;
-  const toolCount = event.tool_count || 0;
+  const taskId = event.id;
+  const duration = event.duration;
+  const toolCount = event.toolCount;
 
   // Update currentToolUses - preserve existing nestedTools from progress events
   deps.setCurrentToolUses((prev) => {
@@ -798,9 +827,12 @@ export function handleSubagentEndEvent(
  * This factory creates a handler that dispatches events to the
  * appropriate handler functions, making it easy to test individual
  * handlers in isolation.
+ *
+ * IMPORTANT: This handler expects NORMALIZED events (from normalizeClaudeEvent).
+ * The normalization happens in App.tsx handleEvent wrapper before calling this.
  */
 export function createEventHandler(deps: EventHandlerDeps) {
-  return (event: ClaudeEvent): void => {
+  return (event: NormalizedEvent): void => {
     switch (event.type) {
       case "status":
         handleStatusEvent(event, deps);
@@ -846,6 +878,9 @@ export function createEventHandler(deps: EventHandlerDeps) {
         break;
       case "done":
         handleDoneEvent(deps);
+        break;
+      case "interrupted":
+        // Session interrupted - no action needed (will respawn)
         break;
       case "closed":
         handleClosedEvent(event, deps);

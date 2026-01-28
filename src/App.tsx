@@ -12,6 +12,8 @@ import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermis
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { createEventHandler } from "./lib/event-handlers";
+import { normalizeClaudeEvent } from "./lib/claude-event-normalizer";
+import type { ClaudeEvent } from "./lib/tauri";
 import {
   useSession,
   useStreamingMessages,
@@ -186,11 +188,15 @@ function App() {
     finishStreaming: streaming.finishStreaming,
   });
 
-  // Wrapper that adds logging
-  const handleEvent = (event: Parameters<typeof coreEventHandler>[0]) => {
+  // Wrapper that normalizes events and adds logging
+  const handleEvent = (event: ClaudeEvent) => {
     const ts = new Date().toISOString().split("T")[1];
-    console.log(`[${ts}] Event received:`, event.type, event);
-    coreEventHandler(event);
+    console.log(`[${ts}] Event received (raw):`, event.type, event);
+
+    // Normalize the event to canonical camelCase format
+    const normalized = normalizeClaudeEvent(event);
+
+    coreEventHandler(normalized);
   };
 
   // ============================================================================

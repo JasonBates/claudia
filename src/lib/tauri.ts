@@ -20,6 +20,7 @@ export interface ClaudeEvent {
     | "context_update"
     | "result"
     | "done"
+    | "interrupted"
     | "closed"
     | "error"
     | "subagent_start"
