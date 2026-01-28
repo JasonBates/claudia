@@ -48,27 +48,66 @@ A Tauri desktop application that wraps the Claude Code CLI, providing a native G
         └───────────────────┘  └───────────────────┘  └───────────────────┘
 ```
 
-## Developer Notes / Gotchas
+## ⚠️ CRITICAL: Field Name Casing Mismatch ⚠️
 
-### Field Name Casing Convention Mismatch ⚠️
+> **READ THIS FIRST** - This is the #1 source of subtle bugs in this codebase.
 
-**This codebase has inconsistent naming conventions across layers. Watch out!**
+The JS bridge (`sdk-bridge-v2.mjs`) sends events with **camelCase** field names, but TypeScript code historically expected **snake_case**. This mismatch causes silent failures where values are `undefined`.
+
+### The Problem
 
 | Layer | Convention | Example |
 |-------|------------|---------|
-| **Bridge (JS)** | camelCase | `requestId`, `toolName`, `toolInput` |
-| **Rust backend** | snake_case | `request_id`, `tool_name`, `tool_input` |
-| **TypeScript types** | Mixed | Some use `request_id`, some use `requestId` |
+| **Bridge (JS)** | camelCase | `sessionId`, `requestId`, `toolName`, `inputTokens` |
+| **Rust backend** | snake_case | `session_id`, `request_id`, `tool_name`, `input_tokens` |
+| **TypeScript types** | BOTH | Must accept both formats |
 
-**Common pitfall:** When the bridge sends an event like `permission_request`, it uses camelCase (`requestId`), but TypeScript code may expect snake_case (`event.request_id`). This causes silent failures where values are `undefined`.
+### Affected Events
 
-**Best practice:** Always check both conventions when accessing event fields:
+These events have fields that must be accessed with fallbacks:
+
+| Event | camelCase (Bridge) | snake_case (Rust) |
+|-------|-------------------|-------------------|
+| `ready` | `sessionId` | `session_id` |
+| `status` (compaction) | `isCompaction`, `preTokens`, `postTokens` | `is_compaction`, `pre_tokens`, `post_tokens` |
+| `permission_request` | `requestId`, `toolName`, `toolInput` | `request_id`, `tool_name`, `tool_input` |
+| `tool_result` | `isError` | `is_error` |
+| `context_update` | `inputTokens`, `cacheRead`, `cacheWrite` | `input_tokens`, `cache_read`, `cache_write` |
+| `result` | `outputTokens` | `output_tokens` |
+
+### Required Pattern
+
+**ALWAYS** check both conventions when accessing event fields:
+
 ```typescript
-const requestId = event.requestId || event.request_id || "";
-const toolName = event.toolName || event.tool_name || "unknown";
+// ✅ CORRECT - handles both sources
+const sessionId = event.session_id || event.sessionId;
+const requestId = event.request_id || event.requestId || "";
+const isError = event.is_error || event.isError || false;
+
+// ❌ WRONG - will be undefined when event comes from JS bridge
+const sessionId = event.session_id;  // undefined if from bridge!
 ```
 
-This inconsistency should eventually be unified, but for now be defensive.
+### Why This Happens
+
+1. **sdk-bridge-v2.mjs** uses JavaScript conventions (camelCase) when constructing events
+2. **Rust serde** defaults to snake_case for serialization
+3. Events can come through either path depending on the flow
+
+### Historical Bugs Caused
+
+- **Permission requests failing silently** - `requestId` was undefined, so `sendPermissionResponse("")` was called with empty ID
+- **Session not showing in UI** - `sessionId` was undefined on ready events
+- **Context tracking broken** - `inputTokens` was undefined in context_update events
+- **Tool errors not displaying** - `isError` was undefined in tool_result events
+
+### Long-term Fix
+
+The codebase should eventually standardize on one convention. Until then:
+1. `ClaudeEvent` interface in `tauri.ts` includes BOTH field names
+2. Event handlers in `event-handlers.ts` check BOTH with `||` fallbacks
+3. When adding new event fields, add BOTH versions to the type
 
 ## Data Flow
 
@@ -129,22 +168,120 @@ Update signals (streamingContent, streamingBlocks, etc.)
 SolidJS reactivity updates UI
 ```
 
-### 3. Permission Flow
+### 3. Permission Flow (Stream-Based)
 
-When Claude needs to use a tool that requires permission:
+When Claude needs to use a tool that requires permission, the CLI sends a `control_request` event via the stream protocol. This is the **primary** permission mechanism.
+
+**CLI Arguments:**
+```
+--permission-prompt-tool stdio    # Enables stream-based permission protocol
+--permission-mode default         # Standard permission behavior
+```
+
+**Flow:**
+
+```
+Claude CLI wants to run a tool
+       │
+       ▼
+CLI sends control_request (type: "can_use_tool")
+       │
+       ▼
+sdk-bridge-v2.mjs receives control_request
+       │
+       ▼
+Bridge emits permission_request event (camelCase: requestId, toolName, toolInput)
+       │
+       ▼
+Rust parses JSON, creates PermissionRequest (snake_case: request_id, tool_name, tool_input)
+       │
+       ▼
+Tauri Channel sends to frontend
+       │
+       ▼
+handlePermissionRequestEvent() in event-handlers.ts
+       │
+       ├── AUTO MODE: Immediately approve
+       │      │
+       │      ▼
+       │   sendPermissionResponse(requestId, true, false, toolInput)
+       │
+       └── PLAN MODE: Show PermissionDialog
+              │
+              ▼
+           User clicks Allow/Deny
+              │
+              ▼
+           handlePermissionAllow/Deny() in usePermissions.ts
+              │
+              ▼
+           sendPermissionResponse()
+                     │
+                     ▼
+              Rust send_permission_response command
+                     │
+                     ▼
+              Bridge stdin receives control_response
+                     │
+                     ▼
+              Bridge formats for SDK:
+              {
+                type: "control_response",
+                response: {
+                  subtype: "success",
+                  request_id: "...",
+                  response: { behavior: "allow", updatedInput: {...} }
+                }
+              }
+                     │
+                     ▼
+              Claude CLI stdin
+                     │
+                     ▼
+              Tool executes (or is denied)
+```
+
+**Key Files:**
+- `sdk-bridge-v2.mjs` lines 336-350: Receives `control_request`, emits `permission_request`
+- `sdk-bridge-v2.mjs` lines 512-537: Receives UI response, sends `control_response` to CLI
+- `src/lib/event-handlers.ts` lines 410-435: `handlePermissionRequestEvent()`
+- `src/hooks/usePermissions.ts` lines 107-144: `handlePermissionAllow/Deny()`
+
+**control_response Format (Critical):**
+
+The SDK expects a specific nested structure. Getting this wrong causes ZodError:
+
+```json
+{
+  "type": "control_response",
+  "response": {
+    "subtype": "success",
+    "request_id": "uuid-from-request",
+    "response": {
+      "behavior": "allow",       // or "deny"
+      "updatedInput": {...}      // original tool input (for allow)
+      // OR "message": "..."     // reason (for deny)
+    }
+  }
+}
+```
+
+### 3b. Permission Flow (File-Based - Legacy)
+
+A secondary file-based permission system exists for MCP hook compatibility. This uses `--permission-prompt-tool mcp__...` instead of `stdio`.
 
 ```
 Claude CLI calls tool
        │
        ▼
---permission-prompt-tool flag routes to MCP server
+--permission-prompt-tool routes to MCP server
        │
        ▼
 Permission MCP Server (permission-mcp-server.mjs)
        │
        ▼
 Writes request to temp file:
-/tmp/claudia-permission-request.json
+/tmp/claudia-permission-request-{session_id}.json
        │
        ▼
 Rust polls file (poll_permission_request command)
@@ -160,7 +297,7 @@ Frontend calls respondToPermission()
        │
        ▼
 Rust writes response to temp file:
-/tmp/claudia-permission-response.json
+/tmp/claudia-permission-response-{session_id}.json
        │
        ▼
 MCP Server reads response, returns to Claude CLI
@@ -168,6 +305,8 @@ MCP Server reads response, returns to Claude CLI
        ▼
 Claude continues (or aborts if denied)
 ```
+
+This flow is **not currently active** since `--permission-prompt-tool stdio` is used.
 
 ## Key Files
 

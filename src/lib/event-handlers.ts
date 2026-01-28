@@ -69,7 +69,7 @@ export interface EventHandlerDeps {
   // Permission state
   setPendingPermission: Setter<PermissionRequest | null>;
   getCurrentMode: () => "auto" | "plan";
-  sendPermissionResponse: (requestId: string, allow: boolean, remember?: boolean) => Promise<void>;
+  sendPermissionResponse: (requestId: string, allow: boolean, remember?: boolean, toolInput?: unknown) => Promise<void>;
 
   // Session state
   setSessionActive: Setter<boolean>;
@@ -138,10 +138,10 @@ export function handleStatusEvent(
     return;
   }
 
-  // Compaction completed
-  if (event.is_compaction) {
-    const preTokens = deps.getLastCompactionPreTokens() || event.pre_tokens || 0;
-    const summaryTokens = event.post_tokens || 0;
+  // Compaction completed (support both snake_case and camelCase from JS bridge)
+  if (event.is_compaction || event.isCompaction) {
+    const preTokens = deps.getLastCompactionPreTokens() || event.pre_tokens || event.preTokens || 0;
+    const summaryTokens = event.post_tokens || event.postTokens || 0;
     const baseContext = deps.getSessionInfo().baseContext || 0;
     const estimatedContext = baseContext + summaryTokens;
 
@@ -194,18 +194,21 @@ export function handleReadyEvent(
   event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
+  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
+  const sessionId = event.session_id || event.sessionId;
+
   deps.setSessionActive(true);
   deps.setSessionInfo((prev) => ({
     ...prev,
-    sessionId: event.session_id,
+    sessionId,
     model: event.model,
     totalContext: prev.totalContext || 0,
   }));
 
   // Capture launch session ID on first ready event (for "Original Session" feature)
   // This only sets once - subsequent ready events (from resuming) don't overwrite
-  if (event.session_id && !deps.getLaunchSessionId()) {
-    deps.setLaunchSessionId(event.session_id);
+  if (sessionId && !deps.getLaunchSessionId()) {
+    deps.setLaunchSessionId(sessionId);
   }
 }
 
@@ -411,13 +414,17 @@ export function handlePermissionRequestEvent(
   event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
-  const requestId = event.request_id || "";
-  const toolName = event.tool_name || "unknown";
+  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge) field names
+  const requestId = event.request_id || event.requestId || "";
+  const toolName = event.tool_name || event.toolName || "unknown";
+
+  // Support both snake_case and camelCase for toolInput
+  const toolInput = event.tool_input ?? event.toolInput;
 
   // In auto mode, immediately approve without showing dialog
   if (deps.getCurrentMode() === "auto") {
     console.log("[PERMISSION] Auto-accepting:", toolName);
-    deps.sendPermissionResponse(requestId, true, false);
+    deps.sendPermissionResponse(requestId, true, false, toolInput);
     return;
   }
 
@@ -425,7 +432,7 @@ export function handlePermissionRequestEvent(
   deps.setPendingPermission({
     requestId,
     toolName,
-    toolInput: event.tool_input,
+    toolInput,
     description: event.description || "",
   });
 }
@@ -456,12 +463,14 @@ export function handleToolResultEvent(
     return;
   }
 
+  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
+  const isError = event.is_error || event.isError || false;
   const resultData = {
-    result: event.is_error
+    result: isError
       ? `Error: ${event.stderr || event.stdout}`
       : event.stdout || event.stderr || "",
     isLoading: false,
-    isError: event.is_error || false,
+    isError,
   };
 
   // Check if tool exists yet - if not, store result for later (race condition handling)
@@ -543,9 +552,12 @@ export function handleContextUpdateEvent(
   event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
-  const contextTotal = event.input_tokens || 0;
+  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
+  const contextTotal = event.input_tokens || event.inputTokens || 0;
   if (contextTotal > 0) {
-    const cacheSize = Math.max(event.cache_read || 0, event.cache_write || 0);
+    const cacheRead = event.cache_read || event.cacheRead || 0;
+    const cacheWrite = event.cache_write || event.cacheWrite || 0;
+    const cacheSize = Math.max(cacheRead, cacheWrite);
     deps.setSessionInfo((prev) => ({
       ...prev,
       totalContext: contextTotal,
@@ -561,7 +573,8 @@ export function handleResultEvent(
   event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
-  const newOutputTokens = event.output_tokens || 0;
+  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
+  const newOutputTokens = event.output_tokens || event.outputTokens || 0;
   deps.setSessionInfo((prev) => ({
     ...prev,
     totalContext: (prev.totalContext || 0) + newOutputTokens,

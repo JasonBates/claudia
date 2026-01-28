@@ -23,11 +23,16 @@ export interface ClaudeEvent {
     | "closed"
     | "error";
   // Status/Ready
+  // snake_case from Rust/Tauri backend, camelCase from JS SDK bridge
   message?: string;
   is_compaction?: boolean;
+  isCompaction?: boolean;
   pre_tokens?: number;
+  preTokens?: number;
   post_tokens?: number;
+  postTokens?: number;
   session_id?: string;
+  sessionId?: string;
   model?: string;
   tools?: number;
   // Processing
@@ -43,26 +48,36 @@ export interface ClaudeEvent {
   // ToolInput
   json?: string;
   // PermissionRequest (control_request with can_use_tool)
+  // snake_case from Rust/Tauri backend, camelCase from JS SDK bridge
   request_id?: string;
+  requestId?: string;
   tool_name?: string;
+  toolName?: string;
   tool_input?: unknown;
+  toolInput?: unknown;
   description?: string;
   // ToolResult
   tool_use_id?: string;
   stdout?: string;
   stderr?: string;
   is_error?: boolean;
-  // ContextUpdate (real-time context from message_start)
-  raw_input_tokens?: number;
-  // Result
+  isError?: boolean;
+  // Result / ContextUpdate
+  // snake_case from Rust/Tauri backend, camelCase from JS SDK bridge
   content?: string;
   cost?: number;
   duration?: number;
   turns?: number;
   input_tokens?: number;
+  inputTokens?: number;
   output_tokens?: number;
+  outputTokens?: number;
   cache_read?: number;
+  cacheRead?: number;
   cache_write?: number;
+  cacheWrite?: number;
+  raw_input_tokens?: number;
+  rawInputTokens?: number;
   // Closed
   code?: number;
 }
@@ -199,8 +214,8 @@ export async function isSessionActive(): Promise<boolean> {
   return await invoke("is_session_active");
 }
 
-export async function sendPermissionResponse(requestId: string, allow: boolean, remember?: boolean): Promise<void> {
-  await invoke("send_permission_response", { requestId, allow, remember: remember || false });
+export async function sendPermissionResponse(requestId: string, allow: boolean, remember?: boolean, toolInput?: unknown): Promise<void> {
+  await invoke("send_permission_response", { requestId, allow, remember: remember || false, toolInput: toolInput || {} });
 }
 
 // Hook-based permission system

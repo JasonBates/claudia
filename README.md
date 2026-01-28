@@ -10,7 +10,7 @@ A native macOS desktop app that wraps Claude Code CLI, providing a streamlined t
 - **Real-time streaming** - Text and tool outputs stream as they're generated
 - **Tool visualization** - Collapsible tool use blocks with syntax-highlighted results
 - **Type-ahead input** - Continue typing while waiting for responses
-- **Automatic permissions** - Uses `--dangerously-skip-permissions` for uninterrupted workflow
+- **Smart permissions** - Auto-approves in "auto" mode, shows dialog in "plan" mode
 - **MCP integration** - Loads MCP servers from project or global `~/.claude/` config
 
 ## Documentation
@@ -44,7 +44,7 @@ A native macOS desktop app that wraps Claude Code CLI, providing a streamlined t
 │                     Claude Code CLI                             │
 │                     └─ --input-format stream-json               │
 │                     └─ --output-format stream-json              │
-│                     └─ --dangerously-skip-permissions           │
+│                     └─ Uses control_request for permissions      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

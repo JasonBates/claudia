@@ -96,6 +96,7 @@ pub async fn send_permission_response(
     request_id: String,
     allow: bool,
     remember: bool,
+    tool_input: Option<serde_json::Value>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     cmd_debug_log(
@@ -110,11 +111,13 @@ pub async fn send_permission_response(
     let process = process_guard.as_mut().ok_or("No active session")?;
 
     // Send as control_response JSON that the bridge will forward to Claude CLI
+    // Include tool_input for the SDK's updatedInput field
     let msg = serde_json::json!({
         "type": "control_response",
         "request_id": request_id,
         "allow": allow,
-        "remember": remember
+        "remember": remember,
+        "tool_input": tool_input.unwrap_or(serde_json::json!({}))
     });
 
     process.send_message(&msg.to_string())?;
