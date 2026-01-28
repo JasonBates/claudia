@@ -50,6 +50,7 @@ pub fn run() {
             // Configuration
             commands::config_cmd::get_config,
             commands::config_cmd::save_config,
+            commands::config_cmd::has_local_config,
             // Permissions
             commands::permission::send_permission_response,
             commands::permission::poll_permission_request,
@@ -66,6 +67,9 @@ pub fn run() {
             commands::session_list::list_sessions,
             commands::session_list::delete_session,
             commands::session_list::get_session_history,
+            // Appearance commands
+            commands::appearance_cmd::list_color_schemes,
+            commands::appearance_cmd::get_scheme_colors,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
