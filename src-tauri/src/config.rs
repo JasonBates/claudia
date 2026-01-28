@@ -18,6 +18,10 @@ pub struct Config {
     pub font_size: u32,
     #[serde(default)]
     pub color_scheme: Option<String>,
+    #[serde(default)]
+    pub window_width: Option<u32>,
+    #[serde(default)]
+    pub window_height: Option<u32>,
 }
 
 fn default_theme() -> String {
