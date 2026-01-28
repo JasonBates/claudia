@@ -9,6 +9,7 @@ mod sync;
 pub mod timeouts;
 
 use commands::AppState;
+use config::Config;
 use tauri::Manager;
 use tauri_plugin_cli::CliExt;
 
@@ -32,7 +33,24 @@ pub fn run() {
                 });
 
             // Create and manage AppState with CLI directory
-            app.manage(AppState::new(cli_dir));
+            let state = AppState::new(cli_dir.clone());
+            app.manage(state);
+
+            // Apply saved window size from config
+            if let Some(window) = app.get_webview_window("main") {
+                let launch_dir = cli_dir.or_else(|| {
+                    dirs::home_dir().map(|p| p.to_string_lossy().to_string())
+                });
+                if let Ok(config) = Config::load(launch_dir.as_deref()) {
+                    if let (Some(width), Some(height)) = (config.window_width, config.window_height) {
+                        let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+                            width,
+                            height,
+                        }));
+                    }
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -50,6 +68,7 @@ pub fn run() {
             commands::config_cmd::get_config,
             commands::config_cmd::save_config,
             commands::config_cmd::has_local_config,
+            commands::config_cmd::save_window_size,
             // Permissions
             commands::permission::send_permission_response,
             commands::permission::poll_permission_request,

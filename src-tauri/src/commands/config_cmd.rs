@@ -42,3 +42,25 @@ pub async fn has_local_config(state: State<'_, AppState>) -> Result<bool, String
     let local_path = Config::local_path(&state.launch_dir);
     Ok(local_path.exists())
 }
+
+/// Save window size to config (always saves to appropriate location based on local config existence)
+#[tauri::command]
+pub async fn save_window_size(
+    width: u32,
+    height: u32,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let working_dir = &state.launch_dir;
+    let mut config = Config::load(Some(working_dir)).unwrap_or_default();
+
+    config.window_width = Some(width);
+    config.window_height = Some(height);
+
+    // Save to wherever the config currently lives (local if exists, else global)
+    config.save(Some(working_dir))?;
+
+    // Update in-memory cache
+    let mut config_guard = state.config.lock().await;
+    *config_guard = config;
+    Ok(())
+}

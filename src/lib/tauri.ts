@@ -75,6 +75,8 @@ export interface Config {
   font_family: string;
   font_size: number;
   color_scheme?: string;
+  window_width?: number;
+  window_height?: number;
 }
 
 export interface ColorSchemeInfo {
@@ -190,6 +192,10 @@ export async function saveConfig(
 
 export async function hasLocalConfig(): Promise<boolean> {
   return await invoke("has_local_config");
+}
+
+export async function saveWindowSize(width: number, height: number): Promise<void> {
+  await invoke("save_window_size", { width, height });
 }
 
 export async function isSessionActive(): Promise<boolean> {

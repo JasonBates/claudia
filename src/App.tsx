@@ -8,7 +8,7 @@ import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
 // import StartupSplash from "./components/StartupSplash";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, saveWindowSize } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { createEventHandler } from "./lib/event-handlers";
@@ -382,11 +382,25 @@ function App() {
   // Lifecycle
   // ============================================================================
 
+  // Debounced window resize handler
+  let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+  const handleResize = () => {
+    if (resizeTimeout) clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      const width = window.outerWidth;
+      const height = window.outerHeight;
+      saveWindowSize(width, height).catch(console.error);
+    }, 500); // Debounce 500ms
+  };
+
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
 
     // Add keyboard listener for local commands
     window.addEventListener("keydown", handleKeyDown, true);
+
+    // Listen for window resize to save size
+    window.addEventListener("resize", handleResize);
 
     try {
       await session.startSession();
@@ -399,6 +413,8 @@ function App() {
   onCleanup(() => {
     permissions.stopPolling();
     window.removeEventListener("keydown", handleKeyDown, true);
+    window.removeEventListener("resize", handleResize);
+    if (resizeTimeout) clearTimeout(resizeTimeout);
   });
 
   // ============================================================================
