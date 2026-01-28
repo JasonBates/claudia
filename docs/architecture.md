@@ -495,12 +495,13 @@ New developers understand the app's capabilities by listing the hooks directory.
 
 ### Current Test Coverage
 
-| Layer | Tests | Files |
-|-------|-------|-------|
-| **Rust backend** | 75 tests | events, streaming, sync, timeouts, response_state |
-| **Frontend utilities** | 116 tests | context-utils, event-handlers, json-streamer, mode-utils, solid-utils |
-| **Frontend hooks** | ⚠️ 0 tests | useSession, useStreamingMessages, usePlanningMode, usePermissions, useTodoPanel, useQuestionPanel, useLocalCommands |
-| **Components** | ⚠️ 0 tests | MessageList, ToolResult, PermissionDialog, CommandInput |
+| Layer | Tests | Status |
+|-------|-------|--------|
+| **Rust backend** | ~75 tests | ✅ Complete |
+| **Frontend utilities** | ~80 tests | ✅ Complete |
+| **Frontend hooks** | ~175 tests | ✅ Complete |
+| **UI Components** | ~60 tests | ✅ Key components covered |
+| **Total** | **438 tests** | All passing |
 
 ### Running Tests
 
@@ -520,16 +521,36 @@ npm run test
 
 ### Test Architecture
 
-Tests are in `src/__tests__/` with Vitest:
+Tests are in `src/__tests__/` with Vitest and @solidjs/testing-library:
 
 ```
 src/__tests__/
-  setup.ts              # Global mocks (Tauri APIs, matchMedia)
-  context-utils.test.ts # Context threshold calculations
-  event-handlers.test.ts # Event processing logic (37 tests)
-  json-streamer.test.ts  # JSON streaming parser (32 tests)
-  mode-utils.test.ts     # Mode cycling logic
-  solid-utils.test.ts    # Reactive context helpers
+  setup.ts                    # Global mocks (Tauri APIs, matchMedia, jest-dom)
+
+  # Utility modules
+  context-utils.test.ts       # Context threshold calculations
+  event-handlers.test.ts      # Event processing logic (50 tests)
+  json-streamer.test.ts       # JSON streaming parser (32 tests)
+  mode-utils.test.ts          # Mode cycling logic
+  solid-utils.test.ts         # Reactive context helpers
+  highlight.test.ts           # Syntax highlighting
+
+  # Custom hooks
+  useSession.test.ts          # Session lifecycle
+  useStreamingMessages.test.ts # Message streaming (44 tests)
+  usePlanningMode.test.ts     # Plan approval workflow
+  usePermissions.test.ts      # Permission polling
+  useTodoPanel.test.ts        # Todo panel state
+  useQuestionPanel.test.ts    # Question panel
+  useLocalCommands.test.ts    # Slash commands (39 tests)
+  useSidebar.test.ts          # Session sidebar
+
+  # Components
+  components/
+    CommandInput.test.tsx     # Input, mode switching
+    PermissionDialog.test.tsx # Permission buttons
+    TodoPanel.test.tsx        # Todo list display
+    Sidebar.test.tsx          # Session list (31 tests)
 ```
 
 ### Testing Hooks
@@ -560,9 +581,9 @@ describe("useMyHook", () => {
 });
 ```
 
-### Recommended Test Priorities
+### Test Coverage Details
 
-See [testing-plan.md](testing-plan.md) for detailed test plan with maximum coverage benefit.
+See [testing-plan.md](testing-plan.md) for complete test inventory and patterns.
 
 ## Building
 

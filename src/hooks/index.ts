@@ -22,3 +22,6 @@ export type { UseLocalCommandsReturn, UseLocalCommandsOptions, Command } from ".
 
 export { useSidebar } from "./useSidebar";
 export type { UseSidebarReturn, UseSidebarOptions } from "./useSidebar";
+
+export { useSettings } from "./useSettings";
+export type { UseSettingsReturn, FontOption } from "./useSettings";
