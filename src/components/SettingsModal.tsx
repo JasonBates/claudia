@@ -9,10 +9,12 @@ interface SettingsModalProps {
   colorScheme: string | null;
   availableSchemes: ColorSchemeInfo[];
   availableFonts: FontOption[];
+  saveLocally: boolean;
   onMarginChange: (margin: number) => void;
   onFontChange: (font: string) => void;
   onFontSizeChange: (size: number) => void;
   onColorSchemeChange: (scheme: string | null) => void;
+  onSaveLocallyChange: (locally: boolean) => void;
   onResetDefaults: () => void;
   onClose: () => void;
 }
@@ -170,6 +172,14 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
         </div>
 
         <div class="settings-modal-footer">
+          <label class="settings-checkbox">
+            <input
+              type="checkbox"
+              checked={props.saveLocally}
+              onChange={(e) => props.onSaveLocallyChange(e.currentTarget.checked)}
+            />
+            Save settings for this directory only
+          </label>
           <button class="settings-reset-btn" onClick={props.onResetDefaults}>
             Reset to Defaults
           </button>

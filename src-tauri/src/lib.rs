@@ -50,6 +50,7 @@ pub fn run() {
             // Configuration
             commands::config_cmd::get_config,
             commands::config_cmd::save_config,
+            commands::config_cmd::has_local_config,
             // Permissions
             commands::permission::send_permission_response,
             commands::permission::poll_permission_request,

@@ -37,15 +37,37 @@ fn default_font_size() -> u32 {
 }
 
 impl Config {
-    pub fn path() -> PathBuf {
+    /// Returns the global config path (~/.config/claudia/config.json)
+    pub fn global_path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("claudia")
             .join("config.json")
     }
 
-    pub fn load() -> Result<Self, String> {
-        let path = Self::path();
+    /// Returns the local config path for a working directory ({dir}/.claudia/config.json)
+    pub fn local_path(working_dir: &str) -> PathBuf {
+        PathBuf::from(working_dir)
+            .join(".claudia")
+            .join("config.json")
+    }
+
+    /// Returns the config path to use, checking local first then global
+    pub fn path(working_dir: Option<&str>) -> PathBuf {
+        // Check for local config first
+        if let Some(dir) = working_dir {
+            let local_path = Self::local_path(dir);
+            if local_path.exists() {
+                return local_path;
+            }
+        }
+
+        // Fall back to global config
+        Self::global_path()
+    }
+
+    pub fn load(working_dir: Option<&str>) -> Result<Self, String> {
+        let path = Self::path(working_dir);
 
         if !path.exists() {
             return Ok(Self::default());
@@ -57,9 +79,25 @@ impl Config {
         serde_json::from_str(&contents).map_err(|e| format!("Failed to parse config: {}", e))
     }
 
-    pub fn save(&self) -> Result<(), String> {
-        let path = Self::path();
+    /// Save to the appropriate config location (local if exists, otherwise global)
+    pub fn save(&self, working_dir: Option<&str>) -> Result<(), String> {
+        let path = Self::path(working_dir);
+        self.save_to_path(&path)
+    }
 
+    /// Save to the local config path for a specific directory
+    pub fn save_local(&self, working_dir: &str) -> Result<(), String> {
+        let path = Self::local_path(working_dir);
+        self.save_to_path(&path)
+    }
+
+    /// Save to the global config path
+    pub fn save_global(&self) -> Result<(), String> {
+        let path = Self::global_path();
+        self.save_to_path(&path)
+    }
+
+    fn save_to_path(&self, path: &PathBuf) -> Result<(), String> {
         // Create parent directories if needed
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
@@ -69,7 +107,7 @@ impl Config {
         let contents = serde_json::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-        fs::write(&path, contents).map_err(|e| format!("Failed to write config: {}", e))
+        fs::write(path, contents).map_err(|e| format!("Failed to write config: {}", e))
     }
 
     pub fn working_dir(&self) -> PathBuf {
@@ -147,6 +185,7 @@ mod tests {
             anthropic_api_key: Some("test-key".to_string()),
             default_working_dir: Some("/test".to_string()),
             theme: "light".to_string(),
+            ..Default::default()
         };
 
         let json = serde_json::to_string(&config).unwrap();

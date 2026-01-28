@@ -181,8 +181,15 @@ export async function getConfig(): Promise<Config> {
   return await invoke("get_config");
 }
 
-export async function saveConfig(config: Config): Promise<void> {
-  await invoke("save_config", { config });
+export async function saveConfig(
+  config: Config,
+  saveLocally: boolean = false
+): Promise<void> {
+  await invoke("save_config", { config, saveLocally });
+}
+
+export async function hasLocalConfig(): Promise<boolean> {
+  return await invoke("has_local_config");
 }
 
 export async function isSessionActive(): Promise<boolean> {
