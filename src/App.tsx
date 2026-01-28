@@ -7,6 +7,7 @@ import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
+import ConnectionErrorOverlay from "./components/ConnectionErrorOverlay";
 // import StartupSplash from "./components/StartupSplash";
 import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
@@ -319,6 +320,16 @@ function App() {
     }
   };
 
+  // Retry connection when backend fails to start
+  const handleRetryConnection = async () => {
+    try {
+      await session.startSession();
+      permissions.startPolling();
+    } catch (e) {
+      // Error is already set in useSession
+    }
+  };
+
   // Main message submission handler
   const handleSubmit = async (text: string) => {
     // Handle local commands (slash commands like /sync, /clear, etc.)
@@ -546,6 +557,14 @@ function App() {
             onDeny={permissions.handlePermissionDeny}
           />
         </div>
+      </Show>
+
+      {/* Connection Error Overlay - shows when backend fails to start */}
+      <Show when={!session.sessionActive() && session.sessionError()}>
+        <ConnectionErrorOverlay
+          error={session.sessionError()!}
+          onRetry={handleRetryConnection}
+        />
       </Show>
 
     </div>
