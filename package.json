@@ -31,7 +31,9 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
     "@tauri-apps/cli": "^2",
+    "@testing-library/jest-dom": "^6.9.1",
     "@vitest/coverage-v8": "^3.2.4",
     "jsdom": "^25.0.0",
     "typescript": "~5.6.2",

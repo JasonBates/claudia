@@ -34,10 +34,10 @@ describe("usePermissions", () => {
     vi.mocked(mockPollPermissionRequest).mockResolvedValue(null);
     vi.mocked(mockRespondToPermission).mockResolvedValue(undefined);
 
-    // Create a mode signal for testing
+    // Create a mode signal for testing - default to "plan" (non-auto mode)
     createRoot((d) => {
       dispose = d;
-      modeSignal = createSignal<Mode>("normal");
+      modeSignal = createSignal<Mode>("plan");
     });
   });
 
@@ -218,13 +218,13 @@ describe("usePermissions", () => {
   });
 
   // ============================================================================
-  // Auto-Accept Mode
+  // Auto Mode
   // ============================================================================
 
-  describe("auto-accept mode", () => {
-    it("should auto-allow when mode is 'auto-accept'", async () => {
+  describe("auto mode", () => {
+    it("should auto-allow when mode is 'auto'", async () => {
       vi.mocked(mockPollPermissionRequest).mockResolvedValue(sampleRequest);
-      modeSignal[1]("auto-accept");
+      modeSignal[1]("auto");
       const hook = createHook();
 
       hook.startPolling();
@@ -232,18 +232,6 @@ describe("usePermissions", () => {
 
       expect(mockRespondToPermission).toHaveBeenCalledWith(true);
       expect(hook.pendingPermission()).toBeNull(); // Not shown to user
-    });
-
-    it("should NOT auto-allow when mode is 'normal'", async () => {
-      vi.mocked(mockPollPermissionRequest).mockResolvedValue(sampleRequest);
-      modeSignal[1]("normal");
-      const hook = createHook();
-
-      hook.startPolling();
-      await vi.advanceTimersByTimeAsync(200);
-
-      expect(mockRespondToPermission).not.toHaveBeenCalled();
-      expect(hook.pendingPermission()).not.toBeNull();
     });
 
     it("should NOT auto-allow when mode is 'plan'", async () => {

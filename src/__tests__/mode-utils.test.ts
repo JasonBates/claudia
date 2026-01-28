@@ -10,8 +10,8 @@ import {
 
 describe('mode-utils', () => {
   describe('MODES constant', () => {
-    it('contains all three modes in correct order', () => {
-      expect(MODES).toEqual(['normal', 'plan', 'auto-accept']);
+    it('contains both modes in correct order', () => {
+      expect(MODES).toEqual(['auto', 'plan']);
     });
 
     it('is readonly (frozen)', () => {
@@ -20,46 +20,37 @@ describe('mode-utils', () => {
   });
 
   describe('getNextMode', () => {
-    it('cycles from normal to plan', () => {
-      expect(getNextMode('normal')).toBe('plan');
+    it('cycles from auto to plan', () => {
+      expect(getNextMode('auto')).toBe('plan');
     });
 
-    it('cycles from plan to auto-accept', () => {
-      expect(getNextMode('plan')).toBe('auto-accept');
-    });
-
-    it('cycles from auto-accept back to normal (wraps)', () => {
-      expect(getNextMode('auto-accept')).toBe('normal');
+    it('cycles from plan back to auto (wraps)', () => {
+      expect(getNextMode('plan')).toBe('auto');
     });
 
     it('returns first mode for invalid input', () => {
-      expect(getNextMode('invalid' as Mode)).toBe('normal');
+      expect(getNextMode('invalid' as Mode)).toBe('auto');
     });
 
     it('completes a full cycle correctly', () => {
-      let mode: Mode = 'normal';
+      let mode: Mode = 'auto';
       mode = getNextMode(mode); // plan
-      mode = getNextMode(mode); // auto-accept
-      mode = getNextMode(mode); // normal
-      expect(mode).toBe('normal');
+      mode = getNextMode(mode); // auto
+      expect(mode).toBe('auto');
     });
   });
 
   describe('getPreviousMode', () => {
-    it('cycles from normal back to auto-accept (wraps)', () => {
-      expect(getPreviousMode('normal')).toBe('auto-accept');
+    it('cycles from auto back to plan (wraps)', () => {
+      expect(getPreviousMode('auto')).toBe('plan');
     });
 
-    it('cycles from plan to normal', () => {
-      expect(getPreviousMode('plan')).toBe('normal');
-    });
-
-    it('cycles from auto-accept to plan', () => {
-      expect(getPreviousMode('auto-accept')).toBe('plan');
+    it('cycles from plan to auto', () => {
+      expect(getPreviousMode('plan')).toBe('auto');
     });
 
     it('returns first mode for invalid input', () => {
-      expect(getPreviousMode('invalid' as Mode)).toBe('normal');
+      expect(getPreviousMode('invalid' as Mode)).toBe('auto');
     });
 
     it('is inverse of getNextMode', () => {
@@ -72,30 +63,27 @@ describe('mode-utils', () => {
 
   describe('isValidMode', () => {
     it('returns true for valid modes', () => {
-      expect(isValidMode('normal')).toBe(true);
+      expect(isValidMode('auto')).toBe(true);
       expect(isValidMode('plan')).toBe(true);
-      expect(isValidMode('auto-accept')).toBe(true);
     });
 
     it('returns false for invalid modes', () => {
       expect(isValidMode('invalid')).toBe(false);
       expect(isValidMode('')).toBe(false);
-      expect(isValidMode('NORMAL')).toBe(false); // case sensitive
+      expect(isValidMode('AUTO')).toBe(false); // case sensitive
       expect(isValidMode('Plan')).toBe(false);
+      expect(isValidMode('normal')).toBe(false); // old mode name
+      expect(isValidMode('auto-accept')).toBe(false); // old mode name
     });
   });
 
   describe('getModeLabel', () => {
-    it('returns correct label for normal mode', () => {
-      expect(getModeLabel('normal')).toBe('Normal');
+    it('returns correct label for auto mode', () => {
+      expect(getModeLabel('auto')).toBe('Auto');
     });
 
     it('returns correct label for plan mode', () => {
       expect(getModeLabel('plan')).toBe('Plan');
-    });
-
-    it('returns correct label for auto-accept mode', () => {
-      expect(getModeLabel('auto-accept')).toBe('Auto-Accept');
     });
   });
 });

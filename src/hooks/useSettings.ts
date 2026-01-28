@@ -241,6 +241,7 @@ async function applyColorScheme(schemeName: string) {
     root.style.setProperty("--border", colors.border);
     root.style.setProperty("--user-bg", colors.user_bg);
     root.style.setProperty("--code-bg", colors.code_bg);
+    root.style.setProperty("--quote", colors.quote);
 
     // Also update derived colors
     root.style.setProperty("--success", colors.green);

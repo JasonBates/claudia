@@ -102,6 +102,7 @@ export interface ColorSchemeColors {
   border: string;
   user_bg: string;
   code_bg: string;
+  quote: string;
 }
 
 export async function startSession(workingDir?: string): Promise<string> {

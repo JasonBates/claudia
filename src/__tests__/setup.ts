@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import '@testing-library/jest-dom/vitest';
 
 // Mock Tauri APIs globally for all tests
 // These mocks prevent tests from trying to call actual Tauri IPC
