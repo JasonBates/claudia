@@ -1,5 +1,35 @@
-node_modules
-dist
-target
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+target/
 *.log
-.DS_Storecoverage/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor directories
+.idea/
+*.swp
+*.swo
+
+# Environment and secrets (never commit these)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Test coverage
+coverage/
+
+# Tauri build artifacts
+src-tauri/target/
+
+# Debug logs
+/tmp/claude-*.log
