@@ -3,13 +3,13 @@
  * (similar to Claude Code's Shift+Tab functionality)
  */
 
-export type Mode = 'normal' | 'plan' | 'auto-accept';
+export type Mode = 'auto' | 'plan';
 
 /**
  * Available modes in cycling order
  * Object.freeze ensures runtime immutability (as const is compile-time only)
  */
-export const MODES: readonly Mode[] = Object.freeze(['normal', 'plan', 'auto-accept'] as const);
+export const MODES: readonly Mode[] = Object.freeze(['auto', 'plan'] as const);
 
 /**
  * Gets the next mode in the cycle
@@ -55,12 +55,10 @@ export function isValidMode(mode: string): mode is Mode {
  */
 export function getModeLabel(mode: Mode): string {
   switch (mode) {
-    case 'normal':
-      return 'Normal';
+    case 'auto':
+      return 'Auto';
     case 'plan':
       return 'Plan';
-    case 'auto-accept':
-      return 'Auto-Accept';
     default:
       return mode;
   }

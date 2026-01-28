@@ -68,6 +68,8 @@ export interface EventHandlerDeps {
 
   // Permission state
   setPendingPermission: Setter<PermissionRequest | null>;
+  getCurrentMode: () => "auto" | "plan";
+  sendPermissionResponse: (requestId: string, allow: boolean, remember?: boolean) => Promise<void>;
 
   // Session state
   setSessionActive: Setter<boolean>;
@@ -409,9 +411,20 @@ export function handlePermissionRequestEvent(
   event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
+  const requestId = event.requestId || event.request_id || "";
+  const toolName = event.toolName || event.tool_name || "unknown";
+
+  // In auto mode, immediately approve without showing dialog
+  if (deps.getCurrentMode() === "auto") {
+    console.log("[PERMISSION] Auto-accepting:", toolName);
+    deps.sendPermissionResponse(requestId, true, false);
+    return;
+  }
+
+  // Otherwise show the permission dialog
   deps.setPendingPermission({
-    requestId: event.request_id || "",
-    toolName: event.tool_name || "unknown",
+    requestId,
+    toolName,
     toolInput: event.tool_input,
     description: event.description || "",
   });

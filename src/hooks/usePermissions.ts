@@ -25,7 +25,7 @@ export interface UsePermissionsOptions {
   owner: Owner | null;
 
   /**
-   * Accessor for the current mode (used for auto-accept behavior).
+   * Accessor for the current mode (used for auto behavior).
    */
   getCurrentMode: Accessor<Mode>;
 }
@@ -35,7 +35,7 @@ export interface UsePermissionsOptions {
  *
  * Handles:
  * - Polling for permission requests from the CLI (hook-based permission system)
- * - Auto-accept logic when in "auto-accept" mode
+ * - Auto-accept logic when in "auto" mode
  * - Allow/deny handlers
  *
  * The permission system uses a file-based hook approach where the CLI
@@ -63,8 +63,8 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
         if (request && !pendingPermission()) {
           console.log("[usePermissions] Hook request received:", request);
 
-          // In auto-accept mode, immediately approve
-          if (options.getCurrentMode() === "auto-accept") {
+          // In auto mode, immediately approve
+          if (options.getCurrentMode() === "auto") {
             console.log("[usePermissions] Auto-accepting:", request.tool_name);
             await respondToPermission(true);
             return;

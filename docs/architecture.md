@@ -48,6 +48,28 @@ A Tauri desktop application that wraps the Claude Code CLI, providing a native G
         └───────────────────┘  └───────────────────┘  └───────────────────┘
 ```
 
+## Developer Notes / Gotchas
+
+### Field Name Casing Convention Mismatch ⚠️
+
+**This codebase has inconsistent naming conventions across layers. Watch out!**
+
+| Layer | Convention | Example |
+|-------|------------|---------|
+| **Bridge (JS)** | camelCase | `requestId`, `toolName`, `toolInput` |
+| **Rust backend** | snake_case | `request_id`, `tool_name`, `tool_input` |
+| **TypeScript types** | Mixed | Some use `request_id`, some use `requestId` |
+
+**Common pitfall:** When the bridge sends an event like `permission_request`, it uses camelCase (`requestId`), but TypeScript code may expect snake_case (`event.request_id`). This causes silent failures where values are `undefined`.
+
+**Best practice:** Always check both conventions when accessing event fields:
+```typescript
+const requestId = event.requestId || event.request_id || "";
+const toolName = event.toolName || event.tool_name || "unknown";
+```
+
+This inconsistency should eventually be unified, but for now be defensive.
+
 ## Data Flow
 
 ### 1. User Sends Message

@@ -8,7 +8,7 @@ import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
 // import StartupSplash from "./components/StartupSplash";
-import { sendMessage, resumeSession, getSessionHistory, clearSession } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { createEventHandler } from "./lib/event-handlers";
@@ -64,7 +64,7 @@ function App() {
   });
 
   // Permissions (needs owner and mode accessor)
-  const [currentMode, setCurrentMode] = createSignal<Mode>("normal");
+  const [currentMode, setCurrentMode] = createSignal<Mode>("auto");
   const permissions = usePermissions({
     owner,
     getCurrentMode: currentMode,
@@ -141,6 +141,8 @@ function App() {
 
     // Permission state (from permissions hook)
     setPendingPermission: permissions.setPendingPermission,
+    getCurrentMode: currentMode,
+    sendPermissionResponse,
 
     // Session state (from session hook)
     setSessionActive: session.setSessionActive,
@@ -345,7 +347,14 @@ function App() {
 
     try {
       console.log("[SUBMIT] Calling sendMessage...");
-      await sendMessage(text, handleEvent, owner);
+
+      // In plan mode, prepend instructions to analyze without modifying
+      let messageToSend = text;
+      if (currentMode() === "plan") {
+        messageToSend = `[PLAN MODE: Analyze and explain your approach, but do not modify any files or run any commands. Show me what you would do without actually doing it.]\n\n${text}`;
+      }
+
+      await sendMessage(messageToSend, handleEvent, owner);
       console.log("[SUBMIT] sendMessage returned");
     } catch (e) {
       console.error("[SUBMIT] Error:", e);
