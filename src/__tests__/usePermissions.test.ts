@@ -24,6 +24,9 @@ describe("usePermissions", () => {
     tool_use_id: "tool-123",
     tool_name: "Bash",
     tool_input: { command: "rm -rf /" },
+    timestamp: Date.now(),
+    session_id: "session-abc",
+    permission_mode: "default",
   };
 
   beforeEach(() => {
@@ -196,6 +199,9 @@ describe("usePermissions", () => {
         tool_use_id: "tool-456",
         tool_name: "Read",
         tool_input: {},
+        timestamp: Date.now(),
+        session_id: "session-abc",
+        permission_mode: "default",
       });
 
       await vi.advanceTimersByTimeAsync(200);

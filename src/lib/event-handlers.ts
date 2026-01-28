@@ -411,8 +411,8 @@ export function handlePermissionRequestEvent(
   event: ClaudeEvent,
   deps: EventHandlerDeps
 ): void {
-  const requestId = event.requestId || event.request_id || "";
-  const toolName = event.toolName || event.tool_name || "unknown";
+  const requestId = event.request_id || "";
+  const toolName = event.tool_name || "unknown";
 
   // In auto mode, immediately approve without showing dialog
   if (deps.getCurrentMode() === "auto") {

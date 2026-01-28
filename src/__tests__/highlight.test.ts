@@ -1,29 +1,18 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
-// Mock shiki before importing the module
-vi.mock("shiki", () => ({
-  createHighlighter: vi.fn(),
-}));
-
-import { createHighlighter } from "shiki";
-import { getHighlighter, highlightCode } from "../lib/highlight";
+// Note: Tests use vi.resetModules() and vi.doMock() for each test
+// to properly test the singleton behavior of the highlighter module.
 
 describe("highlight", () => {
-  // Mock highlighter instance
+  // Mock highlighter instance used across tests
   const mockHighlighter = {
     getLoadedLanguages: vi.fn(),
     codeToHtml: vi.fn(),
   };
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(createHighlighter).mockResolvedValue(mockHighlighter as unknown as ReturnType<typeof createHighlighter> extends Promise<infer T> ? T : never);
-    mockHighlighter.getLoadedLanguages.mockReturnValue(["typescript", "javascript", "python", "bash"]);
-    mockHighlighter.codeToHtml.mockReturnValue('<pre class="shiki"><code>highlighted code</code></pre>');
-  });
-
   afterEach(() => {
     vi.resetModules();
+    vi.clearAllMocks();
   });
 
   // ============================================================================
@@ -32,8 +21,6 @@ describe("highlight", () => {
 
   describe("getHighlighter", () => {
     it("should create highlighter with correct themes and languages", async () => {
-      // Reset module to clear singleton
-      vi.resetModules();
       vi.doMock("shiki", () => ({
         createHighlighter: vi.fn().mockResolvedValue(mockHighlighter),
       }));
@@ -41,10 +28,15 @@ describe("highlight", () => {
       const { getHighlighter: freshGetHighlighter } = await import("../lib/highlight");
       await freshGetHighlighter();
 
-      // Check that createHighlighter was called
+      // Check that createHighlighter was called with expected themes and languages
       const { createHighlighter: mockCreate } = await import("shiki");
       expect(mockCreate).toHaveBeenCalledWith({
-        themes: ["github-dark"],
+        themes: expect.arrayContaining([
+          "solarized-dark",
+          "solarized-light",
+          "github-dark",
+          "github-light",
+        ]),
         langs: expect.arrayContaining([
           "typescript",
           "javascript",
@@ -65,8 +57,6 @@ describe("highlight", () => {
     });
 
     it("should return same instance on multiple calls (singleton)", async () => {
-      // Reset module to clear singleton
-      vi.resetModules();
       vi.doMock("shiki", () => ({
         createHighlighter: vi.fn().mockResolvedValue(mockHighlighter),
       }));
@@ -93,8 +83,6 @@ describe("highlight", () => {
 
   describe("highlightCode", () => {
     it("should highlight code with valid language", async () => {
-      // Reset module and setup
-      vi.resetModules();
       const freshMockHighlighter = {
         getLoadedLanguages: vi.fn().mockReturnValue(["typescript", "javascript"]),
         codeToHtml: vi.fn().mockReturnValue('<pre class="shiki"><code>const x = 1;</code></pre>'),
@@ -110,12 +98,11 @@ describe("highlight", () => {
       expect(result).toContain("<pre");
       expect(freshMockHighlighter.codeToHtml).toHaveBeenCalledWith("const x = 1;", {
         lang: "typescript",
-        theme: "github-dark",
+        theme: "solarized-dark",
       });
     });
 
     it("should fallback to 'text' for unknown languages", async () => {
-      vi.resetModules();
       const freshMockHighlighter = {
         getLoadedLanguages: vi.fn().mockReturnValue(["typescript", "javascript"]),
         codeToHtml: vi.fn().mockReturnValue('<pre><code>plain text</code></pre>'),
@@ -130,12 +117,11 @@ describe("highlight", () => {
 
       expect(freshMockHighlighter.codeToHtml).toHaveBeenCalledWith("plain text", {
         lang: "text",
-        theme: "github-dark",
+        theme: "solarized-dark",
       });
     });
 
     it("should return escaped HTML on error", async () => {
-      vi.resetModules();
       vi.doMock("shiki", () => ({
         createHighlighter: vi.fn().mockRejectedValue(new Error("Shiki failed")),
       }));
@@ -151,7 +137,6 @@ describe("highlight", () => {
     });
 
     it("should escape special HTML characters in fallback", async () => {
-      vi.resetModules();
       vi.doMock("shiki", () => ({
         createHighlighter: vi.fn().mockRejectedValue(new Error("Failed")),
       }));
@@ -168,7 +153,6 @@ describe("highlight", () => {
     });
 
     it("should wrap fallback in pre/code tags", async () => {
-      vi.resetModules();
       vi.doMock("shiki", () => ({
         createHighlighter: vi.fn().mockRejectedValue(new Error("Failed")),
       }));
