@@ -14,7 +14,7 @@ const ThinkingPreview: Component<ThinkingPreviewProps> = (props) => {
 
     const len = props.content.length;
     if (len <= 80) return props.content;
-    return props.content.slice(0, 80);
+    return props.content.slice(0, 80) + "...";
   });
 
   const hasMore = () => !props.expanded && props.content.length > 80;
@@ -47,9 +47,6 @@ const ThinkingPreview: Component<ThinkingPreviewProps> = (props) => {
       </div>
       <div class="thinking-content">
         {displayContent()}
-        <Show when={props.isStreaming}>
-          <span class="thinking-cursor">|</span>
-        </Show>
         <Show when={hasMore()}>
           <div class="thinking-fade" />
         </Show>
