@@ -45,9 +45,7 @@ pub async fn start_session(
     let app_session_id = state.session_id.clone();
 
     // Spawn new Claude process (sync operation wrapped in blocking task)
-    let process = tokio::task::spawn_blocking(move || {
-        ClaudeProcess::spawn(&dir, &app_session_id)
-    })
+    let process = tokio::task::spawn_blocking(move || ClaudeProcess::spawn(&dir, &app_session_id))
         .await
         .map_err(|e| {
             cmd_debug_log("SESSION", &format!("Task join error: {}", e));
@@ -101,7 +99,10 @@ pub async fn resume_session(
     channel: Channel<ClaudeEvent>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    cmd_debug_log("RESUME", &format!("resume_session called with: {}", session_id));
+    cmd_debug_log(
+        "RESUME",
+        &format!("resume_session called with: {}", session_id),
+    );
 
     // Use the launch directory
     let working_dir = std::path::PathBuf::from(&state.launch_dir);
@@ -126,11 +127,11 @@ pub async fn resume_session(
     let process = tokio::task::spawn_blocking(move || {
         ClaudeProcess::spawn_with_resume(&dir, Some(&sid), &app_session_id)
     })
-        .await
-        .map_err(|e| {
-            cmd_debug_log("RESUME", &format!("Task join error: {}", e));
-            format!("Task join error: {}", e)
-        })??;
+    .await
+    .map_err(|e| {
+        cmd_debug_log("RESUME", &format!("Task join error: {}", e));
+        format!("Task join error: {}", e)
+    })??;
 
     cmd_debug_log("RESUME", "Process spawned with resume flag");
 
@@ -142,9 +143,7 @@ pub async fn resume_session(
     }
 
     // Send done event
-    channel
-        .send(ClaudeEvent::Done)
-        .map_err(|e| e.to_string())?;
+    channel.send(ClaudeEvent::Done).map_err(|e| e.to_string())?;
 
     cmd_debug_log("RESUME", &format!("Session resumed: {}", session_id));
     Ok(dir_string)
@@ -180,9 +179,7 @@ pub async fn clear_session(
     // Spawn new Claude process
     let dir = working_dir.clone();
     let app_session_id = state.session_id.clone();
-    let process = tokio::task::spawn_blocking(move || {
-        ClaudeProcess::spawn(&dir, &app_session_id)
-    })
+    let process = tokio::task::spawn_blocking(move || ClaudeProcess::spawn(&dir, &app_session_id))
         .await
         .map_err(|e| {
             cmd_debug_log("CLEAR", &format!("Task join error: {}", e));
@@ -200,12 +197,13 @@ pub async fn clear_session(
 
     // Don't wait for ready - the bridge will be ready when needed
     // Just send the done event immediately so UI can update
-    cmd_debug_log("CLEAR", "New process spawned, sending done event immediately");
+    cmd_debug_log(
+        "CLEAR",
+        "New process spawned, sending done event immediately",
+    );
 
     // Send done event - the bridge will be ready by the time user sends next message
-    channel
-        .send(ClaudeEvent::Done)
-        .map_err(|e| e.to_string())?;
+    channel.send(ClaudeEvent::Done).map_err(|e| e.to_string())?;
 
     cmd_debug_log("CLEAR", "Session cleared successfully");
     Ok(())

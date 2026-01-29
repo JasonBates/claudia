@@ -31,7 +31,7 @@ pub struct ColorSchemeColors {
     pub border: String,
     pub user_bg: String,
     pub code_bg: String,
-    pub quote: String,  // Color for blockquotes
+    pub quote: String, // Color for blockquotes
 }
 
 /// List available color schemes from bundled and user locations
@@ -137,7 +137,7 @@ fn get_bundled_scheme(name: &str) -> Option<ColorSchemeColors> {
             border: "#0a4959".to_string(),
             user_bg: "#073642".to_string(),
             code_bg: "#001e26".to_string(),
-            quote: "#6c71c4".to_string(),  // Solarized violet - softer than magenta
+            quote: "#6c71c4".to_string(), // Solarized violet - softer than magenta
         }),
         "Solarized Light" => Some(ColorSchemeColors {
             bg: "#fdf6e3".to_string(),
@@ -156,7 +156,7 @@ fn get_bundled_scheme(name: &str) -> Option<ColorSchemeColors> {
             border: "#d3cbb7".to_string(),
             user_bg: "#eee8d5".to_string(),
             code_bg: "#ffffff".to_string(),
-            quote: "#6c71c4".to_string(),  // Solarized violet
+            quote: "#6c71c4".to_string(), // Solarized violet
         }),
         "Dracula" => Some(ColorSchemeColors {
             bg: "#282a36".to_string(),
@@ -175,7 +175,7 @@ fn get_bundled_scheme(name: &str) -> Option<ColorSchemeColors> {
             border: "#6272a4".to_string(),
             user_bg: "#44475a".to_string(),
             code_bg: "#21222c".to_string(),
-            quote: "#6272a4".to_string(),  // Dracula comment color - subtle purple-gray
+            quote: "#6272a4".to_string(), // Dracula comment color - subtle purple-gray
         }),
         "Nord" => Some(ColorSchemeColors {
             bg: "#2e3440".to_string(),
@@ -194,7 +194,7 @@ fn get_bundled_scheme(name: &str) -> Option<ColorSchemeColors> {
             border: "#4c566a".to_string(),
             user_bg: "#3b4252".to_string(),
             code_bg: "#242933".to_string(),
-            quote: "#5e81ac".to_string(),  // Nord frost blue - calm and readable
+            quote: "#5e81ac".to_string(), // Nord frost blue - calm and readable
         }),
         "One Dark" => Some(ColorSchemeColors {
             bg: "#282c34".to_string(),
@@ -213,7 +213,7 @@ fn get_bundled_scheme(name: &str) -> Option<ColorSchemeColors> {
             border: "#3e4451".to_string(),
             user_bg: "#21252b".to_string(),
             code_bg: "#1e2127".to_string(),
-            quote: "#5c6370".to_string(),  // One Dark comment color - neutral gray
+            quote: "#5c6370".to_string(), // One Dark comment color - neutral gray
         }),
         "Gruvbox Dark" => Some(ColorSchemeColors {
             bg: "#282828".to_string(),
@@ -232,7 +232,7 @@ fn get_bundled_scheme(name: &str) -> Option<ColorSchemeColors> {
             border: "#504945".to_string(),
             user_bg: "#3c3836".to_string(),
             code_bg: "#1d2021".to_string(),
-            quote: "#a89984".to_string(),  // Gruvbox gray - warm and readable
+            quote: "#a89984".to_string(), // Gruvbox gray - warm and readable
         }),
         _ => None,
     }
@@ -314,6 +314,6 @@ fn parse_itermcolors(path: &PathBuf) -> Result<ColorSchemeColors, String> {
         border: lighten_color(&bg, 0.15),
         user_bg: bg_secondary.clone(),
         code_bg: darken_color(&bg, 0.15),
-        quote: fg_muted,  // Use muted foreground for quotes in custom schemes
+        quote: fg_muted, // Use muted foreground for quotes in custom schemes
     })
 }

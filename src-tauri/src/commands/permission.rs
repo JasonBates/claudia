@@ -32,7 +32,11 @@ pub async fn poll_permission_request(
                     Ok(json) => {
                         cmd_debug_log(
                             "PERMISSION",
-                            &format!("Found and took permission request (session {}): {:?}", &state.session_id[..8], json),
+                            &format!(
+                                "Found and took permission request (session {}): {:?}",
+                                &state.session_id[..8],
+                                json
+                            ),
                         );
                         Ok(Some(json))
                     }
@@ -69,7 +73,9 @@ pub async fn respond_to_permission(
         "PERMISSION",
         &format!(
             "Writing permission response (session {}): allow={}, message={:?}",
-            &state.session_id[..8], allow, message
+            &state.session_id[..8],
+            allow,
+            message
         ),
     );
 

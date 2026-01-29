@@ -98,7 +98,9 @@ pub async fn send_message(
     let process_arc = state.process.clone();
 
     // Drain any stale events from previous response before sending new message
-    // BUT forward Status events - they're important feedback (e.g., "Compacted")
+    // Forward Status events - they're important feedback (e.g., "Compacted")
+    // If we find a Closed event, the bridge died after previous response - restart it
+    let mut needs_restart = false;
     {
         let mut process_guard = process_arc.lock().await;
         if let Some(process) = process_guard.as_mut() {
@@ -114,6 +116,13 @@ pub async fn send_message(
                     let _ = channel.send(event);
                     forwarded += 1;
                 } else {
+                    if matches!(&event, ClaudeEvent::Closed { .. }) {
+                        cmd_debug_log(
+                            "DRAIN",
+                            "Bridge died after previous response - will restart",
+                        );
+                        needs_restart = true;
+                    }
                     cmd_debug_log("DRAIN", &format!("Drained: {:?}", event));
                     drained += 1;
                 }
@@ -127,15 +136,68 @@ pub async fn send_message(
                     ),
                 );
             }
+            if needs_restart {
+                *process_guard = None;
+            }
+        }
+    }
+
+    // Restart session if bridge died (Closed event found during drain)
+    if needs_restart {
+        cmd_debug_log("RESTART", "Restarting session before sending message");
+        let working_dir = std::path::PathBuf::from(&state.launch_dir);
+        let app_session_id = state.session_id.clone();
+
+        let new_process = tokio::task::spawn_blocking(move || {
+            ClaudeProcess::spawn(&working_dir, &app_session_id)
+        })
+        .await
+        .map_err(|e| format!("Restart task error: {}", e))??;
+
+        {
+            let mut process_guard = process_arc.lock().await;
+            *process_guard = Some(new_process);
+        }
+
+        // Wait for Ready event before sending message (bridge has warmup sequence)
+        cmd_debug_log("RESTART", "Waiting for bridge to be ready...");
+        let mut ready_received = false;
+        for _ in 0..60 {
+            // 30 second timeout (60 * 500ms)
+            let mut process_guard = process_arc.lock().await;
+            if let Some(process) = process_guard.as_mut() {
+                match timeout(Duration::from_millis(500), process.recv_event()).await {
+                    Ok(Some(event)) => {
+                        cmd_debug_log("RESTART", &format!("Event during warmup: {:?}", event));
+                        if matches!(&event, ClaudeEvent::Ready { .. }) {
+                            ready_received = true;
+                            let _ = channel.send(event);
+                            break;
+                        }
+                        // Forward other events (like Status) to frontend
+                        let _ = channel.send(event);
+                    }
+                    Ok(None) => {
+                        cmd_debug_log("RESTART", "Channel closed during warmup");
+                        break;
+                    }
+                    Err(_) => {
+                        // Timeout, keep waiting
+                    }
+                }
+            }
+        }
+        if ready_received {
+            cmd_debug_log("RESTART", "Bridge ready, continuing with message");
+        } else {
+            cmd_debug_log("RESTART", "Timeout waiting for Ready, proceeding anyway");
         }
     }
 
     // Send message (brief lock)
     {
         let mut process_guard = state.process.lock().await;
-        let process = process_guard
-            .as_mut()
-            .ok_or("No active session. Call start_session first.")?;
+        let process = process_guard.as_mut().ok_or("No active session")?;
 
         cmd_debug_log("SEND", "Got process, sending message");
         process.send_message(&message)?;
@@ -167,16 +229,15 @@ pub async fn send_message(
         // Calculate adaptive timeout based on current state
         let tools_pending = pending_tool_count > 0;
         let subagent_pending = pending_subagent_count > 0;
-        let (current_timeout, current_max_idle) =
-            calculate_timeouts(compacting, subagent_pending, tools_pending, got_first_content);
+        let (current_timeout, current_max_idle) = calculate_timeouts(
+            compacting,
+            subagent_pending,
+            tools_pending,
+            got_first_content,
+        );
 
         // Try to receive with timeout
-        match timeout(
-            Duration::from_millis(current_timeout),
-            process.recv_event(),
-        )
-        .await
-        {
+        match timeout(Duration::from_millis(current_timeout), process.recv_event()).await {
             Ok(Some(event)) => {
                 event_count += 1;
                 idle_count = 0;
@@ -192,19 +253,28 @@ pub async fn send_message(
                 // Track pending tools count for parallel tool support
                 // Increment on ToolStart, decrement on ToolResult (only with tool_use_id to avoid duplicates)
                 // Task tools (subagents) are tracked separately for longer timeouts
-                if let ClaudeEvent::ToolStart { ref id, ref name, .. } = event {
+                if let ClaudeEvent::ToolStart {
+                    ref id, ref name, ..
+                } = event
+                {
                     if name == "Task" {
                         pending_subagent_count += 1;
                         subagent_tool_ids.insert(id.clone());
                         cmd_debug_log(
                             "TOOL",
-                            &format!("Subagent started (id={}) - pending: {} subagents, {} tools", id, pending_subagent_count, pending_tool_count),
+                            &format!(
+                                "Subagent started (id={}) - pending: {} subagents, {} tools",
+                                id, pending_subagent_count, pending_tool_count
+                            ),
                         );
                     } else {
                         pending_tool_count += 1;
                         cmd_debug_log(
                             "TOOL",
-                            &format!("Tool '{}' started (id={}) - pending: {} subagents, {} tools", name, id, pending_subagent_count, pending_tool_count),
+                            &format!(
+                                "Tool '{}' started (id={}) - pending: {} subagents, {} tools",
+                                name, id, pending_subagent_count, pending_tool_count
+                            ),
                         );
                     }
                 }
@@ -231,24 +301,35 @@ pub async fn send_message(
                             pending_subagent_count = pending_subagent_count.saturating_sub(1);
                             cmd_debug_log(
                                 "TOOL",
-                                &format!("Subagent completed (id={}) - pending: {} subagents, {} tools", id, pending_subagent_count, pending_tool_count),
+                                &format!(
+                                    "Subagent completed (id={}) - pending: {} subagents, {} tools",
+                                    id, pending_subagent_count, pending_tool_count
+                                ),
                             );
                         } else if pending_tool_count > 0 {
                             // Regular tool
                             pending_tool_count -= 1;
                             cmd_debug_log(
                                 "TOOL",
-                                &format!("Tool completed (id={}) - pending: {} subagents, {} tools", id, pending_subagent_count, pending_tool_count),
+                                &format!(
+                                    "Tool completed (id={}) - pending: {} subagents, {} tools",
+                                    id, pending_subagent_count, pending_tool_count
+                                ),
                             );
                         }
                     }
                 }
 
                 // Text after tools means all tools are done
-                if matches!(event, ClaudeEvent::TextDelta { .. }) && (pending_tool_count > 0 || pending_subagent_count > 0) {
+                if matches!(event, ClaudeEvent::TextDelta { .. })
+                    && (pending_tool_count > 0 || pending_subagent_count > 0)
+                {
                     cmd_debug_log(
                         "TOOL",
-                        &format!("All tools completed (via text) - was pending: {} subagents, {} tools", pending_subagent_count, pending_tool_count),
+                        &format!(
+                            "All tools completed (via text) - was pending: {} subagents, {} tools",
+                            pending_subagent_count, pending_tool_count
+                        ),
                     );
                     pending_tool_count = 0;
                     pending_subagent_count = 0;
@@ -274,11 +355,13 @@ pub async fn send_message(
 
                 cmd_debug_log("EVENT", &format!("#{} Received: {:?}", event_count, event));
 
-                // Check if this is a "done" signal
-                let is_done = matches!(event, ClaudeEvent::Done);
+                // Check if this is a "done" signal (Done or Interrupted both end the response)
+                let is_done = matches!(event, ClaudeEvent::Done | ClaudeEvent::Interrupted);
 
                 match channel.send(event) {
-                    Ok(_) => cmd_debug_log("CHANNEL", &format!("#{} Sent to frontend", event_count)),
+                    Ok(_) => {
+                        cmd_debug_log("CHANNEL", &format!("#{} Sent to frontend", event_count))
+                    }
                     Err(e) => {
                         cmd_debug_log(
                             "CHANNEL_ERROR",
@@ -289,9 +372,13 @@ pub async fn send_message(
                 }
 
                 if is_done {
-                    cmd_debug_log("LOOP", "Got Done event, collecting trailing events...");
+                    cmd_debug_log(
+                        "LOOP",
+                        "Got Done/Interrupted event, collecting trailing events...",
+                    );
                     // Collect any trailing events that arrived just before/after Done
                     // (Status events from /compact can arrive within ms of Done)
+                    // Note: If Closed arrives here, the drain phase of next send_message will handle restart
                     drop(process_guard); // Release lock for trailing event collection
                     let mut trailing_count = 0;
                     for _ in 0..5 {
@@ -316,16 +403,15 @@ pub async fn send_message(
                             &format!("Collected {} trailing events", trailing_count),
                         );
                     }
-                    cmd_debug_log("LOOP", "Breaking after Done");
+
+                    cmd_debug_log("LOOP", "Breaking after Done/Interrupted");
                     break;
                 }
             }
             Ok(None) => {
                 // Channel closed, process ended
                 cmd_debug_log("LOOP", "Channel returned None (closed)");
-                channel
-                    .send(ClaudeEvent::Done)
-                    .map_err(|e| e.to_string())?;
+                channel.send(ClaudeEvent::Done).map_err(|e| e.to_string())?;
                 break;
             }
             Err(_) => {
@@ -335,15 +421,17 @@ pub async fn send_message(
                     "TIMEOUT",
                     &format!(
                         "Idle count: {}/{} (got_content: {}, subagents: {}, tools: {})",
-                        idle_count, current_max_idle, got_first_content, pending_subagent_count, pending_tool_count
+                        idle_count,
+                        current_max_idle,
+                        got_first_content,
+                        pending_subagent_count,
+                        pending_tool_count
                     ),
                 );
                 if idle_count >= current_max_idle {
                     // Likely done responding
                     cmd_debug_log("LOOP", "Max idle reached, sending Done");
-                    channel
-                        .send(ClaudeEvent::Done)
-                        .map_err(|e| e.to_string())?;
+                    channel.send(ClaudeEvent::Done).map_err(|e| e.to_string())?;
                     break;
                 }
             }
@@ -442,13 +530,31 @@ mod tests {
     #[test]
     fn timeout_values_are_reasonable() {
         // Sanity checks on the actual timeout values
-        assert!(TIMEOUT_SUBAGENT_MS >= 5000, "Subagent execution needs >= 5s timeout");
-        assert!(TIMEOUT_TOOL_EXEC_MS >= 5000, "Tool execution needs >= 5s timeout");
-        assert!(TIMEOUT_STREAMING_MS >= 1000, "Streaming needs >= 1s timeout");
+        assert!(
+            TIMEOUT_SUBAGENT_MS >= 5000,
+            "Subagent execution needs >= 5s timeout"
+        );
+        assert!(
+            TIMEOUT_TOOL_EXEC_MS >= 5000,
+            "Tool execution needs >= 5s timeout"
+        );
+        assert!(
+            TIMEOUT_STREAMING_MS >= 1000,
+            "Streaming needs >= 1s timeout"
+        );
         assert!(TIMEOUT_WAITING_MS >= 100, "Waiting needs >= 100ms polling");
-        assert!(TIMEOUT_SUBAGENT_MS >= TIMEOUT_TOOL_EXEC_MS, "Subagent timeout >= tool timeout");
-        assert!(TIMEOUT_TOOL_EXEC_MS > TIMEOUT_STREAMING_MS, "Tool timeout > streaming");
-        assert!(TIMEOUT_STREAMING_MS > TIMEOUT_WAITING_MS, "Streaming timeout > waiting");
+        assert!(
+            TIMEOUT_SUBAGENT_MS >= TIMEOUT_TOOL_EXEC_MS,
+            "Subagent timeout >= tool timeout"
+        );
+        assert!(
+            TIMEOUT_TOOL_EXEC_MS > TIMEOUT_STREAMING_MS,
+            "Tool timeout > streaming"
+        );
+        assert!(
+            TIMEOUT_STREAMING_MS > TIMEOUT_WAITING_MS,
+            "Streaming timeout > waiting"
+        );
     }
 
     #[test]
@@ -456,11 +562,17 @@ mod tests {
         // Verify total wait times are sufficient for each phase
         // Compaction: 30 * 10000ms = 300 seconds (5 minutes)
         let compaction_wait = MAX_IDLE_COMPACTION as u64 * TIMEOUT_SUBAGENT_MS;
-        assert!(compaction_wait >= 120_000, "Compaction should wait >= 2 minutes");
+        assert!(
+            compaction_wait >= 120_000,
+            "Compaction should wait >= 2 minutes"
+        );
 
         // Subagent: 30 * 10000ms = 300 seconds (5 minutes)
         let subagent_wait = MAX_IDLE_SUBAGENT as u64 * TIMEOUT_SUBAGENT_MS;
-        assert!(subagent_wait >= 120_000, "Subagent should wait >= 2 minutes");
+        assert!(
+            subagent_wait >= 120_000,
+            "Subagent should wait >= 2 minutes"
+        );
 
         // Tools: 24 * 5000ms = 120 seconds (2 minutes)
         let tools_wait = MAX_IDLE_TOOLS as u64 * TIMEOUT_TOOL_EXEC_MS;
@@ -468,11 +580,17 @@ mod tests {
 
         // Streaming: 3 * 2000ms = 6 seconds
         let streaming_wait = MAX_IDLE_STREAMING as u64 * TIMEOUT_STREAMING_MS;
-        assert!(streaming_wait >= 5_000, "Streaming should wait >= 5 seconds");
+        assert!(
+            streaming_wait >= 5_000,
+            "Streaming should wait >= 5 seconds"
+        );
 
         // Initial: 60 * 500ms = 30 seconds
         let initial_wait = MAX_IDLE_INITIAL as u64 * TIMEOUT_WAITING_MS;
-        assert!(initial_wait >= 20_000, "Initial wait should be >= 20 seconds");
+        assert!(
+            initial_wait >= 20_000,
+            "Initial wait should be >= 20 seconds"
+        );
     }
 
     // -------------------------------------------------------------------------

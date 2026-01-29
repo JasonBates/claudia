@@ -22,16 +22,12 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             // Parse CLI arguments to get optional directory
-            let cli_dir = app
-                .cli()
-                .matches()
-                .ok()
-                .and_then(|matches| {
-                    matches
-                        .args
-                        .get("directory")
-                        .and_then(|arg| arg.value.as_str().map(|s| s.to_string()))
-                });
+            let cli_dir = app.cli().matches().ok().and_then(|matches| {
+                matches
+                    .args
+                    .get("directory")
+                    .and_then(|arg| arg.value.as_str().map(|s| s.to_string()))
+            });
 
             // Create and manage AppState with CLI directory
             let state = AppState::new(cli_dir);

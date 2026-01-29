@@ -1,9 +1,9 @@
+use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::fs::OpenOptions;
 use tokio::sync::mpsc;
 
 use crate::events::ClaudeEvent;
@@ -34,7 +34,14 @@ fn find_node_binary() -> Result<PathBuf, String> {
 
     // Check nvm versions first (most common for macOS dev)
     let nvm_dir = home.join(".nvm/versions/node");
-    rust_debug_log("NODE", &format!("Checking nvm dir: {:?} exists={}", nvm_dir, nvm_dir.exists()));
+    rust_debug_log(
+        "NODE",
+        &format!(
+            "Checking nvm dir: {:?} exists={}",
+            nvm_dir,
+            nvm_dir.exists()
+        ),
+    );
 
     if nvm_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
@@ -48,7 +55,14 @@ fn find_node_binary() -> Result<PathBuf, String> {
 
             if let Some(latest) = versions.last() {
                 let node_path = latest.join("bin/node");
-                rust_debug_log("NODE", &format!("Checking nvm node: {:?} exists={}", node_path, node_path.exists()));
+                rust_debug_log(
+                    "NODE",
+                    &format!(
+                        "Checking nvm node: {:?} exists={}",
+                        node_path,
+                        node_path.exists()
+                    ),
+                );
                 if node_path.exists() {
                     rust_debug_log("NODE", &format!("Using nvm node: {:?}", node_path));
                     return Ok(node_path);
@@ -66,7 +80,10 @@ fn find_node_binary() -> Result<PathBuf, String> {
     ];
 
     for path in &candidates {
-        rust_debug_log("NODE", &format!("Checking: {:?} exists={}", path, path.exists()));
+        rust_debug_log(
+            "NODE",
+            &format!("Checking: {:?} exists={}", path, path.exists()),
+        );
         if path.exists() {
             rust_debug_log("NODE", &format!("Using: {:?}", path));
             return Ok(path.clone());
@@ -89,7 +106,10 @@ fn get_bridge_script_path() -> Result<PathBuf, String> {
         if let Some(parent) = exe.parent() {
             let bundled = parent.join("../Resources/_up_/sdk-bridge-v2.mjs");
             let canonical = bundled.canonicalize().ok();
-            rust_debug_log("BRIDGE", &format!("Checking bundled: {:?} canonical={:?}", bundled, canonical));
+            rust_debug_log(
+                "BRIDGE",
+                &format!("Checking bundled: {:?} canonical={:?}", bundled, canonical),
+            );
 
             if bundled.exists() {
                 rust_debug_log("BRIDGE", &format!("Using bundled: {:?}", bundled));
@@ -98,7 +118,10 @@ fn get_bridge_script_path() -> Result<PathBuf, String> {
 
             // Also check direct Resources path
             let direct = parent.join("../Resources/sdk-bridge-v2.mjs");
-            rust_debug_log("BRIDGE", &format!("Checking direct: {:?} exists={}", direct, direct.exists()));
+            rust_debug_log(
+                "BRIDGE",
+                &format!("Checking direct: {:?} exists={}", direct, direct.exists()),
+            );
             if direct.exists() {
                 rust_debug_log("BRIDGE", &format!("Using direct: {:?}", direct));
                 return Ok(direct);
@@ -112,14 +135,24 @@ fn get_bridge_script_path() -> Result<PathBuf, String> {
         .map(|p| p.join("sdk-bridge-v2.mjs"))
         .unwrap_or_default();
 
-    rust_debug_log("BRIDGE", &format!("Checking dev path: {:?} exists={}", dev_path, dev_path.exists()));
+    rust_debug_log(
+        "BRIDGE",
+        &format!(
+            "Checking dev path: {:?} exists={}",
+            dev_path,
+            dev_path.exists()
+        ),
+    );
 
     if dev_path.exists() {
         rust_debug_log("BRIDGE", &format!("Using dev: {:?}", dev_path));
         return Ok(dev_path);
     }
 
-    rust_debug_log("BRIDGE", "ERROR: Could not find sdk-bridge-v2.mjs anywhere!");
+    rust_debug_log(
+        "BRIDGE",
+        "ERROR: Could not find sdk-bridge-v2.mjs anywhere!",
+    );
     Err("Could not find sdk-bridge-v2.mjs script".to_string())
 }
 
@@ -135,8 +168,14 @@ impl ClaudeProcess {
         resume_session_id: Option<&str>,
         app_session_id: &str,
     ) -> Result<Self, String> {
-        rust_debug_log("SPAWN", &format!("Starting spawn in dir: {:?}", working_dir));
-        rust_debug_log("SPAWN", &format!("App session ID: {}", &app_session_id[..8]));
+        rust_debug_log(
+            "SPAWN",
+            &format!("Starting spawn in dir: {:?}", working_dir),
+        );
+        rust_debug_log(
+            "SPAWN",
+            &format!("App session ID: {}", &app_session_id[..8]),
+        );
         if let Some(session_id) = resume_session_id {
             rust_debug_log("SPAWN", &format!("Resuming session: {}", session_id));
         }
@@ -172,18 +211,15 @@ impl ClaudeProcess {
         }
 
         // Spawn the Node.js bridge script
-        let mut child = cmd.spawn()
-            .map_err(|e| {
-                rust_debug_log("SPAWN_ERROR", &format!("Failed: {}", e));
-                format!("Failed to spawn bridge: {}", e)
-            })?;
+        let mut child = cmd.spawn().map_err(|e| {
+            rust_debug_log("SPAWN_ERROR", &format!("Failed: {}", e));
+            format!("Failed to spawn bridge: {}", e)
+        })?;
 
         rust_debug_log("SPAWN", "Bridge process spawned successfully");
 
-        let stdin = child.stdin.take()
-            .ok_or("Failed to get stdin")?;
-        let stdout = child.stdout.take()
-            .ok_or("Failed to get stdout")?;
+        let stdin = child.stdin.take().ok_or("Failed to get stdin")?;
+        let stdout = child.stdout.take().ok_or("Failed to get stdout")?;
 
         let stdin = Arc::new(Mutex::new(stdin));
 
@@ -206,7 +242,10 @@ impl ClaudeProcess {
     fn read_output(stdout: ChildStdout, tx: mpsc::Sender<ClaudeEvent>) {
         // Clear log on start
         let log_path = std::env::temp_dir().join("claude-rust-debug.log");
-        let _ = std::fs::write(&log_path, format!("=== Rust reader started at {} ===\n", chrono::Local::now()));
+        let _ = std::fs::write(
+            &log_path,
+            format!("=== Rust reader started at {} ===\n", chrono::Local::now()),
+        );
 
         rust_debug_log("READER", "Starting read_output loop");
 
@@ -234,7 +273,10 @@ impl ClaudeProcess {
             // Parse JSON output from the bridge
             match serde_json::from_str::<serde_json::Value>(&line) {
                 Ok(json) => {
-                    let msg_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    let msg_type = json
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
                     rust_debug_log("JSON_PARSED", &format!("type={}", msg_type));
 
                     if let Some(event) = Self::parse_bridge_message(&json) {
@@ -247,11 +289,21 @@ impl ClaudeProcess {
                             }
                         }
                     } else {
-                        rust_debug_log("PARSE_FAIL", &format!("Could not parse type: {}", msg_type));
+                        rust_debug_log(
+                            "PARSE_FAIL",
+                            &format!("Could not parse type: {}", msg_type),
+                        );
                     }
                 }
                 Err(e) => {
-                    rust_debug_log("JSON_ERROR", &format!("Parse error: {} - line: {}", e, &line[..line.len().min(100)]));
+                    rust_debug_log(
+                        "JSON_ERROR",
+                        &format!(
+                            "Parse error: {} - line: {}",
+                            e,
+                            &line[..line.len().min(100)]
+                        ),
+                    );
                 }
             }
         }
@@ -263,36 +315,44 @@ impl ClaudeProcess {
 
         match msg_type {
             "status" => {
-                let message = json.get("message")
+                let message = json
+                    .get("message")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let is_compaction = json.get("isCompaction")
-                    .and_then(|v| v.as_bool());
-                let pre_tokens = json.get("preTokens")
-                    .and_then(|v| v.as_u64());
-                let post_tokens = json.get("postTokens")
-                    .and_then(|v| v.as_u64());
-                Some(ClaudeEvent::Status { message, is_compaction, pre_tokens, post_tokens })
+                let is_compaction = json.get("isCompaction").and_then(|v| v.as_bool());
+                let pre_tokens = json.get("preTokens").and_then(|v| v.as_u64());
+                let post_tokens = json.get("postTokens").and_then(|v| v.as_u64());
+                Some(ClaudeEvent::Status {
+                    message,
+                    is_compaction,
+                    pre_tokens,
+                    post_tokens,
+                })
             }
 
             "ready" => {
-                let session_id = json.get("sessionId")
+                let session_id = json
+                    .get("sessionId")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let model = json.get("model")
+                let model = json
+                    .get("model")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let tools = json.get("tools")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as u32;
-                Some(ClaudeEvent::Ready { session_id, model, tools })
+                let tools = json.get("tools").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                Some(ClaudeEvent::Ready {
+                    session_id,
+                    model,
+                    tools,
+                })
             }
 
             "processing" => {
-                let prompt = json.get("prompt")
+                let prompt = json
+                    .get("prompt")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
@@ -300,7 +360,8 @@ impl ClaudeProcess {
             }
 
             "text_delta" => {
-                let text = json.get("text")
+                let text = json
+                    .get("text")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
@@ -312,14 +373,13 @@ impl ClaudeProcess {
             }
 
             "thinking_start" => {
-                let index = json.get("index")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as u32);
+                let index = json.get("index").and_then(|v| v.as_u64()).map(|v| v as u32);
                 Some(ClaudeEvent::ThinkingStart { index })
             }
 
             "thinking_delta" => {
-                let thinking = json.get("thinking")
+                let thinking = json
+                    .get("thinking")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
@@ -327,114 +387,138 @@ impl ClaudeProcess {
             }
 
             "tool_start" => {
-                let id = json.get("id")
+                let id = json
+                    .get("id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let name = json.get("name")
+                let name = json
+                    .get("name")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let parent_tool_use_id = json.get("parent_tool_use_id")
+                let parent_tool_use_id = json
+                    .get("parent_tool_use_id")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
-                Some(ClaudeEvent::ToolStart { id, name, parent_tool_use_id })
+                Some(ClaudeEvent::ToolStart {
+                    id,
+                    name,
+                    parent_tool_use_id,
+                })
             }
 
             "tool_input" => {
-                let json_str = json.get("json")
+                let json_str = json
+                    .get("json")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
                 Some(ClaudeEvent::ToolInput { json: json_str })
             }
 
-            "tool_pending" => {
-                Some(ClaudeEvent::ToolPending)
-            }
+            "tool_pending" => Some(ClaudeEvent::ToolPending),
 
             "permission_request" => {
-                let request_id = json.get("requestId")
+                let request_id = json
+                    .get("requestId")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let tool_name = json.get("toolName")
+                let tool_name = json
+                    .get("toolName")
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown")
                     .to_string();
                 let tool_input = json.get("toolInput").cloned();
-                let description = json.get("description")
+                let description = json
+                    .get("description")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                Some(ClaudeEvent::PermissionRequest { request_id, tool_name, tool_input, description })
+                Some(ClaudeEvent::PermissionRequest {
+                    request_id,
+                    tool_name,
+                    tool_input,
+                    description,
+                })
             }
 
             "tool_result" => {
-                let tool_use_id = json.get("tool_use_id")
+                let tool_use_id = json
+                    .get("tool_use_id")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
-                let stdout = json.get("stdout")
+                let stdout = json
+                    .get("stdout")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
-                let stderr = json.get("stderr")
+                let stderr = json
+                    .get("stderr")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
-                let is_error = json.get("isError")
+                let is_error = json
+                    .get("isError")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                Some(ClaudeEvent::ToolResult { tool_use_id, stdout, stderr, is_error })
+                Some(ClaudeEvent::ToolResult {
+                    tool_use_id,
+                    stdout,
+                    stderr,
+                    is_error,
+                })
             }
 
-            "block_end" => {
-                Some(ClaudeEvent::BlockEnd)
-            }
+            "block_end" => Some(ClaudeEvent::BlockEnd),
 
             "result" => {
-                let content = json.get("content")
+                let content = json
+                    .get("content")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let cost = json.get("cost")
-                    .and_then(|v| v.as_f64())
-                    .unwrap_or(0.0);
-                let duration = json.get("duration")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let turns = json.get("turns")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as u32;
-                let is_error = json.get("isError")
+                let cost = json.get("cost").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                let duration = json.get("duration").and_then(|v| v.as_u64()).unwrap_or(0);
+                let turns = json.get("turns").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                let is_error = json
+                    .get("isError")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
-                let input_tokens = json.get("inputTokens")
+                let input_tokens = json
+                    .get("inputTokens")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0);
-                let output_tokens = json.get("outputTokens")
+                let output_tokens = json
+                    .get("outputTokens")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0);
-                let cache_read = json.get("cacheRead")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let cache_write = json.get("cacheWrite")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                Some(ClaudeEvent::Result { content, cost, duration, turns, is_error, input_tokens, output_tokens, cache_read, cache_write })
+                let cache_read = json.get("cacheRead").and_then(|v| v.as_u64()).unwrap_or(0);
+                let cache_write = json.get("cacheWrite").and_then(|v| v.as_u64()).unwrap_or(0);
+                Some(ClaudeEvent::Result {
+                    content,
+                    cost,
+                    duration,
+                    turns,
+                    is_error,
+                    input_tokens,
+                    output_tokens,
+                    cache_read,
+                    cache_write,
+                })
             }
 
-            "done" => {
-                Some(ClaudeEvent::Done)
-            }
+            "done" => Some(ClaudeEvent::Done),
+
+            "interrupted" => Some(ClaudeEvent::Interrupted),
 
             "closed" => {
-                let code = json.get("code")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0) as i32;
+                let code = json.get("code").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                 Some(ClaudeEvent::Closed { code })
             }
 
             "error" => {
-                let message = json.get("message")
+                let message = json
+                    .get("message")
                     .and_then(|v| v.as_str())
                     .unwrap_or("Unknown error")
                     .to_string();
@@ -443,85 +527,125 @@ impl ClaudeProcess {
 
             "context_update" => {
                 // Real-time context size from message_start event
-                let input_tokens = json.get("inputTokens")
+                let input_tokens = json
+                    .get("inputTokens")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0);
-                let raw_input_tokens = json.get("rawInputTokens")
+                let raw_input_tokens = json
+                    .get("rawInputTokens")
                     .and_then(|v| v.as_u64())
                     .unwrap_or(0);
-                let cache_read = json.get("cacheRead")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let cache_write = json.get("cacheWrite")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                rust_debug_log("CONTEXT_UPDATE", &format!("total={}, raw={}, cache_read={}, cache_write={}",
-                    input_tokens, raw_input_tokens, cache_read, cache_write));
-                Some(ClaudeEvent::ContextUpdate { input_tokens, raw_input_tokens, cache_read, cache_write })
+                let cache_read = json.get("cacheRead").and_then(|v| v.as_u64()).unwrap_or(0);
+                let cache_write = json.get("cacheWrite").and_then(|v| v.as_u64()).unwrap_or(0);
+                rust_debug_log(
+                    "CONTEXT_UPDATE",
+                    &format!(
+                        "total={}, raw={}, cache_read={}, cache_write={}",
+                        input_tokens, raw_input_tokens, cache_read, cache_write
+                    ),
+                );
+                Some(ClaudeEvent::ContextUpdate {
+                    input_tokens,
+                    raw_input_tokens,
+                    cache_read,
+                    cache_write,
+                })
             }
 
             "subagent_start" => {
-                let id = json.get("id")
+                let id = json
+                    .get("id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let agent_type = json.get("agentType")
+                let agent_type = json
+                    .get("agentType")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let description = json.get("description")
+                let description = json
+                    .get("description")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let prompt = json.get("prompt")
+                let prompt = json
+                    .get("prompt")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
                 rust_debug_log("SUBAGENT_START", &format!("id={}, type={}", id, agent_type));
-                Some(ClaudeEvent::SubagentStart { id, agent_type, description, prompt })
+                Some(ClaudeEvent::SubagentStart {
+                    id,
+                    agent_type,
+                    description,
+                    prompt,
+                })
             }
 
             "subagent_progress" => {
-                let subagent_id = json.get("subagentId")
+                let subagent_id = json
+                    .get("subagentId")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let tool_name = json.get("toolName")
+                let tool_name = json
+                    .get("toolName")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let tool_detail = json.get("toolDetail")
+                let tool_detail = json
+                    .get("toolDetail")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let tool_count = json.get("toolCount")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as u32;
-                rust_debug_log("SUBAGENT_PROGRESS", &format!("id={}, tool={}, detail={}, count={}", subagent_id, tool_name, tool_detail, tool_count));
-                Some(ClaudeEvent::SubagentProgress { subagent_id, tool_name, tool_detail, tool_count })
+                let tool_count = json.get("toolCount").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                rust_debug_log(
+                    "SUBAGENT_PROGRESS",
+                    &format!(
+                        "id={}, tool={}, detail={}, count={}",
+                        subagent_id, tool_name, tool_detail, tool_count
+                    ),
+                );
+                Some(ClaudeEvent::SubagentProgress {
+                    subagent_id,
+                    tool_name,
+                    tool_detail,
+                    tool_count,
+                })
             }
 
             "subagent_end" => {
-                let id = json.get("id")
+                let id = json
+                    .get("id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let agent_type = json.get("agentType")
+                let agent_type = json
+                    .get("agentType")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                let duration = json.get("duration")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let tool_count = json.get("toolCount")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as u32;
-                let result = json.get("result")
+                let duration = json.get("duration").and_then(|v| v.as_u64()).unwrap_or(0);
+                let tool_count = json.get("toolCount").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                let result = json
+                    .get("result")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                rust_debug_log("SUBAGENT_END", &format!("id={}, type={}, duration={}ms, tools={}", id, agent_type, duration, tool_count));
-                Some(ClaudeEvent::SubagentEnd { id, agent_type, duration, tool_count, result })
+                rust_debug_log(
+                    "SUBAGENT_END",
+                    &format!(
+                        "id={}, type={}, duration={}ms, tools={}",
+                        id, agent_type, duration, tool_count
+                    ),
+                );
+                Some(ClaudeEvent::SubagentEnd {
+                    id,
+                    agent_type,
+                    duration,
+                    tool_count,
+                    result,
+                })
             }
 
             _ => None,
@@ -529,7 +653,10 @@ impl ClaudeProcess {
     }
 
     pub fn send_message(&mut self, message: &str) -> Result<(), String> {
-        rust_debug_log("SEND_MSG", &format!("Sending message: {}", &message[..message.len().min(100)]));
+        rust_debug_log(
+            "SEND_MSG",
+            &format!("Sending message: {}", &message[..message.len().min(100)]),
+        );
 
         let mut stdin = self.stdin.lock().map_err(|e| {
             rust_debug_log("SEND_MSG", &format!("Lock error: {}", e));
@@ -537,18 +664,14 @@ impl ClaudeProcess {
         })?;
 
         // Send plain text prompt - the bridge handles JSON encoding
-        stdin
-            .write_all(message.as_bytes())
-            .map_err(|e| {
-                rust_debug_log("SEND_MSG", &format!("Write error: {}", e));
-                format!("Write error: {}", e)
-            })?;
+        stdin.write_all(message.as_bytes()).map_err(|e| {
+            rust_debug_log("SEND_MSG", &format!("Write error: {}", e));
+            format!("Write error: {}", e)
+        })?;
         stdin
             .write_all(b"\n")
             .map_err(|e| format!("Write error: {}", e))?;
-        stdin
-            .flush()
-            .map_err(|e| format!("Flush error: {}", e))?;
+        stdin.flush().map_err(|e| format!("Flush error: {}", e))?;
 
         rust_debug_log("SEND_MSG", "Message sent and flushed");
         Ok(())
@@ -568,18 +691,14 @@ impl ClaudeProcess {
 
         // Send interrupt JSON message to the bridge
         let interrupt_msg = r#"{"type":"interrupt"}"#;
-        stdin
-            .write_all(interrupt_msg.as_bytes())
-            .map_err(|e| {
-                rust_debug_log("INTERRUPT", &format!("Write error: {}", e));
-                format!("Write error: {}", e)
-            })?;
+        stdin.write_all(interrupt_msg.as_bytes()).map_err(|e| {
+            rust_debug_log("INTERRUPT", &format!("Write error: {}", e));
+            format!("Write error: {}", e)
+        })?;
         stdin
             .write_all(b"\n")
             .map_err(|e| format!("Write error: {}", e))?;
-        stdin
-            .flush()
-            .map_err(|e| format!("Flush error: {}", e))?;
+        stdin.flush().map_err(|e| format!("Flush error: {}", e))?;
 
         rust_debug_log("INTERRUPT", "Interrupt sent successfully");
         Ok(())
@@ -669,7 +788,12 @@ mod tests {
             "id": "tool_123",
             "name": "Read"
         }));
-        if let Some(ClaudeEvent::ToolStart { id, name, parent_tool_use_id }) = event {
+        if let Some(ClaudeEvent::ToolStart {
+            id,
+            name,
+            parent_tool_use_id,
+        }) = event
+        {
             assert_eq!(id, "tool_123");
             assert_eq!(name, "Read");
             assert!(parent_tool_use_id.is_none());
@@ -686,7 +810,12 @@ mod tests {
             "name": "Glob",
             "parent_tool_use_id": "tool_123"
         }));
-        if let Some(ClaudeEvent::ToolStart { id, name, parent_tool_use_id }) = event {
+        if let Some(ClaudeEvent::ToolStart {
+            id,
+            name,
+            parent_tool_use_id,
+        }) = event
+        {
             assert_eq!(id, "tool_456");
             assert_eq!(name, "Glob");
             assert_eq!(parent_tool_use_id, Some("tool_123".to_string()));
@@ -729,7 +858,13 @@ mod tests {
             "stderr": "some warning",
             "isError": false
         }));
-        if let Some(ClaudeEvent::ToolResult { tool_use_id, stdout, stderr, is_error }) = event {
+        if let Some(ClaudeEvent::ToolResult {
+            tool_use_id,
+            stdout,
+            stderr,
+            is_error,
+        }) = event
+        {
             assert_eq!(tool_use_id, Some("tool_123".to_string()));
             assert_eq!(stdout, Some("file contents".to_string()));
             assert_eq!(stderr, Some("some warning".to_string()));
@@ -744,7 +879,13 @@ mod tests {
         let event = parse(json!({
             "type": "tool_result"
         }));
-        if let Some(ClaudeEvent::ToolResult { tool_use_id, stdout, stderr, is_error }) = event {
+        if let Some(ClaudeEvent::ToolResult {
+            tool_use_id,
+            stdout,
+            stderr,
+            is_error,
+        }) = event
+        {
             assert!(tool_use_id.is_none());
             assert!(stdout.is_none());
             assert!(stderr.is_none());
@@ -761,7 +902,10 @@ mod tests {
             "stderr": "Command failed",
             "isError": true
         }));
-        if let Some(ClaudeEvent::ToolResult { is_error, stderr, .. }) = event {
+        if let Some(ClaudeEvent::ToolResult {
+            is_error, stderr, ..
+        }) = event
+        {
             assert!(is_error);
             assert_eq!(stderr, Some("Command failed".to_string()));
         } else {
@@ -808,9 +952,17 @@ mod tests {
             "cacheWrite": 200
         }));
         if let Some(ClaudeEvent::Result {
-            content, cost, duration, turns, is_error,
-            input_tokens, output_tokens, cache_read, cache_write
-        }) = event {
+            content,
+            cost,
+            duration,
+            turns,
+            is_error,
+            input_tokens,
+            output_tokens,
+            cache_read,
+            cache_write,
+        }) = event
+        {
             assert_eq!(content, "Response text");
             assert!((cost - 0.025).abs() < 0.001);
             assert_eq!(duration, 1500);
@@ -833,7 +985,13 @@ mod tests {
             "type": "status",
             "message": "Processing..."
         }));
-        if let Some(ClaudeEvent::Status { message, is_compaction, pre_tokens, post_tokens }) = event {
+        if let Some(ClaudeEvent::Status {
+            message,
+            is_compaction,
+            pre_tokens,
+            post_tokens,
+        }) = event
+        {
             assert_eq!(message, "Processing...");
             assert!(is_compaction.is_none());
             assert!(pre_tokens.is_none());
@@ -852,7 +1010,13 @@ mod tests {
             "preTokens": 150000,
             "postTokens": 45000
         }));
-        if let Some(ClaudeEvent::Status { message, is_compaction, pre_tokens, post_tokens }) = event {
+        if let Some(ClaudeEvent::Status {
+            message,
+            is_compaction,
+            pre_tokens,
+            post_tokens,
+        }) = event
+        {
             assert_eq!(message, "Compacted conversation");
             assert_eq!(is_compaction, Some(true));
             assert_eq!(pre_tokens, Some(150000));
@@ -872,7 +1036,12 @@ mod tests {
             "model": "claude-opus-4-5-20251101",
             "tools": 42
         }));
-        if let Some(ClaudeEvent::Ready { session_id, model, tools }) = event {
+        if let Some(ClaudeEvent::Ready {
+            session_id,
+            model,
+            tools,
+        }) = event
+        {
             assert_eq!(session_id, "sess_abc123");
             assert_eq!(model, "claude-opus-4-5-20251101");
             assert_eq!(tools, 42);
@@ -942,7 +1111,13 @@ mod tests {
             "toolInput": { "command": "ls -la" },
             "description": "Run shell command"
         }));
-        if let Some(ClaudeEvent::PermissionRequest { request_id, tool_name, tool_input, description }) = event {
+        if let Some(ClaudeEvent::PermissionRequest {
+            request_id,
+            tool_name,
+            tool_input,
+            description,
+        }) = event
+        {
             assert_eq!(request_id, "req_xyz");
             assert_eq!(tool_name, "Bash");
             assert!(tool_input.is_some());
@@ -976,10 +1151,7 @@ mod tests {
             "type": "closed",
             "code": 0
         }));
-        assert!(matches!(
-            event,
-            Some(ClaudeEvent::Closed { code: 0 })
-        ));
+        assert!(matches!(event, Some(ClaudeEvent::Closed { code: 0 })));
     }
 
     #[test]
@@ -988,10 +1160,7 @@ mod tests {
             "type": "closed",
             "code": 1
         }));
-        assert!(matches!(
-            event,
-            Some(ClaudeEvent::Closed { code: 1 })
-        ));
+        assert!(matches!(event, Some(ClaudeEvent::Closed { code: 1 })));
     }
 
     // ==================== error ====================
@@ -1039,7 +1208,13 @@ mod tests {
             "description": "Find error handling code",
             "prompt": "Search the codebase for..."
         }));
-        if let Some(ClaudeEvent::SubagentStart { id, agent_type, description, prompt }) = event {
+        if let Some(ClaudeEvent::SubagentStart {
+            id,
+            agent_type,
+            description,
+            prompt,
+        }) = event
+        {
             assert_eq!(id, "tool_123");
             assert_eq!(agent_type, "Explore");
             assert_eq!(description, "Find error handling code");
@@ -1057,7 +1232,13 @@ mod tests {
             "toolName": "Glob",
             "toolCount": 3
         }));
-        if let Some(ClaudeEvent::SubagentProgress { subagent_id, tool_name, tool_count, .. }) = event {
+        if let Some(ClaudeEvent::SubagentProgress {
+            subagent_id,
+            tool_name,
+            tool_count,
+            ..
+        }) = event
+        {
             assert_eq!(subagent_id, "tool_123");
             assert_eq!(tool_name, "Glob");
             assert_eq!(tool_count, 3);
@@ -1076,7 +1257,14 @@ mod tests {
             "toolCount": 7,
             "result": "Found 5 files containing error handling..."
         }));
-        if let Some(ClaudeEvent::SubagentEnd { id, agent_type, duration, tool_count, result }) = event {
+        if let Some(ClaudeEvent::SubagentEnd {
+            id,
+            agent_type,
+            duration,
+            tool_count,
+            result,
+        }) = event
+        {
             assert_eq!(id, "tool_123");
             assert_eq!(agent_type, "Explore");
             assert_eq!(duration, 5234);

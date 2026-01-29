@@ -117,6 +117,9 @@ pub enum ClaudeEvent {
     /// Response complete
     Done,
 
+    /// Response was interrupted by user
+    Interrupted,
+
     /// Process closed
     Closed { code: i32 },
 
@@ -129,22 +132,13 @@ pub enum ClaudeEvent {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CommandEvent {
     /// Command started
-    Started {
-        command_id: String,
-        command: String,
-    },
+    Started { command_id: String, command: String },
 
     /// Line of stdout output
-    Stdout {
-        command_id: String,
-        line: String,
-    },
+    Stdout { command_id: String, line: String },
 
     /// Line of stderr output
-    Stderr {
-        command_id: String,
-        line: String,
-    },
+    Stderr { command_id: String, line: String },
 
     /// Command completed
     Completed {
@@ -154,10 +148,7 @@ pub enum CommandEvent {
     },
 
     /// Command failed to start
-    Error {
-        command_id: String,
-        message: String,
-    },
+    Error { command_id: String, message: String },
 }
 
 #[cfg(test)]
@@ -168,7 +159,9 @@ mod tests {
 
     #[test]
     fn claude_event_serializes_with_snake_case_type() {
-        let event = ClaudeEvent::TextDelta { text: "hello".to_string() };
+        let event = ClaudeEvent::TextDelta {
+            text: "hello".to_string(),
+        };
         let json = serde_json::to_string(&event).unwrap();
 
         assert!(json.contains("\"type\":\"text_delta\""));
