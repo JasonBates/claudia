@@ -28,7 +28,7 @@ import {
   type EventContext,
 } from "../../lib/store/event-dispatch";
 import { createStreamingRefs } from "../../lib/store/refs";
-import type { ClaudeEvent } from "../../lib/tauri";
+import type { NormalizedEvent } from "../../lib/claude-event-normalizer";
 import type { ToolUse } from "../../lib/types";
 
 /**
@@ -59,9 +59,12 @@ describe("Event Dispatch Functions", () => {
   describe("handleStatus", () => {
     it("should dispatch ADD_MESSAGE for regular status", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "status",
         message: "Processing...",
+        isCompaction: false,
+        preTokens: 0,
+        postTokens: 0,
       };
 
       handleStatus(event, ctx);
@@ -82,9 +85,12 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getSessionInfo: () => ({ totalContext: 100000 }),
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "status",
         message: "Compacting conversation...",
+        isCompaction: false,
+        preTokens: 0,
+        postTokens: 0,
       };
 
       handleStatus(event, ctx);
@@ -104,11 +110,12 @@ describe("Event Dispatch Functions", () => {
         getCompactionPreTokens: () => 100000,
         getSessionInfo: () => ({ baseContext: 20000 }),
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "status",
         message: "Compaction complete",
-        is_compaction: true,
-        post_tokens: 30000,
+        isCompaction: true,
+        preTokens: 0,
+        postTokens: 30000,
       };
 
       handleStatus(event, ctx);
@@ -127,7 +134,13 @@ describe("Event Dispatch Functions", () => {
 
     it("should do nothing when message is empty", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = { type: "status" };
+      const event: NormalizedEvent = {
+        type: "status",
+        message: "",
+        isCompaction: false,
+        preTokens: 0,
+        postTokens: 0,
+      };
 
       handleStatus(event, ctx);
 
@@ -138,10 +151,11 @@ describe("Event Dispatch Functions", () => {
   describe("handleReady", () => {
     it("should dispatch SET_SESSION_ACTIVE and UPDATE_SESSION_INFO", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "ready",
-        session_id: "sess-123",
+        sessionId: "sess-123",
         model: "claude-3",
+        tools: 0,
       };
 
       handleReady(event, ctx);
@@ -160,9 +174,11 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getLaunchSessionId: () => null,
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "ready",
-        session_id: "sess-123",
+        sessionId: "sess-123",
+        model: undefined,
+        tools: 0,
       };
 
       handleReady(event, ctx);
@@ -177,9 +193,11 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getLaunchSessionId: () => "existing-session",
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "ready",
-        session_id: "new-session",
+        sessionId: "new-session",
+        model: undefined,
+        tools: 0,
       };
 
       handleReady(event, ctx);
@@ -191,10 +209,11 @@ describe("Event Dispatch Functions", () => {
 
     it("should support camelCase sessionId from JS bridge", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "ready",
         sessionId: "sess-456",
         model: "claude-4",
+        tools: 0,
       };
 
       handleReady(event, ctx);
@@ -209,7 +228,7 @@ describe("Event Dispatch Functions", () => {
   describe("handleClosed", () => {
     it("should dispatch SET_SESSION_ACTIVE false and SET_SESSION_ERROR", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = { type: "closed", code: 1 };
+      const event: NormalizedEvent = { type: "closed", code: 1 };
 
       handleClosed(event, ctx);
 
@@ -227,7 +246,7 @@ describe("Event Dispatch Functions", () => {
   describe("handleError", () => {
     it("should dispatch SET_SESSION_ERROR and FINISH_STREAMING", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "error",
         message: "Something went wrong",
       };
@@ -263,7 +282,7 @@ describe("Event Dispatch Functions", () => {
   describe("handleThinkingDelta", () => {
     it("should dispatch APPEND_STREAMING_THINKING with thinking text", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "thinking_delta",
         thinking: "Let me think...",
       };
@@ -280,7 +299,7 @@ describe("Event Dispatch Functions", () => {
   describe("handleTextDelta", () => {
     it("should dispatch APPEND_STREAMING_CONTENT with text", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "text_delta",
         text: "Hello, world!",
       };
@@ -297,7 +316,7 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getPlanFilePath: () => null,
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "text_delta",
         text: "I've written the plan file /path/to/plan.md for you.",
       };
@@ -314,7 +333,7 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getPlanFilePath: () => "/existing/plan.md",
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "text_delta",
         text: "plan file /new/plan.md",
       };
@@ -333,7 +352,7 @@ describe("Event Dispatch Functions", () => {
   describe("handleToolStart", () => {
     it("should dispatch ADD_TOOL for regular tools", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_start",
         id: "tool-123",
         name: "Read",
@@ -353,8 +372,9 @@ describe("Event Dispatch Functions", () => {
 
     it("should set up TodoWrite collection", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_start",
+        id: "todo-123",
         name: "TodoWrite",
       };
 
@@ -369,8 +389,9 @@ describe("Event Dispatch Functions", () => {
 
     it("should set up AskUserQuestion collection", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_start",
+        id: "question-123",
         name: "AskUserQuestion",
       };
 
@@ -381,8 +402,9 @@ describe("Event Dispatch Functions", () => {
 
     it("should dispatch SET_PLANNING_ACTIVE for EnterPlanMode", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_start",
+        id: "plan-123",
         name: "EnterPlanMode",
       };
 
@@ -396,8 +418,9 @@ describe("Event Dispatch Functions", () => {
 
     it("should dispatch SET_PLAN_APPROVAL_VISIBLE for ExitPlanMode", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_start",
+        id: "exit-plan-123",
         name: "ExitPlanMode",
       };
 
@@ -416,7 +439,7 @@ describe("Event Dispatch Functions", () => {
         isError: false,
       });
 
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_start",
         id: "tool-123",
         name: "Read",
@@ -439,7 +462,7 @@ describe("Event Dispatch Functions", () => {
   describe("handleToolInput", () => {
     it("should dispatch UPDATE_LAST_TOOL_INPUT for regular tool", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_input",
         json: '{"file_path": "/test.txt"}',
       };
@@ -456,7 +479,7 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext();
       ctx.refs.isCollectingTodoRef.current = true;
 
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_input",
         json: '{"todos": [{"content": "Task 1", "status": "pending"}]}',
       };
@@ -473,7 +496,7 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext();
       ctx.refs.isCollectingQuestionRef.current = true;
 
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_input",
         json: '{"questions": [{"question": "What?", "header": "Q", "options": [], "multiSelect": false}]}',
       };
@@ -499,10 +522,12 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getCurrentToolUses: () => [tool],
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_result",
-        tool_use_id: "tool-123",
+        toolUseId: "tool-123",
         stdout: "file content",
+        stderr: "",
+        isError: false,
       };
 
       handleToolResult(event, ctx);
@@ -520,10 +545,12 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getCurrentToolUses: () => [],
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_result",
-        tool_use_id: "tool-123",
+        toolUseId: "tool-123",
         stdout: "early result",
+        stderr: "",
+        isError: false,
       };
 
       handleToolResult(event, ctx);
@@ -539,9 +566,12 @@ describe("Event Dispatch Functions", () => {
 
     it("should skip duplicate events without tool_use_id", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_result",
+        toolUseId: undefined,
         stdout: "duplicate content",
+        stderr: "",
+        isError: false,
       };
 
       handleToolResult(event, ctx);
@@ -559,10 +589,12 @@ describe("Event Dispatch Functions", () => {
         getCurrentToolUses: () => [tool],
         getPlanFilePath: () => "/path/to/plan.md",
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "tool_result",
-        tool_use_id: "tool-123",
+        toolUseId: "tool-123",
         stdout: "# Plan content",
+        stderr: "",
+        isError: false,
       };
 
       handleToolResult(event, ctx);
@@ -582,14 +614,15 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getCurrentMode: () => "request",
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "permission_request",
-        request_id: "req-123",
-        tool_name: "Bash",
+        requestId: "req-123",
+        toolName: "Bash",
+        toolInput: { command: "ls" },
         description: "Run command",
       };
 
-      handlePermissionRequest(event, ctx);
+      handlePermissionRequest(event as Parameters<typeof handlePermissionRequest>[0], ctx);
 
       expect(ctx.dispatch).toHaveBeenCalledWith({
         type: "SET_PENDING_PERMISSION",
@@ -605,13 +638,15 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getCurrentMode: () => "auto",
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "permission_request",
-        request_id: "req-123",
-        tool_name: "Bash",
+        requestId: "req-123",
+        toolName: "Bash",
+        toolInput: undefined,
+        description: "",
       };
 
-      handlePermissionRequest(event, ctx);
+      handlePermissionRequest(event as Parameters<typeof handlePermissionRequest>[0], ctx);
 
       expect(ctx.sendPermissionResponse).toHaveBeenCalledWith(
         "req-123",
@@ -629,10 +664,10 @@ describe("Event Dispatch Functions", () => {
   describe("handleSubagentStart", () => {
     it("should dispatch UPDATE_TOOL_SUBAGENT with subagent info", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "subagent_start",
         id: "task-123",
-        agent_type: "Explore",
+        agentType: "Explore",
         description: "Finding files",
       };
 
@@ -669,11 +704,12 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getCurrentToolUses: () => [tool],
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "subagent_progress",
-        subagent_id: "task-123",
-        tool_name: "Glob",
-        tool_detail: "**/*.ts",
+        subagentId: "task-123",
+        toolName: "Glob",
+        toolDetail: "**/*.ts",
+        toolCount: 1,
       };
 
       handleSubagentProgress(event, ctx);
@@ -693,11 +729,13 @@ describe("Event Dispatch Functions", () => {
   describe("handleSubagentEnd", () => {
     it("should dispatch UPDATE_TOOL_SUBAGENT with completion info", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "subagent_end",
         id: "task-123",
+        agentType: "Explore",
         duration: 5000,
-        tool_count: 10,
+        toolCount: 10,
+        result: "",
       };
 
       handleSubagentEnd(event, ctx);
@@ -724,9 +762,16 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getSessionInfo: () => ({ totalContext: 1000, outputTokens: 500 }),
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "result",
-        output_tokens: 200,
+        content: undefined,
+        cost: undefined,
+        duration: undefined,
+        turns: undefined,
+        inputTokens: 0,
+        outputTokens: 200,
+        cacheRead: 0,
+        cacheWrite: 0,
       };
 
       handleResult(event, ctx);
@@ -761,10 +806,12 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getSessionInfo: () => ({ baseContext: 1000 }),
       });
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "context_update",
-        input_tokens: 5000,
-        cache_read: 3000,
+        inputTokens: 5000,
+        rawInputTokens: 0,
+        cacheRead: 3000,
+        cacheWrite: 0,
       };
 
       handleContextUpdate(event, ctx);
@@ -780,9 +827,12 @@ describe("Event Dispatch Functions", () => {
 
     it("should do nothing when input_tokens is 0", () => {
       const ctx = createMockContext();
-      const event: ClaudeEvent = {
+      const event: NormalizedEvent = {
         type: "context_update",
-        input_tokens: 0,
+        inputTokens: 0,
+        rawInputTokens: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
       };
 
       handleContextUpdate(event, ctx);

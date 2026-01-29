@@ -20,7 +20,7 @@ import { createInitialState } from "./types";
 import { createStreamingRefs } from "./refs";
 import type { Action } from "./actions";
 import { conversationReducer } from "./reducer";
-import type { ToolUse, ContentBlock, Message, Todo, Question } from "../types";
+import type { ToolUse, ContentBlock, Message, Todo, Question, SubagentInfo } from "../types";
 import type { SessionInfo, PermissionRequest } from "../event-handlers";
 
 /**
@@ -110,13 +110,158 @@ export const StoreProvider: ParentComponent = (props) => {
 
   /**
    * Dispatch an action to update state.
-   * Actions are processed through the reducer for predictable updates.
+   *
+   * Most actions go through the reducer + reconcile pattern.
+   * Tool-related actions use direct path updates to ensure proper reactivity.
+   *
+   * IMPORTANT: SolidJS's <For> component only re-renders items when their
+   * REFERENCE changes, not when nested properties change. We must REPLACE
+   * the entire block/tool object (creating a new reference) to trigger re-renders.
    */
   const dispatch = (action: Action): void => {
     batch(() => {
+      // Handle tool-related actions with path-based updates for proper reactivity
+      // We REPLACE entire objects to ensure <For> sees the change
+      if (action.type === "UPDATE_TOOL" || action.type === "UPDATE_TOOL_SUBAGENT" || action.type === "UPDATE_LAST_TOOL_INPUT") {
+
+        if (action.type === "UPDATE_LAST_TOOL_INPUT") {
+          const parsedInput = action.payload;
+          const tools = state.tools.current;
+          if (tools.length === 0) return;
+
+          // Update last tool in tools.current - REPLACE the tool object
+          const lastToolIdx = tools.length - 1;
+          const lastTool = tools[lastToolIdx];
+          setState("tools", "current", lastToolIdx, { ...lastTool, input: parsedInput });
+
+          // Update last tool_use block in streaming.blocks - REPLACE the block
+          for (let i = state.streaming.blocks.length - 1; i >= 0; i--) {
+            const block = state.streaming.blocks[i];
+            if (block.type === "tool_use") {
+              const toolBlock = block as { type: "tool_use"; tool: ToolUse };
+              setState("streaming", "blocks", i, {
+                type: "tool_use" as const,
+                tool: { ...toolBlock.tool, input: parsedInput }
+              });
+              break;
+            }
+          }
+          return;
+        }
+
+        const { id } = action.payload as { id: string };
+
+        if (action.type === "UPDATE_TOOL") {
+          const { updates } = action.payload as { id: string; updates: Partial<ToolUse> };
+
+          // Find indices first - early return if tool doesn't exist anywhere
+          const toolIdx = state.tools.current.findIndex(t => t.id === id);
+          let blockIdx = -1;
+          for (let i = 0; i < state.streaming.blocks.length; i++) {
+            const block = state.streaming.blocks[i];
+            if (block.type === "tool_use" && (block as { type: "tool_use"; tool: ToolUse }).tool.id === id) {
+              blockIdx = i;
+              break;
+            }
+          }
+
+          // Early return if tool not found in either location
+          if (toolIdx === -1 && blockIdx === -1) return;
+
+          // Update tools.current if found
+          if (toolIdx !== -1) {
+            const tool = state.tools.current[toolIdx];
+            setState("tools", "current", toolIdx, { ...tool, ...updates });
+          }
+
+          // Update streaming.blocks if found (this is what the UI reads)
+          if (blockIdx !== -1) {
+            const toolBlock = state.streaming.blocks[blockIdx] as { type: "tool_use"; tool: ToolUse };
+            setState("streaming", "blocks", blockIdx, {
+              type: "tool_use" as const,
+              tool: { ...toolBlock.tool, ...updates }
+            });
+          }
+        } else if (action.type === "UPDATE_TOOL_SUBAGENT") {
+          const { subagent } = action.payload;
+
+          // Find in tools.current (active streaming)
+          const toolIdx = state.tools.current.findIndex(t => t.id === id);
+
+          // Find in streaming.blocks (active streaming)
+          let blockIdx = -1;
+          for (let i = 0; i < state.streaming.blocks.length; i++) {
+            const block = state.streaming.blocks[i];
+            if (block.type === "tool_use" && (block as { type: "tool_use"; tool: ToolUse }).tool.id === id) {
+              blockIdx = i;
+              break;
+            }
+          }
+
+          // Find in finalized messages (for late-arriving subagent_end events)
+          let msgIdx = -1;
+          let msgBlockIdx = -1;
+          if (toolIdx === -1 && blockIdx === -1) {
+            // Search in finalized messages (reverse order - most recent first)
+            for (let m = state.messages.length - 1; m >= 0 && msgIdx === -1; m--) {
+              const msg = state.messages[m];
+              if (msg.contentBlocks) {
+                for (let b = 0; b < msg.contentBlocks.length; b++) {
+                  const block = msg.contentBlocks[b];
+                  if (block.type === "tool_use" && (block as { type: "tool_use"; tool: ToolUse }).tool.id === id) {
+                    msgIdx = m;
+                    msgBlockIdx = b;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+
+          // Early return if tool not found anywhere
+          if (toolIdx === -1 && blockIdx === -1 && msgIdx === -1) return;
+
+          // Update tools.current if found
+          if (toolIdx !== -1) {
+            const tool = state.tools.current[toolIdx];
+            const newSubagent = tool.subagent
+              ? { ...tool.subagent, ...subagent }
+              : (subagent as SubagentInfo);
+            setState("tools", "current", toolIdx, { ...tool, subagent: newSubagent });
+          }
+
+          // Update streaming.blocks if found
+          if (blockIdx !== -1) {
+            const toolBlock = state.streaming.blocks[blockIdx] as { type: "tool_use"; tool: ToolUse };
+            const newSubagent = toolBlock.tool.subagent
+              ? { ...toolBlock.tool.subagent, ...subagent }
+              : (subagent as SubagentInfo);
+            setState("streaming", "blocks", blockIdx, {
+              type: "tool_use" as const,
+              tool: { ...toolBlock.tool, subagent: newSubagent }
+            });
+          }
+
+          // Update finalized message if found (handles late-arriving subagent_end)
+          if (msgIdx !== -1 && msgBlockIdx !== -1) {
+            const msgBlocks = state.messages[msgIdx].contentBlocks!;
+            const toolBlock = msgBlocks[msgBlockIdx] as { type: "tool_use"; tool: ToolUse };
+            const newSubagent = toolBlock.tool.subagent
+              ? { ...toolBlock.tool.subagent, ...subagent }
+              : (subagent as SubagentInfo);
+            const newBlocks = [...msgBlocks];
+            newBlocks[msgBlockIdx] = {
+              type: "tool_use" as const,
+              tool: { ...toolBlock.tool, subagent: newSubagent }
+            };
+            setState("messages", msgIdx, "contentBlocks", newBlocks);
+          }
+        }
+        return;
+      }
+
+      // All other actions go through reducer + reconcile
       const newState = conversationReducer(state, action);
-      // Use reconcile for efficient updates that preserve referential equality
-      // where possible, enabling fine-grained reactivity
       setState(reconcile(newState));
     });
   };
