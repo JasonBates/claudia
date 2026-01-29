@@ -8,7 +8,7 @@
 
 import type { ConversationState } from "./types";
 import type { Action } from "./actions";
-import type { ToolUse, ContentBlock, Message } from "../types";
+import type { ToolUse, ContentBlock, Message, SubagentInfo } from "../types";
 
 /**
  * Pure reducer function - given current state and action, returns new state.
@@ -283,7 +283,7 @@ export function conversationReducer(
             ...tool,
             subagent: tool.subagent
               ? { ...tool.subagent, ...subagent }
-              : (subagent as typeof tool.subagent),
+              : (subagent as unknown as SubagentInfo),
           };
         }
         return tool;
@@ -300,7 +300,7 @@ export function conversationReducer(
                 ...toolBlock.tool,
                 subagent: toolBlock.tool.subagent
                   ? { ...toolBlock.tool.subagent, ...subagent }
-                  : (subagent as typeof toolBlock.tool.subagent),
+                  : (subagent as unknown as SubagentInfo),
               },
             };
           }

@@ -9,8 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { conversationReducer } from "../../lib/store/reducer";
 import { createInitialState } from "../../lib/store/types";
-import type { Action } from "../../lib/store/actions";
-import type { Message, ToolUse, ContentBlock, Todo, Question } from "../../lib/types";
+import type { Message, ToolUse, Todo, Question } from "../../lib/types";
 import type { PermissionRequest, SessionInfo } from "../../lib/event-handlers";
 
 describe("conversationReducer", () => {
@@ -263,6 +262,7 @@ describe("conversationReducer", () => {
           blocks: [{ type: "text" as const, content: "Response text" }],
           thinking: "",
           isLoading: true,
+          showThinking: false,
         },
         tools: { current: [] },
       };
@@ -301,6 +301,7 @@ describe("conversationReducer", () => {
           ],
           thinking: "",
           isLoading: true,
+          showThinking: false,
         },
         tools: { current: [tool] },
       };
@@ -323,6 +324,7 @@ describe("conversationReducer", () => {
           blocks: [{ type: "text" as const, content: "Interrupted response" }],
           thinking: "",
           isLoading: true,
+          showThinking: false,
         },
         tools: { current: [] },
       };
@@ -343,6 +345,7 @@ describe("conversationReducer", () => {
           blocks: [],
           thinking: "",
           isLoading: true,
+          showThinking: false,
         },
         tools: { current: [] },
       };
@@ -363,6 +366,7 @@ describe("conversationReducer", () => {
           blocks: [{ type: "text" as const, content: "Some content" }],
           thinking: "Some thinking",
           isLoading: false,
+          showThinking: false,
         },
         tools: { current: [{ id: "t-1", name: "Test", input: {} }] },
         session: { ...createInitialState().session, error: "Old error" },

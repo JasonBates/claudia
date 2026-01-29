@@ -6,7 +6,7 @@
  * mocking 40+ setters, we only need to mock the dispatch function.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   handleStatus,
   handleReady,
@@ -20,7 +20,6 @@ import {
   handleTextDelta,
   handleToolStart,
   handleToolInput,
-  handleToolPending,
   handleToolResult,
   handlePermissionRequest,
   handleSubagentStart,

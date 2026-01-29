@@ -14,7 +14,7 @@
 
 import type { ClaudeEvent } from "../tauri";
 import type { Action } from "./actions";
-import type { StreamingRefs, ConversationState } from "./types";
+import type { StreamingRefs } from "./types";
 import type { ToolUse, SubagentInfo } from "../types";
 import type { PermissionRequest, SessionInfo } from "../event-handlers";
 import { parseToolInput } from "../json-streamer";

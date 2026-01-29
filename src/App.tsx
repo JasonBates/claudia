@@ -86,9 +86,21 @@ function App() {
       }
     },
     isLoading: store.isLoading,
-    setIsLoading: (loading: boolean) => store.dispatch(actions.setLoading(loading)),
+    setIsLoading: (loading: boolean | ((prev: boolean) => boolean)) => {
+      if (typeof loading === "function") {
+        store.dispatch(actions.setLoading(loading(store.isLoading())));
+      } else {
+        store.dispatch(actions.setLoading(loading));
+      }
+    },
     error: store.error,
-    setError: (error: string | null) => store.dispatch(actions.setSessionError(error)),
+    setError: (error: string | null | ((prev: string | null) => string | null)) => {
+      if (typeof error === "function") {
+        store.dispatch(actions.setSessionError(error(store.error())));
+      } else {
+        store.dispatch(actions.setSessionError(error));
+      }
+    },
     generateId: store.generateMessageId,
     resetStreamingState: () => {
       store.dispatch(actions.resetStreaming());
@@ -102,6 +114,13 @@ function App() {
     streamingBlocks: store.streamingBlocks,
     streamingThinking: store.streamingThinking,
     showThinking: store.showThinking,
+    setShowThinking: (show: boolean | ((prev: boolean) => boolean)) => {
+      if (typeof show === "function") {
+        store.dispatch(actions.setShowThinking(show(store.showThinking())));
+      } else {
+        store.dispatch(actions.setShowThinking(show));
+      }
+    },
   };
 
   // Local commands (slash commands + keyboard shortcuts)

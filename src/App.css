@@ -371,7 +371,7 @@ body {
 .connection-icon {
   position: fixed;
   top: 0;
-  right: 0;
+  right: 8px;
   height: 32px;
   width: 24px;
   display: flex;
@@ -405,7 +405,7 @@ body {
 .settings-btn {
   position: fixed;
   top: 0;
-  right: 24px;
+  right: 32px;
   height: 32px;
   width: 24px;
   display: flex;
@@ -432,7 +432,7 @@ body {
 .token-indicator {
   position: fixed;
   top: 0;
-  right: 48px;
+  right: 56px;
   height: 32px;
   display: flex;
   align-items: center;

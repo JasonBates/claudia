@@ -4,8 +4,8 @@ import {
   useLocalCommands,
   UseLocalCommandsReturn,
   Command,
+  UseStreamingMessagesReturn,
 } from "../hooks/useLocalCommands";
-import type { UseStreamingMessagesReturn } from "../hooks/useStreamingMessages";
 import type { UseSessionReturn } from "../hooks/useSession";
 import type { UseSidebarReturn } from "../hooks/useSidebar";
 import type { Message, ToolUse, ContentBlock, SessionEntry } from "../lib/types";
