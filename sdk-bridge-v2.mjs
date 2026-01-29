@@ -648,19 +648,49 @@ async function main() {
   }
 
   // Send a user message to Claude
+  // Supports both plain text and JSON-prefixed multimodal messages
   function sendUserMessage(content) {
     // Inject current date/time with each message
     const dateTime = getDateTimePrefix();
-    const contextualInput = `[${dateTime}] ${content}`;
+
+    let messageContent;
+
+    // Check for JSON-prefixed message (multimodal with images)
+    // Format: __JSON__{"content":[{type:"image",...},{type:"text",...}]}
+    if (content.startsWith("__JSON__")) {
+      try {
+        const jsonData = JSON.parse(content.slice(8)); // Remove "__JSON__" prefix
+
+        // jsonData.content is array of content blocks
+        // Prepend date/time to the text block(s)
+        messageContent = jsonData.content.map(block => {
+          if (block.type === "text") {
+            return { ...block, text: `[${dateTime}] ${block.text}` };
+          }
+          return block;
+        });
+
+        debugLog("MULTIMODAL", `Sending ${messageContent.length} content blocks (${messageContent.filter(b => b.type === "image").length} images)`);
+      } catch (e) {
+        debugLog("MULTIMODAL_ERROR", `Failed to parse JSON content: ${e.message}`);
+        // Fallback to plain text
+        messageContent = `[${dateTime}] ${content}`;
+      }
+    } else {
+      // Plain text (existing behavior)
+      messageContent = `[${dateTime}] ${content}`;
+    }
 
     const msg = JSON.stringify({
       type: "user",
-      message: { role: "user", content: contextualInput },
+      message: { role: "user", content: messageContent },
       session_id: currentSessionId,
       parent_tool_use_id: null
     }) + "\n";
 
-    debugLog("CLAUDE_STDIN", msg);
+    // Log truncated version (images are large)
+    const logMsg = msg.length > 500 ? msg.slice(0, 500) + `... (${msg.length} bytes total)` : msg;
+    debugLog("CLAUDE_STDIN", logMsg);
 
     // Only queue if Claude process isn't available (during respawn)
     // Note: We must NOT queue based on readySent - Claude needs to receive

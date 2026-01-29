@@ -1709,12 +1709,121 @@ del {
 /* Command Input */
 .command-input-container {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
   gap: 8px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px 12px;
+  transition: border-color 0.15s ease, outline 0.15s ease;
+}
+
+.command-input-container.drag-over {
+  border-color: var(--accent);
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+
+/* Input row (mode indicator + textarea) */
+.input-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Image Attachments */
+.image-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.image-thumbnail {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.image-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-thumbnail .remove-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  padding: 0;
+}
+
+.image-thumbnail:hover .remove-btn {
+  opacity: 1;
+}
+
+.image-thumbnail .remove-btn:hover {
+  background: rgba(220, 50, 47, 0.9); /* Solarized red */
+}
+
+/* Image Error Message */
+.image-error {
+  color: var(--red);
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+/* Window-level Drop Zone Overlay */
+.drop-zone-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.drop-zone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 48px 64px;
+  border: 3px dashed var(--accent);
+  border-radius: 16px;
+  background: var(--bg);
+}
+
+.drop-zone-icon {
+  font-size: 64px;
+  line-height: 1;
+}
+
+.drop-zone-text {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--fg);
 }
 
 .command-input {

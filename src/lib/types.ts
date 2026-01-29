@@ -105,6 +105,39 @@ export interface Message {
 }
 
 // ============================================================================
+// Image Attachment Types
+// ============================================================================
+
+/**
+ * An image attachment for multimodal messages.
+ * Used by: CommandInput.tsx, App.tsx
+ */
+export interface ImageAttachment {
+  id: string;           // Unique ID for component keys
+  data: string;         // Base64-encoded image data (without data URL prefix)
+  mediaType: string;    // MIME type: "image/png", "image/jpeg", etc.
+  thumbnail: string;    // Data URL for preview display
+  fileName?: string;    // Original filename if available
+  size: number;         // Original file size in bytes
+}
+
+/**
+ * Supported image formats for Claude API.
+ */
+export const SUPPORTED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+] as const;
+
+/**
+ * Maximum file size for images (3.75MB to account for base64 ~33% overhead).
+ * Claude API limit is 5MB for base64-encoded data.
+ */
+export const MAX_IMAGE_SIZE_BYTES = 3.75 * 1024 * 1024;
+
+// ============================================================================
 // Event Types (from Tauri IPC)
 // ============================================================================
 

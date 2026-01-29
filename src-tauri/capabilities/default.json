@@ -7,6 +7,17 @@
     "core:default",
     "opener:default",
     "core:window:allow-start-dragging",
-    "process:allow-exit"
+    "process:allow-exit",
+    "fs:read-all",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$HOME/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$PICTURE/**" },
+        { "path": "$DOCUMENT/**" }
+      ]
+    }
   ]
 }

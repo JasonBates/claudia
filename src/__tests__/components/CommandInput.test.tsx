@@ -105,7 +105,7 @@ describe("CommandInput", () => {
       fireEvent.input(textarea, { target: { value: "hello world" } });
       fireEvent.keyDown(textarea, { key: "Enter" });
 
-      expect(onSubmit).toHaveBeenCalledWith("hello world");
+      expect(onSubmit).toHaveBeenCalledWith("hello world", undefined);
     });
 
     it("should clear input after submit", () => {
@@ -170,7 +170,7 @@ describe("CommandInput", () => {
       fireEvent.input(textarea, { target: { value: "  hello world  " } });
       fireEvent.keyDown(textarea, { key: "Enter" });
 
-      expect(onSubmit).toHaveBeenCalledWith("hello world");
+      expect(onSubmit).toHaveBeenCalledWith("hello world", undefined);
     });
   });
 
