@@ -233,7 +233,7 @@ export async function sendPermissionResponse(requestId: string, allow: boolean, 
   await invoke("send_permission_response", { requestId, allow, remember: remember || false, toolInput: toolInput || {} });
 }
 
-export async function sendQuestionResponse(requestId: string, questions: unknown[], answers: Record<string, string>): Promise<void> {
+export async function sendQuestionResponse(requestId: string, questions: unknown[], answers: Record<string, string | string[]>): Promise<void> {
   await invoke("send_question_response", { requestId, questions, answers });
 }
 
