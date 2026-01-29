@@ -102,32 +102,35 @@ const MessageList: Component<MessageListProps> = (props) => {
     }
   };
 
-  // Scroll to bottom when messages change or streaming content updates
-  // Track full array references, not just .length, for proper reactivity
+  // Handle forceScrollToBottom prop - re-enables auto-scroll when user sends a message
   createEffect(() => {
-    // Access the full array to track reference changes
-    const msgs = props.messages;
-    const streaming = props.streamingContent;
-    const blocks = props.streamingBlocks;
-    const thinking = props.streamingThinking;
-    const forceScroll = props.forceScrollToBottom;
-    // Force SolidJS to track these dependencies
-    void msgs;
-    void streaming;
-    void blocks;
-    void thinking;
-
-    // If forceScrollToBottom is set, re-enable auto-scroll
-    if (forceScroll) {
+    if (props.forceScrollToBottom) {
       setShouldAutoScroll(true);
+      scrollToBottom();
     }
-
-    scrollToBottom();
   });
 
   onMount(() => {
     containerRef?.addEventListener('scroll', handleScroll);
     scrollToBottom();
+
+    // Use MutationObserver to scroll when DOM content changes
+    // This automatically handles all content changes (messages, tools, subagent progress, etc.)
+    // without needing to track specific state paths
+    if (containerRef) {
+      const mutationObserver = new MutationObserver(() => {
+        scrollToBottom();
+      });
+      mutationObserver.observe(containerRef, {
+        childList: true,    // Watch for added/removed child nodes
+        subtree: true,      // Watch all descendants, not just direct children
+        characterData: true // Watch for text content changes (streaming)
+      });
+
+      onCleanup(() => {
+        mutationObserver.disconnect();
+      });
+    }
   });
 
   onCleanup(() => {
