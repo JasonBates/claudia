@@ -1,9 +1,37 @@
-import { Accessor, Owner } from "solid-js";
-import type { UseStreamingMessagesReturn } from "./useStreamingMessages";
+import { Accessor, Owner, Setter } from "solid-js";
 import type { UseSessionReturn } from "./useSession";
 import type { UseSidebarReturn } from "./useSidebar";
 import { runStreamingCommand, CommandEvent, ClaudeEvent, clearSession, sendInterrupt, quitApp } from "../lib/tauri";
-import type { Message } from "../lib/types";
+import type { Message, ToolUse, ContentBlock } from "../lib/types";
+
+// Streaming messages interface - defined locally since there's no separate hook
+export interface UseStreamingMessagesReturn {
+  messages: Accessor<Message[]>;
+  setMessages: Setter<Message[]>;
+  streamingContent: Accessor<string>;
+  setStreamingContent?: Setter<string>;
+  isLoading: Accessor<boolean>;
+  setIsLoading: Setter<boolean>;
+  error: Accessor<string | null>;
+  setError: Setter<string | null>;
+  currentToolUses: Accessor<ToolUse[]>;
+  setCurrentToolUses?: Setter<ToolUse[]>;
+  streamingBlocks: Accessor<ContentBlock[]>;
+  setStreamingBlocks?: Setter<ContentBlock[]>;
+  streamingThinking: Accessor<string>;
+  setStreamingThinking?: Setter<string>;
+  showThinking: Accessor<boolean>;
+  setShowThinking: Setter<boolean>;
+  toolInputRef?: { current: string };
+  todoJsonRef?: { current: string };
+  questionJsonRef?: { current: string };
+  isCollectingTodoRef?: { current: boolean };
+  isCollectingQuestionRef?: { current: boolean };
+  pendingResultsRef?: { current: Map<string, { result: string; isError: boolean }> };
+  generateId: () => string;
+  finishStreaming: (interrupted?: boolean) => void;
+  resetStreamingState: () => void;
+}
 
 // ============================================================================
 // Types
