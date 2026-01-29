@@ -210,8 +210,11 @@ fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, St
 
                 // Skip noise messages that aren't meaningful session titles:
                 // - Slash commands (like "/status" warmup)
-                // - Claude's error responses to slash commands
-                if content.starts_with('/') || content.starts_with("Unknown slash command") {
+                // - Claude's error responses to slash commands/skills
+                if content.starts_with('/')
+                    || content.starts_with("Unknown slash command")
+                    || content.starts_with("Unknown skill:")
+                {
                     continue;
                 }
 
@@ -417,7 +420,10 @@ fn get_session_history_sync(session_id: &str, working_dir: &str) -> Result<Vec<H
                 .and_then(|m| m.get("content"))
                 .and_then(|c| c.as_str())
             {
-                if content.starts_with('/') || content.starts_with("Unknown slash command") {
+                if content.starts_with('/')
+                    || content.starts_with("Unknown slash command")
+                    || content.starts_with("Unknown skill:")
+                {
                     continue;
                 }
             }
