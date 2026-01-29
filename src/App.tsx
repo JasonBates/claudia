@@ -1,5 +1,7 @@
 import { createSignal, onMount, onCleanup, Show, getOwner } from "solid-js";
 import { batch, runWithOwner } from "solid-js";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { readFile } from "@tauri-apps/plugin-fs";
 import MessageList from "./components/MessageList";
 import CommandInput, { CommandInputHandle } from "./components/CommandInput";
 import TodoPanel from "./components/TodoPanel";
@@ -14,6 +16,7 @@ import { Mode, getNextMode } from "./lib/mode-utils";
 import { useStore, createEventDispatcher, actions, resetStreamingRefs } from "./lib/store";
 import { normalizeClaudeEvent } from "./lib/claude-event-normalizer";
 import type { ClaudeEvent } from "./lib/tauri";
+import type { ImageAttachment } from "./lib/types";
 import {
   useSession,
   usePermissions,
@@ -70,6 +73,9 @@ function App() {
 
   // Force scroll to bottom when user sends a new message
   const [forceScroll, setForceScroll] = createSignal(false);
+
+  // Window-level drag state for drop zone overlay (Tauri native)
+  const [windowDragOver, setWindowDragOver] = createSignal(false);
 
   // ============================================================================
   // Store-based Helpers
@@ -346,8 +352,9 @@ function App() {
   };
 
   // Main message submission handler
-  const handleSubmit = async (text: string) => {
-    if (await localCommands.dispatch(text)) {
+  const handleSubmit = async (text: string, images?: ImageAttachment[]) => {
+    // Only process local commands for text-only messages
+    if (!images && await localCommands.dispatch(text)) {
       return;
     }
 
@@ -360,19 +367,56 @@ function App() {
     store.dispatch(actions.resetStreaming());
     resetStreamingRefs(store.refs);
 
-    // Add user message
+    // Add user message (display text with image placeholders)
+    const displayText = images && images.length > 0
+      ? `${images.map(() => "[Image]").join(" ")} ${text}`.trim()
+      : text;
+
     store.dispatch(actions.addMessage({
       id: store.generateMessageId(),
       role: "user",
-      content: text,
+      content: displayText,
     }));
 
     try {
-      console.log("[SUBMIT] Calling sendMessage...");
+      console.log("[SUBMIT] Calling sendMessage...", images ? `with ${images.length} images` : "");
 
-      let messageToSend = text;
-      if (currentMode() === "plan") {
-        messageToSend = `[PLAN MODE: Analyze and explain your approach, but do not modify any files or run any commands. Show me what you would do without actually doing it.]\n\n${text}`;
+      let messageToSend: string;
+
+      if (images && images.length > 0) {
+        // Build content blocks array for multimodal message
+        const contentBlocks: unknown[] = [];
+
+        // Add images first (Claude processes them in order)
+        for (const img of images) {
+          contentBlocks.push({
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: img.mediaType,
+              data: img.data,
+            },
+          });
+        }
+
+        // Add text if present
+        if (text) {
+          const textContent = currentMode() === "plan"
+            ? `[PLAN MODE: Analyze and explain your approach, but do not modify any files or run any commands. Show me what you would do without actually doing it.]\n\n${text}`
+            : text;
+          contentBlocks.push({
+            type: "text",
+            text: textContent,
+          });
+        }
+
+        // Send as JSON-prefixed message for SDK bridge
+        messageToSend = `__JSON__${JSON.stringify({ content: contentBlocks })}`;
+      } else {
+        // Plain text message (existing behavior)
+        messageToSend = currentMode() === "plan"
+          ? `[PLAN MODE: Analyze and explain your approach, but do not modify any files or run any commands. Show me what you would do without actually doing it.]\n\n${text}`
+          : text;
       }
 
       await sendMessage(messageToSend, handleEvent, owner);
@@ -407,11 +451,100 @@ function App() {
     });
   };
 
+  // Tauri drag/drop unlisten function
+  let unlistenDragDrop: (() => void) | undefined;
+
+  // Helper to get media type from file extension
+  const getMediaTypeFromPath = (path: string): string | null => {
+    const ext = path.split(".").pop()?.toLowerCase();
+    switch (ext) {
+      case "jpg":
+      case "jpeg":
+        return "image/jpeg";
+      case "png":
+        return "image/png";
+      case "gif":
+        return "image/gif";
+      case "webp":
+        return "image/webp";
+      default:
+        return null;
+    }
+  };
+
+  // Handle file drop from Tauri's native drag/drop API
+  const handleTauriFileDrop = async (paths: string[]) => {
+    if (!commandInputRef) {
+      console.log("[TAURI DROP] No commandInputRef");
+      return;
+    }
+
+    console.log("[TAURI DROP] Processing", paths.length, "files");
+
+    for (const path of paths) {
+      const mediaType = getMediaTypeFromPath(path);
+      if (!mediaType) {
+        console.log("[TAURI DROP] Skipping non-image:", path);
+        continue;
+      }
+
+      console.log("[TAURI DROP] Loading image:", path);
+
+      try {
+        console.log("[TAURI DROP] Calling readFile for:", path);
+        // Read file as binary using Tauri's fs plugin
+        const fileData = await readFile(path);
+        console.log("[TAURI DROP] File read, size:", fileData.byteLength);
+
+        // Create a File-like object to pass to addImageFile
+        const fileName = path.split("/").pop() || "image";
+        const blob = new Blob([fileData], { type: mediaType });
+        const file = new File([blob], fileName, { type: mediaType });
+        console.log("[TAURI DROP] Created File object:", file.name, file.type, file.size);
+
+        await commandInputRef.addImageFile(file);
+        console.log("[TAURI DROP] addImageFile completed");
+      } catch (err) {
+        console.error("[TAURI DROP] Error reading file:", path, err);
+        // Log more details about the error
+        if (err instanceof Error) {
+          console.error("[TAURI DROP] Error message:", err.message);
+          console.error("[TAURI DROP] Error stack:", err.stack);
+        }
+      }
+    }
+
+    // Focus the input after dropping
+    commandInputRef.focus();
+  };
+
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
 
     window.addEventListener("keydown", handleKeyDown, true);
     document.addEventListener("click", handleRefocusClick, true);
+
+    // Tauri native drag/drop for files from filesystem
+    try {
+      const webview = getCurrentWebview();
+      unlistenDragDrop = await webview.onDragDropEvent((event) => {
+        console.log("[TAURI DRAG]", event.payload.type);
+
+        if (event.payload.type === "enter" || event.payload.type === "over") {
+          setWindowDragOver(true);
+        } else if (event.payload.type === "leave") {
+          setWindowDragOver(false);
+        } else if (event.payload.type === "drop") {
+          setWindowDragOver(false);
+          // event.payload.paths contains array of file paths
+          const paths = event.payload.paths as string[];
+          handleTauriFileDrop(paths);
+        }
+      });
+      console.log("[MOUNT] Tauri drag/drop listener registered");
+    } catch (err) {
+      console.error("[MOUNT] Failed to register Tauri drag/drop:", err);
+    }
 
     try {
       await session.startSession();
@@ -430,6 +563,7 @@ function App() {
     permissions.stopPolling();
     window.removeEventListener("keydown", handleKeyDown, true);
     document.removeEventListener("click", handleRefocusClick, true);
+    unlistenDragDrop?.();
   });
 
   // ============================================================================
@@ -611,6 +745,16 @@ function App() {
             onAllow={permissions.handlePermissionAllow}
             onDeny={permissions.handlePermissionDeny}
           />
+        </div>
+      </Show>
+
+      {/* Drop Zone Overlay */}
+      <Show when={windowDragOver()}>
+        <div class="drop-zone-overlay">
+          <div class="drop-zone-content">
+            <div class="drop-zone-icon">📷</div>
+            <div class="drop-zone-text">Drop image here</div>
+          </div>
         </div>
       </Show>
     </div>
