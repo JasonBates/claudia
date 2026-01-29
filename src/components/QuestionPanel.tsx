@@ -1,14 +1,16 @@
 import { Component, For, Show, createSignal, createEffect, onMount } from "solid-js";
 import type { Question, QuestionOption } from "../lib/types";
 
+export type QuestionAnswers = Record<string, string | string[]>;
+
 interface QuestionPanelProps {
   questions: Question[];
-  onAnswer: (answers: Record<string, string>) => void;
+  onAnswer: (answers: QuestionAnswers) => void;
   onCancel?: () => void;
 }
 
 const QuestionPanel: Component<QuestionPanelProps> = (props) => {
-  const [answers, setAnswers] = createSignal<Record<string, string>>({});
+  const [answers, setAnswers] = createSignal<QuestionAnswers>({});
   const [customInputs, setCustomInputs] = createSignal<Record<string, string>>({});
   const [showCustomFor, setShowCustomFor] = createSignal<Record<string, boolean>>({});
   const [currentIndex, setCurrentIndex] = createSignal(0);
@@ -27,12 +29,18 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
     panelRef?.focus();
   });
 
+  const hasAnswer = (answer: string | string[] | undefined): boolean => {
+    if (!answer) return false;
+    if (Array.isArray(answer)) return answer.length > 0;
+    return answer.length > 0;
+  };
+
   const allQuestionsAnswered = () => {
-    return props.questions.every(q => answers()[q.question]);
+    return props.questions.every(q => hasAnswer(answers()[q.question]));
   };
 
   const isQuestionAnswered = (question: Question) => {
-    return !!answers()[question.question];
+    return hasAnswer(answers()[question.question]);
   };
 
   // Navigation functions
@@ -105,10 +113,8 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
   const isOptionSelected = (question: Question, optionLabel: string): boolean => {
     const answer = answers()[question.question];
     if (!answer) return false;
-    if (question.multiSelect) {
-      // For multi-select, check if the label is in the comma-separated list
-      const selectedLabels = answer.split(", ");
-      return selectedLabels.includes(optionLabel);
+    if (question.multiSelect && Array.isArray(answer)) {
+      return answer.includes(optionLabel);
     }
     return answer === optionLabel;
   };
@@ -118,10 +124,10 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
     setShowCustomFor(prev => ({ ...prev, [question.question]: false }));
 
     if (question.multiSelect) {
-      // For multi-select: toggle the option
+      // For multi-select: toggle the option in array
       setAnswers(prev => {
-        const currentAnswer = prev[question.question] || "";
-        const selectedLabels = currentAnswer ? currentAnswer.split(", ") : [];
+        const currentAnswer = prev[question.question];
+        const selectedLabels = Array.isArray(currentAnswer) ? [...currentAnswer] : [];
         const labelIndex = selectedLabels.indexOf(option.label);
 
         if (labelIndex >= 0) {
@@ -132,8 +138,8 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
           selectedLabels.push(option.label);
         }
 
-        const newAnswer = selectedLabels.join(", ");
-        return { ...prev, [question.question]: newAnswer || "" };
+        // Store as array (empty array if nothing selected)
+        return { ...prev, [question.question]: selectedLabels };
       });
       // Don't auto-advance for multi-select - user needs to click Submit
     } else {
@@ -268,7 +274,7 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
           <div class="question-item">
             <div class="question-header">
               <span class="question-badge">{question().header}</span>
-              <Show when={answers()[question().question]}>
+              <Show when={hasAnswer(answers()[question().question])}>
                 <span class="question-answered">✓</span>
               </Show>
             </div>
@@ -328,7 +334,7 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
             </Show>
 
             {/* Next button for multi-select questions when not on last question */}
-            <Show when={question().multiSelect && props.questions.length > 1 && currentIndex() < props.questions.length - 1 && answers()[question().question]}>
+            <Show when={question().multiSelect && props.questions.length > 1 && currentIndex() < props.questions.length - 1 && hasAnswer(answers()[question().question])}>
               <button
                 class="question-next"
                 onClick={advanceToNext}
@@ -349,7 +355,7 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
           disabled={!allQuestionsAnswered()}
         >
           {props.questions.length > 1
-            ? `Submit All (${Object.keys(answers()).length}/${props.questions.length})`
+            ? `Submit All (${Object.values(answers()).filter(hasAnswer).length}/${props.questions.length})`
             : "Submit"}
         </button>
       </Show>

@@ -5,7 +5,7 @@ import { readFile } from "@tauri-apps/plugin-fs";
 import MessageList from "./components/MessageList";
 import CommandInput, { CommandInputHandle } from "./components/CommandInput";
 import TodoPanel from "./components/TodoPanel";
-import QuestionPanel from "./components/QuestionPanel";
+import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel";
 import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
@@ -219,7 +219,7 @@ function App() {
   };
 
   // Handle question panel answer
-  const handleQuestionAnswer = async (answers: Record<string, string>) => {
+  const handleQuestionAnswer = async (answers: QuestionAnswers) => {
     const requestId = store.questionRequestId();
     const questions = store.pendingQuestions();
 
@@ -236,7 +236,9 @@ function App() {
     } else {
       // Fallback: send as regular message (old behavior)
       console.log("[QUESTION_ANSWER] No request ID, sending as message");
-      const answerText = Object.values(answers).join(", ");
+      const answerText = Object.values(answers)
+        .map(v => Array.isArray(v) ? v.join(", ") : v)
+        .join("; ");
       await handleSubmit(answerText);
     }
   };
