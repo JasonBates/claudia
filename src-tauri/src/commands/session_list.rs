@@ -52,13 +52,14 @@ fn get_claude_projects_dir() -> Result<PathBuf, String> {
 /// List sessions for a given working directory
 #[tauri::command]
 pub async fn list_sessions(working_dir: String) -> Result<Vec<SessionEntry>, String> {
-    cmd_debug_log("SESSION_LIST", &format!("list_sessions called for: {}", working_dir));
+    cmd_debug_log(
+        "SESSION_LIST",
+        &format!("list_sessions called for: {}", working_dir),
+    );
 
-    let result = tokio::task::spawn_blocking(move || {
-        list_sessions_sync(&working_dir)
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))??;
+    let result = tokio::task::spawn_blocking(move || list_sessions_sync(&working_dir))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))??;
 
     cmd_debug_log("SESSION_LIST", &format!("Found {} sessions", result.len()));
     Ok(result)
@@ -81,7 +82,10 @@ fn list_sessions_sync(working_dir: &str) -> Result<Vec<SessionEntry>, String> {
 
     // If the project directory doesn't exist, return empty list
     if !project_dir.exists() {
-        cmd_debug_log("SESSION_LIST", "Project directory not found, returning empty list");
+        cmd_debug_log(
+            "SESSION_LIST",
+            "Project directory not found, returning empty list",
+        );
         return Ok(Vec::new());
     }
 
@@ -136,10 +140,7 @@ fn list_sessions_sync(working_dir: &str) -> Result<Vec<SessionEntry>, String> {
                 }
             }
             Err(e) => {
-                cmd_debug_log(
-                    "SESSION_LIST",
-                    &format!("Skipping {:?}: {}", path, e),
-                );
+                cmd_debug_log("SESSION_LIST", &format!("Skipping {:?}: {}", path, e));
             }
         }
     }
@@ -152,9 +153,9 @@ fn list_sessions_sync(working_dir: &str) -> Result<Vec<SessionEntry>, String> {
 
 /// Parse a session JSONL file to extract metadata
 fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, String> {
-    let file = fs::File::open(path)
-        .map_err(|e| format!("Failed to open file: {}", e))?;
-    let metadata = file.metadata()
+    let file = fs::File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let metadata = file
+        .metadata()
         .map_err(|e| format!("Failed to get metadata: {}", e))?;
     let reader = BufReader::new(file);
 
@@ -182,7 +183,11 @@ fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, St
     for line in &lines {
         if let Ok(entry) = serde_json::from_str::<Value>(line) {
             // Check if sidechain (any line with isSidechain=true means it's a sidechain)
-            if entry.get("isSidechain").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if entry
+                .get("isSidechain")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 is_sidechain = true;
             }
 
@@ -197,7 +202,10 @@ fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, St
             // Skip meta messages (isMeta: true) and slash commands (like /status)
             if entry_type == "user" && first_prompt.is_empty() {
                 // Skip meta messages (like "Caveat: The messages below...")
-                let is_meta = entry.get("isMeta").and_then(|v| v.as_bool()).unwrap_or(false);
+                let is_meta = entry
+                    .get("isMeta")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
                 if is_meta {
                     continue;
                 }
@@ -232,7 +240,11 @@ fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, St
     let modified = lines
         .last()
         .and_then(|line| serde_json::from_str::<Value>(line).ok())
-        .and_then(|entry| entry.get("timestamp").and_then(|t| t.as_str().map(String::from)))
+        .and_then(|entry| {
+            entry
+                .get("timestamp")
+                .and_then(|t| t.as_str().map(String::from))
+        })
         .unwrap_or_else(|| created.clone());
 
     // Get file modification time
@@ -262,13 +274,14 @@ fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, St
 /// may regenerate on next launch anyway.
 #[tauri::command]
 pub async fn delete_session(session_id: String, working_dir: String) -> Result<(), String> {
-    cmd_debug_log("SESSION_DELETE", &format!("Deleting session: {}", session_id));
+    cmd_debug_log(
+        "SESSION_DELETE",
+        &format!("Deleting session: {}", session_id),
+    );
 
-    tokio::task::spawn_blocking(move || {
-        delete_session_sync(&session_id, &working_dir)
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    tokio::task::spawn_blocking(move || delete_session_sync(&session_id, &working_dir))
+        .await
+        .map_err(|e| format!("Task join error: {}", e))?
 }
 
 /// Synchronous implementation of session deletion
@@ -285,7 +298,10 @@ fn delete_session_sync(session_id: &str, working_dir: &str) -> Result<(), String
             .map_err(|e| format!("Failed to delete session file: {}", e))?;
         cmd_debug_log("SESSION_DELETE", &format!("Deleted: {:?}", session_file));
     } else {
-        cmd_debug_log("SESSION_DELETE", &format!("Session file not found: {:?}", session_file));
+        cmd_debug_log(
+            "SESSION_DELETE",
+            &format!("Session file not found: {:?}", session_file),
+        );
         return Err(format!("Session file not found: {}", session_id));
     }
 
@@ -294,7 +310,10 @@ fn delete_session_sync(session_id: &str, working_dir: &str) -> Result<(), String
     if tool_results_dir.exists() && tool_results_dir.is_dir() {
         fs::remove_dir_all(&tool_results_dir)
             .map_err(|e| format!("Failed to delete tool results directory: {}", e))?;
-        cmd_debug_log("SESSION_DELETE", &format!("Deleted tool results: {:?}", tool_results_dir));
+        cmd_debug_log(
+            "SESSION_DELETE",
+            &format!("Deleted tool results: {:?}", tool_results_dir),
+        );
     }
 
     // Update the sessions-index.json to remove the deleted session
@@ -309,7 +328,8 @@ fn delete_session_sync(session_id: &str, working_dir: &str) -> Result<(), String
         // Remove the entry from the entries array
         if let Some(entries) = index.get_mut("entries").and_then(|e| e.as_array_mut()) {
             entries.retain(|entry| {
-                entry.get("sessionId")
+                entry
+                    .get("sessionId")
                     .and_then(|id| id.as_str())
                     .map(|id| id != session_id)
                     .unwrap_or(true)
@@ -348,11 +368,10 @@ pub async fn get_session_history(
         &format!("Getting history for session: {}", session_id),
     );
 
-    let result = tokio::task::spawn_blocking(move || {
-        get_session_history_sync(&session_id, &working_dir)
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))??;
+    let result =
+        tokio::task::spawn_blocking(move || get_session_history_sync(&session_id, &working_dir))
+            .await
+            .map_err(|e| format!("Task join error: {}", e))??;
 
     cmd_debug_log(
         "SESSION_HISTORY",
@@ -362,7 +381,10 @@ pub async fn get_session_history(
 }
 
 /// Synchronous implementation of session history reading
-fn get_session_history_sync(session_id: &str, working_dir: &str) -> Result<Vec<HistoryMessage>, String> {
+fn get_session_history_sync(
+    session_id: &str,
+    working_dir: &str,
+) -> Result<Vec<HistoryMessage>, String> {
     let projects_dir = get_claude_projects_dir()?;
     let project_dir_name = path_to_project_dir(working_dir);
     let session_file = projects_dir
@@ -378,13 +400,16 @@ fn get_session_history_sync(session_id: &str, working_dir: &str) -> Result<Vec<H
         // Session file was deleted but still in index - return empty history
         cmd_debug_log(
             "SESSION_HISTORY",
-            &format!("Session file not found: {:?}, returning empty history", session_file),
+            &format!(
+                "Session file not found: {:?}, returning empty history",
+                session_file
+            ),
         );
         return Ok(Vec::new());
     }
 
-    let file = fs::File::open(&session_file)
-        .map_err(|e| format!("Failed to open session file: {}", e))?;
+    let file =
+        fs::File::open(&session_file).map_err(|e| format!("Failed to open session file: {}", e))?;
     let reader = BufReader::new(file);
 
     let mut messages: Vec<HistoryMessage> = Vec::new();
@@ -410,13 +435,17 @@ fn get_session_history_sync(session_id: &str, working_dir: &str) -> Result<Vec<H
         // Skip noise messages (warmup commands and Claude SDK meta messages)
         if entry_type == "user" {
             // Skip meta messages (like "Caveat: The messages below...")
-            let is_meta = entry.get("isMeta").and_then(|v| v.as_bool()).unwrap_or(false);
+            let is_meta = entry
+                .get("isMeta")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             if is_meta {
                 continue;
             }
 
             // Check content for slash commands and error responses
-            if let Some(content) = entry.get("message")
+            if let Some(content) = entry
+                .get("message")
                 .and_then(|m| m.get("content"))
                 .and_then(|c| c.as_str())
             {

@@ -113,9 +113,7 @@ impl Config {
             .as_ref()
             .map(|s| {
                 if s.starts_with("~") {
-                    dirs::home_dir()
-                        .unwrap_or_default()
-                        .join(&s[2..])
+                    dirs::home_dir().unwrap_or_default().join(&s[2..])
                 } else {
                     PathBuf::from(s)
                 }

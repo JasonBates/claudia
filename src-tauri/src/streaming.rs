@@ -87,7 +87,10 @@ pub fn run_streaming(
 ) -> Result<(), String> {
     // Resolve the program path (finds binaries in common locations)
     let resolved_program = resolve_program(&cmd.program);
-    eprintln!("[STREAMING] Resolved '{}' to '{}'", cmd.program, resolved_program);
+    eprintln!(
+        "[STREAMING] Resolved '{}' to '{}'",
+        cmd.program, resolved_program
+    );
 
     // Emit started event
     let cmd_display = format!("{} {}", cmd.program, cmd.args.join(" "));

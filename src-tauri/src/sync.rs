@@ -61,7 +61,9 @@ fn run_ccms(args: &[&str]) -> SyncResult {
             return SyncResult {
                 success: false,
                 output: String::new(),
-                error: Some("ccms not found. Install from https://github.com/miwidot/ccms".to_string()),
+                error: Some(
+                    "ccms not found. Install from https://github.com/miwidot/ccms".to_string(),
+                ),
             };
         }
     };
@@ -92,7 +94,10 @@ fn run_ccms(args: &[&str]) -> SyncResult {
 
     eprintln!("[SYNC] Exit status: {:?}", output.status);
     if !stdout.is_empty() {
-        eprintln!("[SYNC] stdout: {}", stdout.lines().take(5).collect::<Vec<_>>().join("\n"));
+        eprintln!(
+            "[SYNC] stdout: {}",
+            stdout.lines().take(5).collect::<Vec<_>>().join("\n")
+        );
     }
     if !stderr.is_empty() {
         eprintln!("[SYNC] stderr: {}", stderr);

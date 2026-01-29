@@ -45,10 +45,7 @@ impl AppState {
         // Use CLI directory if provided, otherwise default to home directory
         // This ensures a predictable experience when launched from desktop/Finder
         let launch_dir = cli_dir
-            .or_else(|| {
-                dirs::home_dir()
-                    .map(|p| p.to_string_lossy().to_string())
-            })
+            .or_else(|| dirs::home_dir().map(|p| p.to_string_lossy().to_string()))
             .unwrap_or_else(|| {
                 // Last resort fallback to current_dir
                 std::env::current_dir()
