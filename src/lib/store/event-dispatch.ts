@@ -29,13 +29,14 @@ import type {
   NormalizedToolInputEvent,
   NormalizedToolResultEvent,
   NormalizedPermissionRequestEvent,
+  NormalizedAskUserQuestionEvent,
   NormalizedSubagentStartEvent,
   NormalizedSubagentProgressEvent,
   NormalizedSubagentEndEvent,
 } from "../claude-event-normalizer";
 import type { Action } from "./actions";
 import type { StreamingRefs } from "./types";
-import type { ToolUse, SubagentInfo } from "../types";
+import type { ToolUse, SubagentInfo, Question } from "../types";
 import type { PermissionRequest, SessionInfo } from "../event-handlers";
 import { parseToolInput } from "../json-streamer";
 
@@ -299,9 +300,9 @@ export function handleToolStart(event: NormalizedToolStartEvent, ctx: EventConte
     return;
   }
 
+  // AskUserQuestion is now handled via control protocol (ask_user_question event)
+  // We still need to suppress it from showing as a regular tool
   if (event.name === "AskUserQuestion") {
-    ctx.refs.isCollectingQuestionRef.current = true;
-    ctx.refs.questionJsonRef.current = "";
     return;
   }
 
@@ -357,19 +358,7 @@ export function handleToolInput(event: NormalizedToolInputEvent, ctx: EventConte
     return;
   }
 
-  if (ctx.refs.isCollectingQuestionRef.current) {
-    ctx.refs.questionJsonRef.current += json;
-    try {
-      const parsed = JSON.parse(ctx.refs.questionJsonRef.current);
-      if (parsed.questions && Array.isArray(parsed.questions)) {
-        ctx.dispatch({ type: "SET_QUESTIONS", payload: parsed.questions });
-        ctx.dispatch({ type: "SET_QUESTION_PANEL_VISIBLE", payload: true });
-      }
-    } catch {
-      // Incomplete JSON, wait for more chunks
-    }
-    return;
-  }
+  // AskUserQuestion is now handled via control protocol - no need to collect JSON here
 
   // Regular tool input
   ctx.refs.toolInputRef.current += json;
@@ -395,18 +384,7 @@ export function handleToolPending(ctx: EventContext): void {
     return;
   }
 
-  if (ctx.refs.isCollectingQuestionRef.current) {
-    try {
-      const parsed = JSON.parse(ctx.refs.questionJsonRef.current);
-      if (parsed.questions && Array.isArray(parsed.questions)) {
-        ctx.dispatch({ type: "SET_QUESTIONS", payload: parsed.questions });
-        ctx.dispatch({ type: "SET_QUESTION_PANEL_VISIBLE", payload: true });
-      }
-    } catch {
-      // Parsing failed
-    }
-    return;
-  }
+  // AskUserQuestion is now handled via control protocol
 
   // Finalize tool input
   const currentTools = ctx.getCurrentToolUses();
@@ -425,10 +403,7 @@ export function handleToolResult(event: NormalizedToolResultEvent, ctx: EventCon
     return;
   }
 
-  if (ctx.refs.isCollectingQuestionRef.current) {
-    ctx.refs.isCollectingQuestionRef.current = false;
-    return;
-  }
+  // AskUserQuestion is now handled via control protocol
 
   // The CLI sends duplicate tool_result events: first with toolUseId, then
   // without it but with the same content. We ONLY process results that have
@@ -502,6 +477,26 @@ export function handlePermissionRequest(
   };
 
   ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });
+}
+
+/**
+ * Handle AskUserQuestion events (Claude asking clarifying questions via control protocol)
+ */
+export function handleAskUserQuestion(
+  event: NormalizedAskUserQuestionEvent,
+  ctx: EventContext
+): void {
+  const { requestId, questions } = event;
+
+  console.log("[ASK_USER_QUESTION] Received via control protocol:", requestId);
+
+  // Store the request ID so we can respond later
+  ctx.dispatch({ type: "SET_PENDING_QUESTION_REQUEST_ID", payload: requestId });
+
+  // Set questions and show the panel
+  // Cast to Question[] since the control protocol provides the same structure
+  ctx.dispatch({ type: "SET_QUESTIONS", payload: questions as Question[] });
+  ctx.dispatch({ type: "SET_QUESTION_PANEL_VISIBLE", payload: true });
 }
 
 // =============================================================================
@@ -623,6 +618,9 @@ export function createEventDispatcher(ctx: EventContext) {
         break;
       case "permission_request":
         handlePermissionRequest(event, ctx);
+        break;
+      case "ask_user_question":
+        handleAskUserQuestion(event, ctx);
         break;
       case "tool_pending":
         handleToolPending(ctx);

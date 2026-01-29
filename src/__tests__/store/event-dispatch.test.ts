@@ -387,7 +387,7 @@ describe("Event Dispatch Functions", () => {
       });
     });
 
-    it("should set up AskUserQuestion collection", () => {
+    it("should skip AskUserQuestion (handled via control protocol)", () => {
       const ctx = createMockContext();
       const event: NormalizedEvent = {
         type: "tool_start",
@@ -397,7 +397,9 @@ describe("Event Dispatch Functions", () => {
 
       handleToolStart(event, ctx);
 
-      expect(ctx.refs.isCollectingQuestionRef.current).toBe(true);
+      // AskUserQuestion is now handled via control protocol, not tool stream
+      // It should return early without dispatching or adding a tool
+      expect(ctx.dispatch).not.toHaveBeenCalled();
     });
 
     it("should dispatch SET_PLANNING_ACTIVE for EnterPlanMode", () => {
@@ -492,28 +494,8 @@ describe("Event Dispatch Functions", () => {
       });
     });
 
-    it("should collect question JSON and dispatch SET_QUESTIONS", () => {
-      const ctx = createMockContext();
-      ctx.refs.isCollectingQuestionRef.current = true;
-
-      const event: NormalizedEvent = {
-        type: "tool_input",
-        json: '{"questions": [{"question": "What?", "header": "Q", "options": [], "multiSelect": false}]}',
-      };
-
-      handleToolInput(event, ctx);
-
-      expect(ctx.dispatch).toHaveBeenCalledWith({
-        type: "SET_QUESTIONS",
-        payload: expect.arrayContaining([
-          expect.objectContaining({ question: "What?" }),
-        ]),
-      });
-      expect(ctx.dispatch).toHaveBeenCalledWith({
-        type: "SET_QUESTION_PANEL_VISIBLE",
-        payload: true,
-      });
-    });
+    // Note: AskUserQuestion is now handled via control protocol (ask_user_question event)
+    // rather than via tool_input JSON collection
   });
 
   describe("handleToolResult", () => {

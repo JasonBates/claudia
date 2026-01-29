@@ -15,6 +15,7 @@ export interface ClaudeEvent {
     | "tool_input"
     | "tool_pending"
     | "permission_request"
+    | "ask_user_question"
     | "tool_result"
     | "block_end"
     | "context_update"
@@ -92,6 +93,8 @@ export interface ClaudeEvent {
   tool_count?: number;
   // SubagentEnd (uses existing duration, result fields)
   result?: string;
+  // AskUserQuestion (control_request for AskUserQuestion tool)
+  questions?: unknown[];
 }
 
 export interface Config {
@@ -228,6 +231,14 @@ export async function isSessionActive(): Promise<boolean> {
 
 export async function sendPermissionResponse(requestId: string, allow: boolean, remember?: boolean, toolInput?: unknown): Promise<void> {
   await invoke("send_permission_response", { requestId, allow, remember: remember || false, toolInput: toolInput || {} });
+}
+
+export async function sendQuestionResponse(requestId: string, questions: unknown[], answers: Record<string, string>): Promise<void> {
+  await invoke("send_question_response", { requestId, questions, answers });
+}
+
+export async function sendQuestionCancel(requestId: string): Promise<void> {
+  await invoke("send_question_cancel", { requestId });
 }
 
 // Hook-based permission system

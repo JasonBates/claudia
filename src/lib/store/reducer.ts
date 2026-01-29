@@ -424,12 +424,22 @@ export function conversationReducer(
         },
       };
 
+    case "SET_PENDING_QUESTION_REQUEST_ID":
+      return {
+        ...state,
+        question: {
+          ...state.question,
+          requestId: action.payload,
+        },
+      };
+
     case "CLEAR_QUESTION_PANEL":
       return {
         ...state,
         question: {
           pending: [],
           showPanel: false,
+          requestId: null,
         },
       };
 

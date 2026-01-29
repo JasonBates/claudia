@@ -10,7 +10,7 @@ import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { useStore, createEventDispatcher, actions, resetStreamingRefs } from "./lib/store";
@@ -220,14 +220,42 @@ function App() {
 
   // Handle question panel answer
   const handleQuestionAnswer = async (answers: Record<string, string>) => {
+    const requestId = store.questionRequestId();
+    const questions = store.pendingQuestions();
+
     store.dispatch(actions.clearQuestionPanel());
 
     requestAnimationFrame(() => {
       commandInputRef?.focus();
     });
 
-    const answerText = Object.values(answers).join(", ");
-    await handleSubmit(answerText);
+    // Send response via control protocol if we have a request ID
+    if (requestId) {
+      console.log("[QUESTION_ANSWER] Sending via control protocol:", requestId, answers);
+      await sendQuestionResponse(requestId, questions, answers);
+    } else {
+      // Fallback: send as regular message (old behavior)
+      console.log("[QUESTION_ANSWER] No request ID, sending as message");
+      const answerText = Object.values(answers).join(", ");
+      await handleSubmit(answerText);
+    }
+  };
+
+  // Handle question panel cancel
+  const handleQuestionCancel = async () => {
+    const requestId = store.questionRequestId();
+
+    console.log("[QUESTION_CANCEL] User cancelled question panel, requestId:", requestId);
+    store.dispatch(actions.clearQuestionPanel());
+
+    requestAnimationFrame(() => {
+      commandInputRef?.focus();
+    });
+
+    // Send deny response so Claude can continue
+    if (requestId) {
+      await sendQuestionCancel(requestId);
+    }
   };
 
   // Plan approval actions
@@ -697,6 +725,7 @@ function App() {
           <QuestionPanel
             questions={store.pendingQuestions()}
             onAnswer={handleQuestionAnswer}
+            onCancel={handleQuestionCancel}
           />
         </div>
       </Show>

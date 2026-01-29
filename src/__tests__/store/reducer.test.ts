@@ -1004,6 +1004,7 @@ describe("conversationReducer", () => {
         question: {
           pending: [{ question: "What?", header: "Q", options: [], multiSelect: false }],
           showPanel: true,
+          requestId: "req-123",
         },
       };
 
@@ -1011,6 +1012,7 @@ describe("conversationReducer", () => {
 
       expect(newState.question.pending).toEqual([]);
       expect(newState.question.showPanel).toBe(false);
+      expect(newState.question.requestId).toBe(null);
     });
 
     it("FINISH_STREAMING should preserve showThinking", () => {

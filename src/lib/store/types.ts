@@ -80,6 +80,8 @@ export interface ConversationState {
     pending: Question[];
     /** Panel visibility toggle */
     showPanel: boolean;
+    /** Request ID from control protocol (for sending response) */
+    requestId: string | null;
   };
 
   // === Planning Mode ===
@@ -147,6 +149,7 @@ export function createInitialState(): ConversationState {
     question: {
       pending: [],
       showPanel: false,
+      requestId: null,
     },
     planning: {
       isActive: false,
