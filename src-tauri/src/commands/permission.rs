@@ -136,3 +136,58 @@ pub async fn send_permission_response(
 pub async fn get_session_id(state: State<'_, AppState>) -> Result<String, String> {
     Ok(state.session_id.clone())
 }
+
+/// Send response to AskUserQuestion tool via the Claude process
+#[tauri::command]
+pub async fn send_question_response(
+    request_id: String,
+    questions: serde_json::Value,
+    answers: serde_json::Value,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    cmd_debug_log(
+        "QUESTION",
+        &format!(
+            "Sending question_response: request_id={}, answers={:?}",
+            request_id, answers
+        ),
+    );
+
+    let mut process_guard = state.process.lock().await;
+    let process = process_guard.as_mut().ok_or("No active session")?;
+
+    // Send as question_response JSON that the bridge will forward to Claude CLI
+    let msg = serde_json::json!({
+        "type": "question_response",
+        "request_id": request_id,
+        "questions": questions,
+        "answers": answers
+    });
+
+    process.send_message(&msg.to_string())?;
+    Ok(())
+}
+
+/// Cancel AskUserQuestion tool (send deny response so Claude can continue)
+#[tauri::command]
+pub async fn send_question_cancel(
+    request_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    cmd_debug_log(
+        "QUESTION",
+        &format!("Sending question_cancel: request_id={}", request_id),
+    );
+
+    let mut process_guard = state.process.lock().await;
+    let process = process_guard.as_mut().ok_or("No active session")?;
+
+    // Send as question_cancel JSON that the bridge will forward as a deny response
+    let msg = serde_json::json!({
+        "type": "question_cancel",
+        "request_id": request_id
+    });
+
+    process.send_message(&msg.to_string())?;
+    Ok(())
+}

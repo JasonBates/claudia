@@ -104,6 +104,15 @@ export interface NormalizedPermissionRequestEvent {
 }
 
 /**
+ * AskUserQuestion event (Claude asking clarifying questions)
+ */
+export interface NormalizedAskUserQuestionEvent {
+  type: "ask_user_question";
+  requestId: string;
+  questions: unknown[];
+}
+
+/**
  * Tool result event
  */
 export interface NormalizedToolResultEvent {
@@ -224,6 +233,7 @@ export type NormalizedEvent =
   | NormalizedToolInputEvent
   | NormalizedToolPendingEvent
   | NormalizedPermissionRequestEvent
+  | NormalizedAskUserQuestionEvent
   | NormalizedToolResultEvent
   | NormalizedBlockEndEvent
   | NormalizedContextUpdateEvent
@@ -320,6 +330,13 @@ export function normalizeClaudeEvent(event: ClaudeEvent): NormalizedEvent {
         toolName: event.tool_name ?? event.toolName ?? "unknown",
         toolInput: event.tool_input ?? event.toolInput,
         description: event.description || "",
+      };
+
+    case "ask_user_question":
+      return {
+        type: "ask_user_question",
+        requestId: event.request_id ?? event.requestId ?? "",
+        questions: event.questions ?? [],
       };
 
     case "tool_result":

@@ -1453,6 +1453,7 @@ del {
 }
 
 .question-panel {
+  position: relative;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -1461,6 +1462,30 @@ del {
   width: 90%;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   animation: slideUp 0.2s ease;
+}
+
+.question-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.question-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 @keyframes slideUp {
@@ -1532,6 +1557,39 @@ del {
   box-shadow: 0 0 0 2px rgba(122, 162, 247, 0.3);
 }
 
+.option-checkbox {
+  font-size: 22px;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  margin-right: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.question-option.selected .option-checkbox {
+  color: var(--accent);
+}
+
+.question-option.multiselect {
+  flex-direction: row;
+  align-items: flex-start;
+  min-height: 60px;
+}
+
+.question-option.multiselect .option-label,
+.question-option.multiselect .option-desc {
+  display: inline;
+}
+
+.question-option.multiselect .option-label::after {
+  content: " — ";
+  color: var(--text-muted);
+}
+
 .option-label {
   font-size: 16px;
   font-weight: 500;
@@ -1566,6 +1624,27 @@ del {
 
 .question-input:focus {
   border-color: var(--accent);
+}
+
+.question-next {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 20px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.question-next:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
 }
 
 .question-submit {

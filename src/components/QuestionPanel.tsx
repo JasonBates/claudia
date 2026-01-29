@@ -4,6 +4,7 @@ import type { Question, QuestionOption } from "../lib/types";
 interface QuestionPanelProps {
   questions: Question[];
   onAnswer: (answers: Record<string, string>) => void;
+  onCancel?: () => void;
 }
 
 const QuestionPanel: Component<QuestionPanelProps> = (props) => {
@@ -44,24 +45,12 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
   const goNext = () => goToQuestion(currentIndex() + 1);
   const goPrev = () => goToQuestion(currentIndex() - 1);
 
-  // Auto-advance to next unanswered question
-  const advanceToNextUnanswered = () => {
+  // Auto-advance to next question (or stay on last)
+  const advanceToNext = () => {
     const current = currentIndex();
-    // Look for next unanswered question after current
-    for (let i = current + 1; i < props.questions.length; i++) {
-      if (!isQuestionAnswered(props.questions[i])) {
-        setCurrentIndex(i);
-        return;
-      }
+    if (current < props.questions.length - 1) {
+      setCurrentIndex(current + 1);
     }
-    // If none found after, check before current
-    for (let i = 0; i < current; i++) {
-      if (!isQuestionAnswered(props.questions[i])) {
-        setCurrentIndex(i);
-        return;
-      }
-    }
-    // All answered - stay on current
   };
 
   // Get total options count (regular options + "Other")
@@ -112,16 +101,52 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
     }
   };
 
+  // Check if an option is selected (handles both single and multi-select)
+  const isOptionSelected = (question: Question, optionLabel: string): boolean => {
+    const answer = answers()[question.question];
+    if (!answer) return false;
+    if (question.multiSelect) {
+      // For multi-select, check if the label is in the comma-separated list
+      const selectedLabels = answer.split(", ");
+      return selectedLabels.includes(optionLabel);
+    }
+    return answer === optionLabel;
+  };
+
   const selectOption = (question: Question, option: QuestionOption) => {
-    setAnswers(prev => ({ ...prev, [question.question]: option.label }));
+    // Clear custom input when selecting a predefined option
     setShowCustomFor(prev => ({ ...prev, [question.question]: false }));
 
-    // If single question, submit immediately
-    if (props.questions.length === 1 && !question.multiSelect) {
-      props.onAnswer({ [question.question]: option.label });
+    if (question.multiSelect) {
+      // For multi-select: toggle the option
+      setAnswers(prev => {
+        const currentAnswer = prev[question.question] || "";
+        const selectedLabels = currentAnswer ? currentAnswer.split(", ") : [];
+        const labelIndex = selectedLabels.indexOf(option.label);
+
+        if (labelIndex >= 0) {
+          // Remove if already selected
+          selectedLabels.splice(labelIndex, 1);
+        } else {
+          // Add if not selected
+          selectedLabels.push(option.label);
+        }
+
+        const newAnswer = selectedLabels.join(", ");
+        return { ...prev, [question.question]: newAnswer || "" };
+      });
+      // Don't auto-advance for multi-select - user needs to click Submit
     } else {
-      // Auto-advance to next unanswered question
-      advanceToNextUnanswered();
+      // For single-select: replace the answer
+      setAnswers(prev => ({ ...prev, [question.question]: option.label }));
+
+      // If single question and not multi-select, submit immediately
+      if (props.questions.length === 1) {
+        props.onAnswer({ [question.question]: option.label });
+      } else {
+        // Auto-advance to next unanswered question
+        advanceToNext();
+      }
     }
   };
 
@@ -158,7 +183,7 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
           props.onAnswer({ [question.question]: value });
         } else {
           // Auto-advance
-          advanceToNextUnanswered();
+          advanceToNext();
         }
       }
     }
@@ -166,13 +191,34 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
 
   const currentQuestion = () => props.questions[currentIndex()];
 
+  // Handle escape key to cancel
+  const handlePanelKeyDownWithCancel = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && props.onCancel) {
+      e.preventDefault();
+      props.onCancel();
+      return;
+    }
+    handlePanelKeyDown(e);
+  };
+
   return (
     <div
       ref={panelRef}
       class="question-panel"
       tabIndex={0}
-      onKeyDown={handlePanelKeyDown}
+      onKeyDown={handlePanelKeyDownWithCancel}
     >
+      {/* Close button */}
+      <Show when={props.onCancel}>
+        <button
+          class="question-close"
+          onClick={props.onCancel}
+          title="Close (Escape)"
+        >
+          ×
+        </button>
+      </Show>
+
       {/* Navigation header - only show for multiple questions */}
       <Show when={props.questions.length > 1}>
         <div class="question-nav">
@@ -229,18 +275,24 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
 
             <div class="question-text">{question().question}</div>
 
-            <div class="question-options">
+            <div class="question-options" classList={{ multiselect: question().multiSelect }}>
               <For each={question().options}>
                 {(option, index) => (
                   <button
                     class="question-option"
                     classList={{
-                      selected: answers()[question().question] === option.label,
-                      focused: focusedOption() === index()
+                      selected: isOptionSelected(question(), option.label),
+                      focused: focusedOption() === index(),
+                      multiselect: question().multiSelect
                     }}
                     onClick={() => selectOption(question(), option)}
                     onMouseEnter={() => setFocusedOption(index())}
                   >
+                    <Show when={question().multiSelect}>
+                      <span class="option-checkbox">
+                        {isOptionSelected(question(), option.label) ? "☑" : "☐"}
+                      </span>
+                    </Show>
                     <span class="option-label">{option.label}</span>
                     <span class="option-desc">{option.description}</span>
                   </button>
@@ -274,19 +326,31 @@ const QuestionPanel: Component<QuestionPanelProps> = (props) => {
                 />
               </div>
             </Show>
+
+            {/* Next button for multi-select questions when not on last question */}
+            <Show when={question().multiSelect && props.questions.length > 1 && currentIndex() < props.questions.length - 1 && answers()[question().question]}>
+              <button
+                class="question-next"
+                onClick={advanceToNext}
+              >
+                Next →
+              </button>
+            </Show>
           </div>
         )}
       </Show>
 
-      {/* Submit button for multiple questions */}
-      <Show when={props.questions.length > 1}>
+      {/* Submit button - show on last question (or single question) when all answered */}
+      <Show when={(props.questions.length === 1 && currentQuestion()?.multiSelect) || (props.questions.length > 1 && currentIndex() === props.questions.length - 1)}>
         <button
           class="question-submit-all"
           classList={{ disabled: !allQuestionsAnswered() }}
           onClick={submitAllAnswers}
           disabled={!allQuestionsAnswered()}
         >
-          Submit Answers ({Object.keys(answers()).length}/{props.questions.length})
+          {props.questions.length > 1
+            ? `Submit All (${Object.keys(answers()).length}/${props.questions.length})`
+            : "Submit"}
         </button>
       </Show>
     </div>

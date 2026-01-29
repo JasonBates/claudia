@@ -554,12 +554,20 @@ async function main() {
 
               debugLog("CONTROL_REQUEST", { requestId, toolName, toolInput });
 
-              sendEvent("permission_request", {
-                requestId,
-                toolName,
-                toolInput,
-                description: `Allow ${toolName}?`
-              });
+              // Handle AskUserQuestion separately - it needs question/answer flow
+              if (toolName === "AskUserQuestion") {
+                sendEvent("ask_user_question", {
+                  requestId,
+                  questions: toolInput.questions || []
+                });
+              } else {
+                sendEvent("permission_request", {
+                  requestId,
+                  toolName,
+                  toolInput,
+                  description: `Allow ${toolName}?`
+                });
+              }
             }
             break;
 
@@ -771,6 +779,58 @@ async function main() {
               subtype: "success",
               request_id: parsed.request_id,
               response: permissionResponse
+            }
+          }) + "\n";
+
+          debugLog("CLAUDE_STDIN", msg);
+          if (claude && claude.stdin.writable) {
+            claude.stdin.write(msg);
+          }
+          return;
+        }
+
+        // Handle AskUserQuestion response
+        if (parsed.type === "question_response") {
+          debugLog("QUESTION_RESPONSE_FROM_UI", parsed);
+
+          // Send control_response with answers in the format AskUserQuestion expects:
+          // { behavior: "allow", updatedInput: { questions: [...], answers: {...} } }
+          const msg = JSON.stringify({
+            type: "control_response",
+            response: {
+              subtype: "success",
+              request_id: parsed.request_id,
+              response: {
+                behavior: "allow",
+                updatedInput: {
+                  questions: parsed.questions,
+                  answers: parsed.answers
+                }
+              }
+            }
+          }) + "\n";
+
+          debugLog("CLAUDE_STDIN", msg);
+          if (claude && claude.stdin.writable) {
+            claude.stdin.write(msg);
+          }
+          return;
+        }
+
+        // Handle AskUserQuestion cancellation
+        if (parsed.type === "question_cancel") {
+          debugLog("QUESTION_CANCEL_FROM_UI", parsed);
+
+          // Send control_response with deny to let Claude continue
+          const msg = JSON.stringify({
+            type: "control_response",
+            response: {
+              subtype: "success",
+              request_id: parsed.request_id,
+              response: {
+                behavior: "deny",
+                message: "User cancelled the question"
+              }
             }
           }) + "\n";
 

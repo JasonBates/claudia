@@ -64,6 +64,7 @@ export type Action =
   // === Question Actions ===
   | { type: "SET_QUESTIONS"; payload: Question[] }
   | { type: "SET_QUESTION_PANEL_VISIBLE"; payload: boolean }
+  | { type: "SET_PENDING_QUESTION_REQUEST_ID"; payload: string | null }
   | { type: "CLEAR_QUESTION_PANEL" }
 
   // === Planning Actions ===
@@ -204,6 +205,10 @@ export const actions = {
   setQuestionPanelVisible: (visible: boolean): Action => ({
     type: "SET_QUESTION_PANEL_VISIBLE",
     payload: visible,
+  }),
+  setPendingQuestionRequestId: (requestId: string | null): Action => ({
+    type: "SET_PENDING_QUESTION_REQUEST_ID",
+    payload: requestId,
   }),
   clearQuestionPanel: (): Action => ({ type: "CLEAR_QUESTION_PANEL" }),
 

@@ -444,6 +444,23 @@ impl ClaudeProcess {
                 })
             }
 
+            "ask_user_question" => {
+                let request_id = json
+                    .get("requestId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let questions = json
+                    .get("questions")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Array(vec![]));
+                rust_debug_log("ASK_USER_QUESTION", &format!("request_id={}", request_id));
+                Some(ClaudeEvent::AskUserQuestion {
+                    request_id,
+                    questions,
+                })
+            }
+
             "tool_result" => {
                 let tool_use_id = json
                     .get("tool_use_id")

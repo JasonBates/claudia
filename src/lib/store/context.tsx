@@ -69,6 +69,8 @@ export interface StoreContextValue {
   pendingQuestions: () => Question[];
   /** Whether question panel is visible */
   showQuestionPanel: () => boolean;
+  /** Question request ID for control protocol response */
+  questionRequestId: () => string | null;
   /** Whether planning mode is active */
   isPlanning: () => boolean;
   /** Plan file path */
@@ -288,6 +290,7 @@ export const StoreProvider: ParentComponent = (props) => {
     todoPanelHiding: () => state.todo.isHiding,
     pendingQuestions: () => state.question.pending,
     showQuestionPanel: () => state.question.showPanel,
+    questionRequestId: () => state.question.requestId,
     isPlanning: () => state.planning.isActive,
     planFilePath: () => state.planning.filePath,
     showPlanApproval: () => state.planning.showApproval,

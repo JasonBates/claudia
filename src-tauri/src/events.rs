@@ -81,6 +81,12 @@ pub enum ClaudeEvent {
         description: String,
     },
 
+    /// Claude is asking the user questions (AskUserQuestion tool via control protocol)
+    AskUserQuestion {
+        request_id: String,
+        questions: serde_json::Value,
+    },
+
     /// Tool execution result
     ToolResult {
         tool_use_id: Option<String>,

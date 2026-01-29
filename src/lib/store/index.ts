@@ -58,6 +58,7 @@ export {
   handleToolPending,
   handleToolResult,
   handlePermissionRequest,
+  handleAskUserQuestion,
   handleSubagentStart,
   handleSubagentProgress,
   handleSubagentEnd,
