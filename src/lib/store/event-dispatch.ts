@@ -10,9 +10,29 @@
  * - State changes are expressed as actions (declarative)
  * - Testing requires only mocking dispatch function
  * - Pure functions that are easier to reason about
+ *
+ * NOTE: Events are normalized to camelCase before reaching these handlers.
+ * See claude-event-normalizer.ts for the normalization logic.
  */
 
-import type { ClaudeEvent } from "../tauri";
+import type {
+  NormalizedEvent,
+  NormalizedStatusEvent,
+  NormalizedReadyEvent,
+  NormalizedClosedEvent,
+  NormalizedErrorEvent,
+  NormalizedContextUpdateEvent,
+  NormalizedResultEvent,
+  NormalizedThinkingDeltaEvent,
+  NormalizedTextDeltaEvent,
+  NormalizedToolStartEvent,
+  NormalizedToolInputEvent,
+  NormalizedToolResultEvent,
+  NormalizedPermissionRequestEvent,
+  NormalizedSubagentStartEvent,
+  NormalizedSubagentProgressEvent,
+  NormalizedSubagentEndEvent,
+} from "../claude-event-normalizer";
 import type { Action } from "./actions";
 import type { StreamingRefs } from "./types";
 import type { ToolUse, SubagentInfo } from "../types";
@@ -75,7 +95,7 @@ export interface EventContext {
 /**
  * Handle status events (status messages, compaction)
  */
-export function handleStatus(event: ClaudeEvent, ctx: EventContext): void {
+export function handleStatus(event: NormalizedStatusEvent, ctx: EventContext): void {
   if (!event.message) return;
 
   // Compaction starting
@@ -94,11 +114,10 @@ export function handleStatus(event: ClaudeEvent, ctx: EventContext): void {
     return;
   }
 
-  // Compaction completed (support both snake_case and camelCase from JS bridge)
-  if (event.is_compaction || event.isCompaction) {
-    const preTokens =
-      ctx.getCompactionPreTokens() || event.pre_tokens || event.preTokens || 0;
-    const postTokens = event.post_tokens || event.postTokens || 0;
+  // Compaction completed
+  if (event.isCompaction) {
+    const preTokens = ctx.getCompactionPreTokens() || event.preTokens || 0;
+    const postTokens = event.postTokens || 0;
     const baseContext = ctx.getSessionInfo().baseContext || 0;
 
     ctx.dispatch({
@@ -123,9 +142,8 @@ export function handleStatus(event: ClaudeEvent, ctx: EventContext): void {
 /**
  * Handle ready event (session established)
  */
-export function handleReady(event: ClaudeEvent, ctx: EventContext): void {
-  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
-  const sessionId = event.session_id || event.sessionId;
+export function handleReady(event: NormalizedReadyEvent, ctx: EventContext): void {
+  const sessionId = event.sessionId;
 
   ctx.dispatch({ type: "SET_SESSION_ACTIVE", payload: true });
   ctx.dispatch({
@@ -146,7 +164,7 @@ export function handleReady(event: ClaudeEvent, ctx: EventContext): void {
 /**
  * Handle closed events (session terminated)
  */
-export function handleClosed(event: ClaudeEvent, ctx: EventContext): void {
+export function handleClosed(event: NormalizedClosedEvent, ctx: EventContext): void {
   ctx.dispatch({ type: "SET_SESSION_ACTIVE", payload: false });
   ctx.dispatch({
     type: "SET_SESSION_ERROR",
@@ -157,7 +175,7 @@ export function handleClosed(event: ClaudeEvent, ctx: EventContext): void {
 /**
  * Handle error events
  */
-export function handleError(event: ClaudeEvent, ctx: EventContext): void {
+export function handleError(event: NormalizedErrorEvent, ctx: EventContext): void {
   ctx.dispatch({
     type: "SET_SESSION_ERROR",
     payload: event.message || "Unknown error",
@@ -172,14 +190,13 @@ export function handleError(event: ClaudeEvent, ctx: EventContext): void {
  * Handle context update events
  */
 export function handleContextUpdate(
-  event: ClaudeEvent,
+  event: NormalizedContextUpdateEvent,
   ctx: EventContext
 ): void {
-  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
-  const contextTotal = event.input_tokens || event.inputTokens || 0;
+  const contextTotal = event.inputTokens || 0;
   if (contextTotal > 0) {
-    const cacheRead = event.cache_read || event.cacheRead || 0;
-    const cacheWrite = event.cache_write || event.cacheWrite || 0;
+    const cacheRead = event.cacheRead || 0;
+    const cacheWrite = event.cacheWrite || 0;
     const cacheSize = Math.max(cacheRead, cacheWrite);
     const currentBaseContext = ctx.getSessionInfo().baseContext || 0;
 
@@ -196,9 +213,8 @@ export function handleContextUpdate(
 /**
  * Handle result events (response complete)
  */
-export function handleResult(event: ClaudeEvent, ctx: EventContext): void {
-  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
-  const newOutputTokens = event.output_tokens || event.outputTokens || 0;
+export function handleResult(event: NormalizedResultEvent, ctx: EventContext): void {
+  const newOutputTokens = event.outputTokens || 0;
   const currentInfo = ctx.getSessionInfo();
 
   ctx.dispatch({
@@ -240,7 +256,7 @@ export function handleThinkingStart(ctx: EventContext): void {
  * Handle thinking delta events
  */
 export function handleThinkingDelta(
-  event: ClaudeEvent,
+  event: NormalizedThinkingDeltaEvent,
   ctx: EventContext
 ): void {
   const thinking = event.thinking || "";
@@ -250,7 +266,7 @@ export function handleThinkingDelta(
 /**
  * Handle text delta events (streaming text)
  */
-export function handleTextDelta(event: ClaudeEvent, ctx: EventContext): void {
+export function handleTextDelta(event: NormalizedTextDeltaEvent, ctx: EventContext): void {
   const text = event.text || "";
 
   // Append to streaming content (reducer handles block updates)
@@ -272,7 +288,7 @@ export function handleTextDelta(event: ClaudeEvent, ctx: EventContext): void {
 /**
  * Handle tool start events
  */
-export function handleToolStart(event: ClaudeEvent, ctx: EventContext): void {
+export function handleToolStart(event: NormalizedToolStartEvent, ctx: EventContext): void {
   ctx.refs.toolInputRef.current = "";
 
   if (event.name === "TodoWrite") {
@@ -325,7 +341,7 @@ export function handleToolStart(event: ClaudeEvent, ctx: EventContext): void {
 /**
  * Handle tool input events (accumulate JSON chunks)
  */
-export function handleToolInput(event: ClaudeEvent, ctx: EventContext): void {
+export function handleToolInput(event: NormalizedToolInputEvent, ctx: EventContext): void {
   const json = event.json || "";
 
   if (ctx.refs.isCollectingTodoRef.current) {
@@ -403,7 +419,7 @@ export function handleToolPending(ctx: EventContext): void {
 /**
  * Handle tool result events
  */
-export function handleToolResult(event: ClaudeEvent, ctx: EventContext): void {
+export function handleToolResult(event: NormalizedToolResultEvent, ctx: EventContext): void {
   if (ctx.refs.isCollectingTodoRef.current) {
     ctx.refs.isCollectingTodoRef.current = false;
     return;
@@ -414,16 +430,15 @@ export function handleToolResult(event: ClaudeEvent, ctx: EventContext): void {
     return;
   }
 
-  // The CLI sends duplicate tool_result events: first with tool_use_id, then
+  // The CLI sends duplicate tool_result events: first with toolUseId, then
   // without it but with the same content. We ONLY process results that have
-  // a tool_use_id to avoid corrupting other tools' results.
-  const targetToolId = event.tool_use_id;
+  // a toolUseId to avoid corrupting other tools' results.
+  const targetToolId = event.toolUseId;
   if (!targetToolId) {
     return;
   }
 
-  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge)
-  const isError = event.is_error || event.isError || false;
+  const isError = event.isError || false;
   const result = isError
     ? `Error: ${event.stderr || event.stdout}`
     : event.stdout || event.stderr || "";
@@ -466,13 +481,10 @@ export function handleToolResult(event: ClaudeEvent, ctx: EventContext): void {
  * Handle permission request events
  */
 export function handlePermissionRequest(
-  event: ClaudeEvent,
+  event: NormalizedPermissionRequestEvent,
   ctx: EventContext
 ): void {
-  // Support both snake_case (Rust/Tauri) and camelCase (JS SDK bridge) field names
-  const requestId = event.request_id || event.requestId || "";
-  const toolName = event.tool_name || event.toolName || "unknown";
-  const toolInput = event.tool_input ?? event.toolInput;
+  const { requestId, toolName, toolInput, description } = event;
 
   // In auto mode, immediately approve without showing dialog
   if (ctx.getCurrentMode() === "auto") {
@@ -486,7 +498,7 @@ export function handlePermissionRequest(
     requestId,
     toolName,
     toolInput,
-    description: event.description || "",
+    description,
   };
 
   ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });
@@ -498,16 +510,16 @@ export function handlePermissionRequest(
 
 /**
  * Handle subagent start events (Task tool started)
+ * Events are normalized to camelCase before reaching this handler
  */
 export function handleSubagentStart(
-  event: ClaudeEvent,
+  event: NormalizedSubagentStartEvent,
   ctx: EventContext
 ): void {
   const taskId = event.id || "";
-  console.log("[SUBAGENT_START] Looking for Task with id:", taskId);
 
   const subagentInfo: SubagentInfo = {
-    agentType: event.agent_type || "unknown",
+    agentType: event.agentType || "unknown",
     description: event.description || "",
     status: "running",
     startTime: Date.now(),
@@ -522,15 +534,16 @@ export function handleSubagentStart(
 
 /**
  * Handle subagent progress events (nested tool executing)
+ * Events are normalized to camelCase before reaching this handler
  */
 export function handleSubagentProgress(
-  event: ClaudeEvent,
+  event: NormalizedSubagentProgressEvent,
   ctx: EventContext
 ): void {
-  const taskId = event.subagent_id || "";
+  const taskId = event.subagentId || "";
   const newTool = {
-    name: event.tool_name || "unknown",
-    input: event.tool_detail || undefined,
+    name: event.toolName || "unknown",
+    input: event.toolDetail || undefined,
   };
 
   // Get current tools to find and update the subagent
@@ -551,11 +564,12 @@ export function handleSubagentProgress(
 
 /**
  * Handle subagent end events (Task tool completed)
+ * Events are normalized to camelCase before reaching this handler
  */
-export function handleSubagentEnd(event: ClaudeEvent, ctx: EventContext): void {
+export function handleSubagentEnd(event: NormalizedSubagentEndEvent, ctx: EventContext): void {
   const taskId = event.id || "";
   const duration = event.duration || 0;
-  const toolCount = event.tool_count || 0;
+  const toolCount = event.toolCount || 0;
 
   ctx.dispatch({
     type: "UPDATE_TOOL_SUBAGENT",
@@ -581,7 +595,7 @@ export function handleSubagentEnd(event: ClaudeEvent, ctx: EventContext): void {
  * Instead of receiving EventHandlerDeps, it receives the minimal EventContext.
  */
 export function createEventDispatcher(ctx: EventContext) {
-  return (event: ClaudeEvent): void => {
+  return (event: NormalizedEvent): void => {
     switch (event.type) {
       case "status":
         handleStatus(event, ctx);

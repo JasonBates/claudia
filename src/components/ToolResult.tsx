@@ -1,4 +1,4 @@
-import { Component, createSignal, Show, For } from "solid-js";
+import { Component, createSignal, createEffect, onCleanup, Show, For } from "solid-js";
 import MessageContent from "./MessageContent";
 import type { Todo, SubagentInfo } from "../lib/types";
 
@@ -44,9 +44,38 @@ const formatDuration = (ms: number): string => {
   return `${minutes}m ${remainingSeconds}s`;
 };
 
+// Format MCP tool names: mcp__server__tool_name → "Server: tool name"
+const formatToolName = (name: string): string => {
+  if (name.startsWith("mcp__")) {
+    const parts = name.slice(5).split("__");
+    if (parts.length >= 2) {
+      const server = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      const tool = parts.slice(1).join(" ").replace(/_/g, " ");
+      return `${server}: ${tool}`;
+    }
+    return name.slice(5).replace(/_/g, " ");
+  }
+  return name;
+};
+
 // Special renderer for Task (subagent) tools
 const SubagentTree: Component<{ subagent: SubagentInfo }> = (props) => {
   const isRunning = () => props.subagent.status !== "complete";
+
+  // Elapsed time counter for running subagents
+  const [elapsed, setElapsed] = createSignal(0);
+
+  createEffect(() => {
+    if (isRunning() && props.subagent.startTime) {
+      // Update elapsed time every second
+      const updateElapsed = () => {
+        setElapsed(Date.now() - props.subagent.startTime);
+      };
+      updateElapsed();
+      const interval = setInterval(updateElapsed, 1000);
+      onCleanup(() => clearInterval(interval));
+    }
+  });
 
   // Nested tools streamed in real-time (may be empty if subagent tools aren't streamed)
   const streamedTools = () => props.subagent.nestedTools || [];
@@ -68,7 +97,12 @@ const SubagentTree: Component<{ subagent: SubagentInfo }> = (props) => {
       const durationStr = duration > 0 ? formatDuration(duration) : "Done";
       return count > 0 ? `${durationStr} · ${count} tools` : durationStr;
     }
-    return count > 0 ? `${count} tools` : "Starting";
+    // Show elapsed time while running
+    const elapsedStr = elapsed() > 1000 ? formatDuration(elapsed()) : "";
+    if (count > 0) {
+      return elapsedStr ? `${elapsedStr} · ${count} tools` : `${count} tools`;
+    }
+    return elapsedStr || "Starting";
   };
 
   return (
@@ -91,7 +125,7 @@ const SubagentTree: Component<{ subagent: SubagentInfo }> = (props) => {
           <For each={recentTools()}>
             {(tool) => (
               <div class="subagent-activity-line">
-                <span class="activity-tool-name">{tool.name}</span>
+                <span class="activity-tool-name">{formatToolName(tool.name)}</span>
                 <Show when={tool.input}>
                   <span class="activity-tool-detail">{tool.input}</span>
                 </Show>

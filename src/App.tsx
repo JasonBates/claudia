@@ -171,11 +171,8 @@ function App() {
     getCurrentToolUses: store.currentToolUses,
   });
 
-// Wrapper that normalizes events, adds logging, and triggers todo hide timer
+// Wrapper that normalizes events and triggers todo hide timer
   const handleEvent = (event: ClaudeEvent) => {
-    const ts = new Date().toISOString().split("T")[1];
-    console.log(`[${ts}] Event received (raw):`, event.type, event);
-
     // Normalize the event to canonical camelCase format
     const normalized = normalizeClaudeEvent(event);
 
