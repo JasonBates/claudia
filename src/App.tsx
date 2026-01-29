@@ -1,4 +1,5 @@
 import { createSignal, onMount, onCleanup, Show, getOwner } from "solid-js";
+import { batch, runWithOwner } from "solid-js";
 import MessageList from "./components/MessageList";
 import CommandInput, { CommandInputHandle } from "./components/CommandInput";
 import TodoPanel from "./components/TodoPanel";
@@ -7,20 +8,15 @@ import PlanningBanner from "./components/PlanningBanner";
 import PlanApprovalModal from "./components/PlanApprovalModal";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-// import StartupSplash from "./components/StartupSplash";
 import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse } from "./lib/tauri";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
-import { createEventHandler } from "./lib/event-handlers";
+import { useStore, createEventDispatcher, actions, resetStreamingRefs } from "./lib/store";
 import { normalizeClaudeEvent } from "./lib/claude-event-normalizer";
 import type { ClaudeEvent } from "./lib/tauri";
 import {
   useSession,
-  useStreamingMessages,
-  usePlanningMode,
   usePermissions,
-  useTodoPanel,
-  useQuestionPanel,
   useLocalCommands,
   useSidebar,
   useSettings,
@@ -42,39 +38,28 @@ function App() {
   let commandInputRef: CommandInputHandle | undefined;
 
   // ============================================================================
-  // Hooks Initialization
+  // Store - Single Source of Truth
   // ============================================================================
 
-  // Session management
+  const store = useStore();
+
+  // ============================================================================
+  // Hooks (for behavior, not state)
+  // ============================================================================
+
+  // Session management (handles startup, working dir)
   const session = useSession();
 
-  // Todo panel (needs owner for setTimeout)
-  const todoPanel = useTodoPanel({ owner });
-
-  // Streaming messages (with onFinish callback for todo panel)
-  const streaming = useStreamingMessages({
-    onFinish: () => todoPanel.startHideTimer(),
-  });
-
-  // Planning mode (submitMessage will be wired up below)
-  const planning = usePlanningMode({
-    submitMessage: async (msg) => handleSubmit(msg),
-  });
-
-  // Question panel (submitMessage and focusInput wired up)
-  const questionPanel = useQuestionPanel({
-    submitMessage: async (msg) => handleSubmit(msg),
-    focusInput: () => commandInputRef?.focus(),
-  });
-
-  // Permissions (needs owner and mode accessor)
+  // Permission mode state (local, not in store)
   const [currentMode, setCurrentMode] = createSignal<Mode>("auto");
+
+  // Permissions hook (polling logic)
   const permissions = usePermissions({
     owner,
     getCurrentMode: currentMode,
   });
 
-  // Sidebar (session history) - initialized before localCommands so it can be passed
+  // Sidebar (session history)
   const sidebar = useSidebar({
     owner,
     workingDir: () => session.workingDir(),
@@ -83,9 +68,45 @@ function App() {
   // Settings modal
   const settings = useSettings();
 
+  // Force scroll to bottom when user sends a new message
+  const [forceScroll, setForceScroll] = createSignal(false);
+
+  // ============================================================================
+  // Store-based Helpers
+  // ============================================================================
+
+  // Create a streaming-style interface for localCommands compatibility
+  const streamingInterface = {
+    messages: store.messages,
+    setMessages: (msgs: Parameters<typeof actions.setMessages>[0] | ((prev: ReturnType<typeof store.messages>) => ReturnType<typeof store.messages>)) => {
+      if (typeof msgs === "function") {
+        store.dispatch(actions.setMessages(msgs(store.messages())));
+      } else {
+        store.dispatch(actions.setMessages(msgs));
+      }
+    },
+    isLoading: store.isLoading,
+    setIsLoading: (loading: boolean) => store.dispatch(actions.setLoading(loading)),
+    error: store.error,
+    setError: (error: string | null) => store.dispatch(actions.setSessionError(error)),
+    generateId: store.generateMessageId,
+    resetStreamingState: () => {
+      store.dispatch(actions.resetStreaming());
+      resetStreamingRefs(store.refs);
+    },
+    finishStreaming: (interrupted = false) => {
+      store.dispatch(actions.finishStreaming({ interrupted, generateId: store.generateMessageId }));
+    },
+    currentToolUses: store.currentToolUses,
+    streamingContent: store.streamingContent,
+    streamingBlocks: store.streamingBlocks,
+    streamingThinking: store.streamingThinking,
+    showThinking: store.showThinking,
+  };
+
   // Local commands (slash commands + keyboard shortcuts)
   const localCommands = useLocalCommands({
-    streaming,
+    streaming: streamingInterface,
     session,
     sidebar,
     owner,
@@ -93,27 +114,12 @@ function App() {
   });
 
   // ============================================================================
-  // Local State (not extracted to hooks)
-  // ============================================================================
-
-  // Context warning state
-  const [warningDismissed, setWarningDismissed] = createSignal(false);
-
-
-  // Track compaction for before/after token display
-  const [lastCompactionPreTokens, setLastCompactionPreTokens] = createSignal<number | null>(null);
-  const [compactionMessageId, setCompactionMessageId] = createSignal<string | null>(null);
-
-  // Force scroll to bottom when user sends a new message
-  const [forceScroll, setForceScroll] = createSignal(false);
-
-  // ============================================================================
   // Computed Values
   // ============================================================================
 
   // Compute context threshold level
   const contextThreshold = () => {
-    const used = session.sessionInfo().totalContext || 0;
+    const used = store.sessionInfo().totalContext || 0;
     return getContextThreshold(used, CONTEXT_LIMIT);
   };
 
@@ -121,74 +127,26 @@ function App() {
   // Event Handler Setup
   // ============================================================================
 
-  // Create event handler with all dependencies injected
-  const coreEventHandler = createEventHandler({
-    // Message state (from streaming hook)
-    setMessages: streaming.setMessages,
-    setStreamingContent: streaming.setStreamingContent,
-    setStreamingBlocks: streaming.setStreamingBlocks,
-    setStreamingThinking: streaming.setStreamingThinking,
+  // Create event dispatcher with minimal context
+  const coreEventHandler = createEventDispatcher({
+    dispatch: store.dispatch,
+    refs: store.refs,
+    generateMessageId: store.generateMessageId,
 
-    // Tool state (from streaming hook)
-    setCurrentToolUses: streaming.setCurrentToolUses,
-
-    // Todo state (from todoPanel hook)
-    setCurrentTodos: todoPanel.setCurrentTodos,
-    setShowTodoPanel: todoPanel.setShowTodoPanel,
-    setTodoPanelHiding: todoPanel.setTodoPanelHiding,
-
-    // Question state (from questionPanel hook)
-    setPendingQuestions: questionPanel.setPendingQuestions,
-    setShowQuestionPanel: questionPanel.setShowQuestionPanel,
-
-    // Planning state (from planning hook)
-    setIsPlanning: planning.setIsPlanning,
-    setPlanFilePath: planning.setPlanFilePath,
-    setShowPlanApproval: planning.setShowPlanApproval,
-    setPlanContent: planning.setPlanContent,
-
-    // Permission state (from permissions hook)
-    setPendingPermission: permissions.setPendingPermission,
-    getCurrentMode: currentMode,
+    // External callbacks
     sendPermissionResponse,
+    getCurrentMode: currentMode,
 
-    // Session state (from session hook)
-    setSessionActive: session.setSessionActive,
-    setSessionInfo: session.setSessionInfo,
-    setError: streaming.setError,
-    setIsLoading: streaming.setIsLoading,
-
-    // Launch session tracking (for "Original Session" feature)
-    getLaunchSessionId: session.launchSessionId,
-    setLaunchSessionId: session.setLaunchSessionId,
-
-    // Compaction tracking (local state)
-    setLastCompactionPreTokens,
-    setCompactionMessageId,
-    setWarningDismissed,
-
-    // State accessors
-    getSessionInfo: session.sessionInfo,
-    getCurrentToolUses: streaming.currentToolUses,
-    getStreamingBlocks: streaming.streamingBlocks,
-    getPlanFilePath: planning.planFilePath,
-    getLastCompactionPreTokens: lastCompactionPreTokens,
-    getCompactionMessageId: compactionMessageId,
-
-    // Mutable refs (from streaming hook)
-    toolInputRef: streaming.toolInputRef,
-    todoJsonRef: streaming.todoJsonRef,
-    questionJsonRef: streaming.questionJsonRef,
-    isCollectingTodoRef: streaming.isCollectingTodoRef,
-    isCollectingQuestionRef: streaming.isCollectingQuestionRef,
-    pendingResultsRef: streaming.pendingResultsRef,
-
-    // Callbacks
-    generateMessageId: streaming.generateId,
-    finishStreaming: streaming.finishStreaming,
+    // State accessors for conditional logic
+    getSessionInfo: store.sessionInfo,
+    getLaunchSessionId: store.launchSessionId,
+    getPlanFilePath: store.planFilePath,
+    getCompactionPreTokens: store.lastCompactionPreTokens,
+    getCompactionMessageId: store.compactionMessageId,
+    getCurrentToolUses: store.currentToolUses,
   });
 
-  // Wrapper that normalizes events and adds logging
+// Wrapper that normalizes events, adds logging, and triggers todo hide timer
   const handleEvent = (event: ClaudeEvent) => {
     const ts = new Date().toISOString().split("T")[1];
     console.log(`[${ts}] Event received (raw):`, event.type, event);
@@ -196,7 +154,38 @@ function App() {
     // Normalize the event to canonical camelCase format
     const normalized = normalizeClaudeEvent(event);
 
+    const wasLoading = store.isLoading();
     coreEventHandler(normalized);
+
+    // Trigger todo panel hide timer when streaming finishes
+    if (wasLoading && !store.isLoading()) {
+      startTodoHideTimer();
+    }
+
+    // Sync session state to useSession hook for session.workingDir() etc.
+    // This keeps the session hook in sync for sidebar functionality
+    session.setSessionActive(store.sessionActive());
+    session.setSessionInfo(store.sessionInfo());
+    session.setLaunchSessionId(store.launchSessionId());
+  };
+
+  // ============================================================================
+  // Todo Panel Hide Timer
+  // ============================================================================
+
+  const startTodoHideTimer = () => {
+    if (!store.showTodoPanel()) return;
+
+    store.dispatch(actions.setTodoPanelHiding(true));
+
+    setTimeout(() => {
+      runWithOwner(owner, () => {
+        batch(() => {
+          store.dispatch(actions.setTodoPanelVisible(false));
+          store.dispatch(actions.setTodoPanelHiding(false));
+        });
+      });
+    }, 2000);
   };
 
   // ============================================================================
@@ -207,36 +196,60 @@ function App() {
     setCurrentMode(getNextMode(currentMode()));
   };
 
-  // Start a new session from the sidebar - completely blank screen
+  // Handle question panel answer
+  const handleQuestionAnswer = async (answers: Record<string, string>) => {
+    store.dispatch(actions.clearQuestionPanel());
+
+    requestAnimationFrame(() => {
+      commandInputRef?.focus();
+    });
+
+    const answerText = Object.values(answers).join(", ");
+    await handleSubmit(answerText);
+  };
+
+  // Plan approval actions
+  const handlePlanApprove = async () => {
+    store.dispatch(actions.setPlanApprovalVisible(false));
+    store.dispatch(actions.setPlanningActive(false));
+    store.dispatch(actions.setPlanContent(""));
+    await handleSubmit("I approve this plan. Proceed with implementation.");
+  };
+
+  const handlePlanRequestChanges = async (feedback: string) => {
+    store.dispatch(actions.setPlanApprovalVisible(false));
+    await handleSubmit(feedback);
+  };
+
+  const handlePlanCancel = async () => {
+    store.dispatch(actions.exitPlanning());
+    await handleSubmit("Cancel this plan. Let's start over with a different approach.");
+  };
+
+  // Start a new session from the sidebar
   const handleNewSession = async () => {
     console.log("[NEW_SESSION] Starting new session");
 
-    // Close the sidebar first
     sidebar.toggleSidebar();
-
-    // Reset launch session ID so the new session becomes the "home"
-    session.setLaunchSessionId(null);
-
-    // Clear all messages completely (blank screen, no dividers)
-    streaming.setMessages([]);
-    streaming.resetStreamingState();
-    streaming.setError(null);
+    store.dispatch(actions.setLaunchSessionId(null));
+    store.dispatch(actions.clearMessages());
+    store.dispatch(actions.resetStreaming());
+    resetStreamingRefs(store.refs);
+    store.dispatch(actions.setSessionError(null));
 
     // Reset context display
-    session.setSessionInfo((prev) => ({
-      ...prev,
-      totalContext: prev.baseContext || 0,
+    const currentInfo = store.sessionInfo();
+    store.dispatch(actions.setSessionInfo({
+      ...currentInfo,
+      totalContext: currentInfo.baseContext || 0,
     }));
 
-    // Restart Claude to get a fresh session
-    // The ready event handler will capture the new session ID
     await clearSession(handleEvent, owner);
   };
 
-  // Return to the original session (the one created when app launched)
-  // This works even if the original session was blank (never saved)
+  // Return to the original session
   const handleReturnToOriginal = async () => {
-    const launchId = session.launchSessionId();
+    const launchId = store.launchSessionId();
     if (!launchId) {
       console.log("[ORIGINAL] No launch session ID");
       return;
@@ -244,34 +257,26 @@ function App() {
 
     console.log("[ORIGINAL] Returning to original session:", launchId);
 
-    // Check if the launch session exists in the sessions list (has been saved)
     const sessionExists = sidebar.sessions().some((s) => s.sessionId === launchId);
 
     if (sessionExists) {
-      // Session was saved (user typed messages), resume it normally
       console.log("[ORIGINAL] Session exists, resuming normally");
       await handleResumeSession(launchId);
     } else {
-      // Session was never saved (user never typed anything)
-      // Return to blank state without changing the launch session ID
       console.log("[ORIGINAL] Session not saved, returning to blank state");
 
-      // Close the sidebar
       sidebar.toggleSidebar();
+      store.dispatch(actions.clearMessages());
+      store.dispatch(actions.resetStreaming());
+      resetStreamingRefs(store.refs);
+      store.dispatch(actions.setSessionError(null));
 
-      // Clear all messages completely (blank screen)
-      streaming.setMessages([]);
-      streaming.resetStreamingState();
-      streaming.setError(null);
-
-      // Reset context display
-      session.setSessionInfo((prev) => ({
-        ...prev,
-        totalContext: prev.baseContext || 0,
+      const currentInfo = store.sessionInfo();
+      store.dispatch(actions.setSessionInfo({
+        ...currentInfo,
+        totalContext: currentInfo.baseContext || 0,
       }));
 
-      // Restart Claude to get a fresh blank session
-      // Keep the same launchSessionId so "Original Session" still works
       await clearSession(handleEvent, owner);
     }
   };
@@ -280,87 +285,72 @@ function App() {
   const handleResumeSession = async (sessionId: string) => {
     console.log("[RESUME] Resuming session:", sessionId);
 
-    // Clear current messages and reset state
-    streaming.setMessages([]);
-    streaming.resetStreamingState();
-    streaming.setError(null);
+    store.dispatch(actions.clearMessages());
+    store.dispatch(actions.resetStreaming());
+    resetStreamingRefs(store.refs);
+    store.dispatch(actions.setSessionError(null));
 
-    // Close the sidebar
     sidebar.toggleSidebar();
 
     const workingDir = session.workingDir();
     if (!workingDir) {
-      streaming.setError("No working directory set");
+      store.dispatch(actions.setSessionError("No working directory set"));
       return;
     }
 
     try {
-      // First, load the session history to display old messages
       console.log("[RESUME] Loading session history...");
       const history = await getSessionHistory(sessionId, workingDir);
       console.log("[RESUME] Loaded", history.length, "messages from history");
 
-      // Convert history to our Message format and display them
       const historyMessages = history.map((msg) => ({
-        id: msg.id || streaming.generateId(),
+        id: msg.id || store.generateMessageId(),
         role: msg.role as "user" | "assistant",
         content: msg.content,
       }));
-      streaming.setMessages(historyMessages);
+      store.dispatch(actions.setMessages(historyMessages));
 
-      // Scroll to bottom to show most recent messages
       setForceScroll(true);
       setTimeout(() => setForceScroll(false), 100);
 
-      // Now resume the Claude session (restarts CLI with --resume flag)
       console.log("[RESUME] Resuming Claude session...");
       await resumeSession(sessionId, handleEvent);
       console.log("[RESUME] Session resumed successfully");
 
-      // Update session info with new session ID
-      session.setSessionInfo((prev) => ({
-        ...prev,
-        sessionId,
-      }));
+      store.dispatch(actions.updateSessionInfo({ sessionId }));
 
-      // Refresh the sidebar to show updated list
       sidebar.loadSessions();
     } catch (e) {
       console.error("[RESUME] Failed to resume session:", e);
-      streaming.setError(`Failed to resume session: ${e}`);
+      store.dispatch(actions.setSessionError(`Failed to resume session: ${e}`));
     }
   };
 
   // Main message submission handler
   const handleSubmit = async (text: string) => {
-    // Handle local commands (slash commands like /sync, /clear, etc.)
     if (await localCommands.dispatch(text)) {
       return;
     }
 
-    if (streaming.isLoading()) return;
+    if (store.isLoading()) return;
 
-    // Force scroll to bottom on new user message
     setForceScroll(true);
     setTimeout(() => setForceScroll(false), 100);
 
     // Reset streaming state
-    streaming.resetStreamingState();
+    store.dispatch(actions.resetStreaming());
+    resetStreamingRefs(store.refs);
 
     // Add user message
-    streaming.setMessages((prev) => [
-      ...prev,
-      {
-        id: streaming.generateId(),
-        role: "user",
-        content: text,
-      },
-    ]);
+    store.dispatch(actions.addMessage({
+      id: store.generateMessageId(),
+      role: "user",
+      content: text,
+    }));
 
     try {
       console.log("[SUBMIT] Calling sendMessage...");
 
-      // In plan mode, prepend instructions to analyze without modifying
       let messageToSend = text;
       if (currentMode() === "plan") {
         messageToSend = `[PLAN MODE: Analyze and explain your approach, but do not modify any files or run any commands. Show me what you would do without actually doing it.]\n\n${text}`;
@@ -370,8 +360,8 @@ function App() {
       console.log("[SUBMIT] sendMessage returned");
     } catch (e) {
       console.error("[SUBMIT] Error:", e);
-      streaming.setError(`Error: ${e}`);
-      streaming.setIsLoading(false);
+      store.dispatch(actions.setSessionError(`Error: ${e}`));
+      store.dispatch(actions.setLoading(false));
     }
   };
 
@@ -379,7 +369,6 @@ function App() {
   // Keyboard Handler
   // ============================================================================
 
-  // Keyboard handler - delegates to localCommands for all shortcuts
   const handleKeyDown = (e: KeyboardEvent) => {
     localCommands.handleKeyDown(e);
   };
@@ -388,20 +377,12 @@ function App() {
   // Lifecycle
   // ============================================================================
 
-
-  // Handler for maintaining focus on the message input
-  // Refocus the input after any click, unless clicking on an element that needs focus
   const handleRefocusClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
-
-    // Don't refocus if clicking on elements that need their own focus
-    // (other inputs, textareas, selects, or contenteditable elements)
     const focusableSelector = 'input:not(.command-input), select, [contenteditable="true"]';
     if (target.matches(focusableSelector) || target.closest(focusableSelector)) {
       return;
     }
-
-    // Refocus the command input after the click completes
     requestAnimationFrame(() => {
       commandInputRef?.focus();
     });
@@ -410,17 +391,19 @@ function App() {
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
 
-    // Add keyboard listener for local commands
     window.addEventListener("keydown", handleKeyDown, true);
-
-    // Add click listener for refocusing input after UI interactions
     document.addEventListener("click", handleRefocusClick, true);
 
     try {
       await session.startSession();
+
+      // Sync session state to store after startup
+      // The Tauri startSession doesn't emit events, so we need to sync manually
+      store.dispatch(actions.setSessionActive(true));
+
       permissions.startPolling();
     } catch (e) {
-      streaming.setError(`Failed to start session: ${e}`);
+      store.dispatch(actions.setSessionError(`Failed to start session: ${e}`));
     }
   });
 
@@ -441,8 +424,8 @@ function App() {
         collapsed={sidebar.collapsed()}
         onToggle={sidebar.toggleSidebar}
         sessions={sidebar.sessions()}
-        currentSessionId={session.sessionInfo().sessionId || null}
-        launchSessionId={session.launchSessionId()}
+        currentSessionId={store.sessionInfo().sessionId || null}
+        launchSessionId={store.launchSessionId()}
         isLoading={sidebar.isLoading()}
         error={sidebar.error()}
         onResume={handleResumeSession}
@@ -453,12 +436,9 @@ function App() {
 
       {/* Main content area */}
       <div class="app-content">
-        {/* Fixed top bar background */}
         <div class="top-bar"></div>
-        {/* Drag region for window */}
         <div class="drag-region" data-tauri-drag-region="true"></div>
 
-        {/* Centered working directory */}
         <Show when={session.workingDir()}>
           <div class="dir-indicator" title={session.workingDir()!}>
             <Show when={__CT_WORKTREE__}>
@@ -469,7 +449,6 @@ function App() {
           </div>
         </Show>
 
-        {/* Settings button */}
         <button
           class="settings-btn"
           onClick={settings.openSettings}
@@ -479,19 +458,17 @@ function App() {
           ⚙
         </button>
 
-        {/* Connection status icon - right of settings cog */}
         <div
           class="connection-icon"
-          classList={{ connected: session.sessionActive(), disconnected: !session.sessionActive() }}
-          title={session.sessionActive() ? "Connected" : "Disconnected"}
+          classList={{ connected: store.sessionActive(), disconnected: !store.sessionActive() }}
+          title={store.sessionActive() ? "Connected" : "Disconnected"}
         >
-          <Show when={session.sessionActive()} fallback="⊘">
+          <Show when={store.sessionActive()} fallback="⊘">
             ⚡
           </Show>
         </div>
 
-        {/* Right-aligned token usage */}
-        <Show when={session.sessionActive()}>
+        <Show when={store.sessionActive()}>
           <div
             class="token-indicator"
             classList={{
@@ -501,27 +478,25 @@ function App() {
           >
             <span class="token-icon">◈</span>
             <span class="token-count">
-              {session.sessionInfo().totalContext
-                ? `${Math.round(session.sessionInfo().totalContext! / 1000)}k`
+              {store.sessionInfo().totalContext
+                ? `${Math.round(store.sessionInfo().totalContext! / 1000)}k`
                 : "—"}
             </span>
           </div>
         </Show>
 
-        {/* Planning Mode Banner */}
-        <Show when={planning.isPlanning()}>
-          <PlanningBanner planFile={planning.planFilePath()} />
+        <Show when={store.isPlanning()}>
+          <PlanningBanner planFile={store.planFilePath()} />
         </Show>
 
-        <Show when={streaming.error()}>
+        <Show when={store.error()}>
           <div class="error-banner">
-            {streaming.error()}
-            <button onClick={() => streaming.setError(null)}>Dismiss</button>
+            {store.error()}
+            <button onClick={() => store.dispatch(actions.setSessionError(null))}>Dismiss</button>
           </div>
         </Show>
 
-        {/* Context Warning - clickable text in title bar */}
-        <Show when={contextThreshold() !== "ok" && !warningDismissed()}>
+        <Show when={contextThreshold() !== "ok" && !store.warningDismissed()}>
           <div
             class={`context-warning ${contextThreshold()}`}
             onClick={() => handleSubmit("/compact")}
@@ -537,12 +512,12 @@ function App() {
 
         <main class="app-main">
           <MessageList
-            messages={streaming.messages()}
-            streamingContent={streaming.isLoading() ? streaming.streamingContent() : undefined}
-            streamingToolUses={streaming.isLoading() ? streaming.currentToolUses() : undefined}
-            streamingBlocks={streaming.isLoading() ? streaming.streamingBlocks() : undefined}
-            streamingThinking={streaming.isLoading() ? streaming.streamingThinking() : undefined}
-            showThinking={streaming.showThinking()}
+            messages={store.messages()}
+            streamingContent={store.isLoading() ? store.streamingContent() : undefined}
+            streamingToolUses={store.isLoading() ? store.currentToolUses() : undefined}
+            streamingBlocks={store.isLoading() ? store.streamingBlocks() : undefined}
+            streamingThinking={store.isLoading() ? store.streamingThinking() : undefined}
+            showThinking={store.showThinking()}
             forceScrollToBottom={forceScroll()}
           />
         </main>
@@ -551,9 +526,9 @@ function App() {
           <CommandInput
             ref={(handle) => (commandInputRef = handle)}
             onSubmit={handleSubmit}
-            disabled={streaming.isLoading() || !session.sessionActive()}
+            disabled={store.isLoading() || !store.sessionActive()}
             placeholder={
-              session.sessionActive() ? "Type a message... (Enter to send, Shift+Tab to change mode)" : ""
+              store.sessionActive() ? "Type a message... (Enter to send, Shift+Tab to change mode)" : ""
             }
             mode={currentMode()}
             onModeChange={cycleMode}
@@ -562,28 +537,28 @@ function App() {
       </div>
 
       {/* Floating Todo Panel */}
-      <Show when={todoPanel.showTodoPanel() && todoPanel.currentTodos().length > 0}>
-        <TodoPanel todos={todoPanel.currentTodos()} hiding={todoPanel.todoPanelHiding()} />
+      <Show when={store.showTodoPanel() && store.currentTodos().length > 0}>
+        <TodoPanel todos={store.currentTodos()} hiding={store.todoPanelHiding()} />
       </Show>
 
       {/* Question Panel Overlay */}
-      <Show when={questionPanel.showQuestionPanel() && questionPanel.pendingQuestions().length > 0}>
+      <Show when={store.showQuestionPanel() && store.pendingQuestions().length > 0}>
         <div class="question-overlay">
           <QuestionPanel
-            questions={questionPanel.pendingQuestions()}
-            onAnswer={questionPanel.handleQuestionAnswer}
+            questions={store.pendingQuestions()}
+            onAnswer={handleQuestionAnswer}
           />
         </div>
       </Show>
 
       {/* Plan Approval Modal */}
-      <Show when={planning.showPlanApproval()}>
+      <Show when={store.showPlanApproval()}>
         <PlanApprovalModal
-          planContent={planning.planContent()}
-          planFile={planning.planFilePath()}
-          onApprove={planning.handlePlanApprove}
-          onRequestChanges={planning.handlePlanRequestChanges}
-          onCancel={planning.handlePlanCancel}
+          planContent={store.planContent()}
+          planFile={store.planFilePath()}
+          onApprove={handlePlanApprove}
+          onRequestChanges={handlePlanRequestChanges}
+          onCancel={handlePlanCancel}
         />
       </Show>
 
@@ -608,18 +583,17 @@ function App() {
       </Show>
 
       {/* Inline Permission Dialog */}
-      <Show when={permissions.pendingPermission()}>
+      <Show when={store.pendingPermission()}>
         <div class="permission-container">
           <PermissionDialog
-            toolName={permissions.pendingPermission()!.toolName}
-            toolInput={permissions.pendingPermission()!.toolInput}
-            description={permissions.pendingPermission()!.description}
+            toolName={store.pendingPermission()!.toolName}
+            toolInput={store.pendingPermission()!.toolInput}
+            description={store.pendingPermission()!.description}
             onAllow={permissions.handlePermissionAllow}
             onDeny={permissions.handlePermissionDeny}
           />
         </div>
       </Show>
-
     </div>
   );
 }
