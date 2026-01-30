@@ -2,6 +2,7 @@ import { Component, createSignal, onMount, onCleanup, Show } from "solid-js";
 import { readTextFile, watch } from "@tauri-apps/plugin-fs";
 import { listen } from "@tauri-apps/api/event";
 import MessageContent from "./MessageContent";
+import { applyTheme, ThemeSettings } from "../lib/theme-utils";
 import "../App.css";
 
 const PlanViewer: Component = () => {
@@ -9,10 +10,29 @@ const PlanViewer: Component = () => {
   const [error, setError] = createSignal<string | null>(null);
   const [filePath, setFilePath] = createSignal<string | null>(null);
 
+  // Get URL params
+  const getParams = () => new URLSearchParams(window.location.search);
+
   // Get plan file path from URL params
-  const getFilePath = () => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("file");
+  const getFilePath = () => getParams().get("file");
+
+  // Get theme settings from URL params
+  const getThemeSettings = (): ThemeSettings | null => {
+    const params = getParams();
+    const colorScheme = params.get("colorScheme");
+    const fontFamily = params.get("fontFamily");
+    const fontSize = params.get("fontSize");
+    const contentMargin = params.get("contentMargin");
+
+    if (colorScheme && fontFamily && fontSize && contentMargin) {
+      return {
+        colorScheme,
+        fontFamily,
+        fontSize: parseInt(fontSize, 10),
+        contentMargin: parseInt(contentMargin, 10),
+      };
+    }
+    return null;
   };
 
   // Load plan content from file
@@ -31,6 +51,13 @@ const PlanViewer: Component = () => {
     const path = getFilePath();
     setFilePath(path);
     console.log("[PLAN_VIEWER] Mounted with file path:", path);
+
+    // Apply initial theme settings from URL params
+    const themeSettings = getThemeSettings();
+    if (themeSettings) {
+      console.log("[PLAN_VIEWER] Applying initial theme:", themeSettings.colorScheme);
+      await applyTheme(themeSettings);
+    }
 
     let unwatchFile: (() => void) | undefined;
 
@@ -56,6 +83,12 @@ const PlanViewer: Component = () => {
       setContent(event.payload);
     });
 
+    // Listen for theme updates from main window
+    const unlistenTheme = await listen<ThemeSettings>("theme-updated", async (event) => {
+      console.log("[PLAN_VIEWER] Received theme update:", event.payload.colorScheme);
+      await applyTheme(event.payload);
+    });
+
     // Listen for close signal when planning ends
     const unlistenClose = await listen("plan-window-close", () => {
       console.log("[PLAN_VIEWER] Received close signal");
@@ -64,6 +97,7 @@ const PlanViewer: Component = () => {
 
     onCleanup(() => {
       unlisten();
+      unlistenTheme();
       unlistenClose();
       unwatchFile?.();
     });
