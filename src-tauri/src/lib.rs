@@ -7,6 +7,7 @@ pub mod response_state;
 mod streaming;
 mod sync;
 pub mod timeouts;
+pub mod warmup;
 
 use commands::AppState;
 use tauri::Manager;
