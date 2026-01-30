@@ -255,6 +255,7 @@ function processMarkdownWithTables(content: string): string {
 }
 
 const TextBlock: Component<{ content: string }> = (props) => {
+
   const formattedContent = createMemo(() => {
     // Process tables first (before other transformations)
     let text = processMarkdownWithTables(props.content);
