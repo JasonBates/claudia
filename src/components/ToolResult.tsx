@@ -1,9 +1,14 @@
-import { Component, createSignal, createEffect, onCleanup, Show, For, createMemo } from "solid-js";
+import { Component, createSignal, Show, For, createMemo } from "solid-js";
 import MessageContent from "./MessageContent";
 import PlanningTool from "./PlanningTool";
 import ImageModal from "./ImageModal";
 import type { Todo, SubagentInfo } from "../lib/types";
 import { formatJsonResult } from "../lib/json-formatter";
+
+// Global tick signal - all timers subscribe to this single source
+// Updates every second, so all timers flip simultaneously
+const [globalTick, setGlobalTick] = createSignal(Date.now());
+setInterval(() => setGlobalTick(Date.now()), 1000);
 
 // Check if result contains base64 image data from Read tool
 // Format: [{"type":"image","source":{"type":"base64","data":"..."}}]
@@ -65,13 +70,12 @@ const TodoList: Component<{ todos: Todo[] }> = (props) => {
   );
 };
 
-// Format duration as human-readable
+// Format duration as human-readable (whole seconds only)
 const formatDuration = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`;
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = Math.floor(seconds % 60);
+  const remainingSeconds = seconds % 60;
   return `${minutes}m ${remainingSeconds}s`;
 };
 
@@ -93,20 +97,11 @@ const formatToolName = (name: string): string => {
 const SubagentTree: Component<{ subagent: SubagentInfo }> = (props) => {
   const isRunning = () => props.subagent.status !== "complete";
 
-  // Elapsed time counter for running subagents
-  const [elapsed, setElapsed] = createSignal(0);
-
-  createEffect(() => {
-    if (isRunning() && props.subagent.startTime) {
-      // Update elapsed time every second
-      const updateElapsed = () => {
-        setElapsed(Date.now() - props.subagent.startTime);
-      };
-      updateElapsed();
-      const interval = setInterval(updateElapsed, 1000);
-      onCleanup(() => clearInterval(interval));
-    }
-  });
+  // Elapsed time - derived from global tick, all timers update together
+  const elapsed = () => {
+    if (!props.subagent.startTime) return 0;
+    return globalTick() - props.subagent.startTime;
+  };
 
   // Nested tools streamed in real-time (may be empty if subagent tools aren't streamed)
   const streamedTools = () => props.subagent.nestedTools || [];
@@ -128,8 +123,8 @@ const SubagentTree: Component<{ subagent: SubagentInfo }> = (props) => {
       const durationStr = duration > 0 ? formatDuration(duration) : "Done";
       return count > 0 ? `${durationStr} · ${count} tools` : durationStr;
     }
-    // Show elapsed time while running
-    const elapsedStr = elapsed() > 1000 ? formatDuration(elapsed()) : "";
+    // Show elapsed time while running (always show if we have startTime)
+    const elapsedStr = props.subagent.startTime ? formatDuration(elapsed()) : "";
     if (count > 0) {
       return elapsedStr ? `${elapsedStr} · ${count} tools` : `${count} tools`;
     }
