@@ -144,6 +144,7 @@ function App() {
     sidebar,
     owner,
     onOpenSettings: settings.openSettings,
+    onFocusInput: () => commandInputRef?.focus(),
   });
 
   // ============================================================================
@@ -662,6 +663,10 @@ function App() {
     const target = e.target as HTMLElement;
     const focusableSelector = 'input:not(.command-input), select, [contenteditable="true"]';
     if (target.matches(focusableSelector) || target.closest(focusableSelector)) {
+      return;
+    }
+    // Don't steal focus from message list - users need to select text there
+    if (target.closest('.message-list')) {
       return;
     }
     requestAnimationFrame(() => {

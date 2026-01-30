@@ -61,6 +61,10 @@ export interface UseLocalCommandsOptions {
    * Callback to open settings modal.
    */
   onOpenSettings?: () => void;
+  /**
+   * Callback to focus the command input.
+   */
+  onFocusInput?: () => void;
 }
 
 export interface UseLocalCommandsReturn {
@@ -159,7 +163,7 @@ function matchesKeybinding(e: KeyboardEvent, binding: ParsedKeybinding): boolean
  * - Unified system: commands can have both slash and keybinding
  */
 export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalCommandsReturn {
-  const { streaming, session, owner, sidebar, onCliEvent, onOpenSettings } = options;
+  const { streaming, session, owner, sidebar, onCliEvent, onOpenSettings, onFocusInput } = options;
 
   // ==========================================================================
   // Command Handlers
@@ -394,6 +398,14 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     onOpenSettings?.();
   };
 
+  /**
+   * Focus the command input (Alt+L)
+   */
+  const handleFocusInput = async () => {
+    console.log("[COMMANDS] Focusing input");
+    onFocusInput?.();
+  };
+
   // ==========================================================================
   // Command Registry
   // ==========================================================================
@@ -452,6 +464,12 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       description: "Open appearance settings",
       keybinding: "cmd+,",
       handler: handleOpenSettings,
+    },
+    {
+      name: "focus",
+      description: "Focus the message input",
+      keybinding: "alt+l",
+      handler: handleFocusInput,
     },
   ];
 
