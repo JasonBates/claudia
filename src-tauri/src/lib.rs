@@ -5,7 +5,6 @@ pub mod error;
 mod events;
 pub mod response_state;
 mod streaming;
-mod sync;
 pub mod timeouts;
 pub mod warmup;
 
@@ -58,11 +57,6 @@ pub fn run() {
             commands::permission::get_session_id,
             commands::permission::send_question_response,
             commands::permission::send_question_cancel,
-            // Sync commands (CCMS integration)
-            commands::sync_cmd::sync_pull,
-            commands::sync_cmd::sync_push,
-            commands::sync_cmd::sync_status,
-            commands::sync_cmd::is_sync_available,
             // Streaming command runner
             commands::streaming_cmd::run_streaming_command,
             // Session listing (for sidebar)

@@ -66,6 +66,45 @@ A Tauri desktop application that wraps the Claude Code CLI, providing a native G
         └───────────────────┘  └───────────────────┘  └───────────────────┘
 ```
 
+
+## Design Philosophy
+
+### Why Wrap the CLI?
+
+The Claude Code CLI is more than an API wrapper—it's a complete agent runtime with features that would take months to rebuild:
+
+| Feature | Build from SDK | Use via CLI |
+|---------|----------------|-------------|
+| **MCP servers** | Implement protocol yourself | ✅ Built-in |
+| **Skills** (`/commit`, `/review-pr`) | Write each from scratch | ✅ Built-in |
+| **Hooks** (pre/post tool execution) | Design hook system | ✅ Built-in |
+| **CLAUDE.md** support | Parse and inject yourself | ✅ Built-in |
+| **Session management** | Build persistence layer | ✅ Built-in |
+| **Context compaction** | Implement summarization | ✅ Built-in |
+| **Prompt caching** | Handle cache tokens | ✅ Built-in |
+
+Early experiments with the SDK (`unstable_v2_createSession`) revealed we'd be rebuilding all of this from scratch. The CLI gives you a complete agent runtime; the SDK gives you raw API access. Wrapping the CLI with a thin bridge was the pragmatic choice—ship a custom UI on top of battle-tested infrastructure, not a ground-up rewrite.
+
+### Why a Node.js Bridge?
+
+The bridge (`sdk-bridge-v2.mjs`) exists because:
+
+1. **Event translation** — The CLI's JSON streaming format needs transformation for the frontend
+2. **Session persistence** — The bridge survives interrupts and respawns Claude with `--resume`
+3. **Subagent tracking** — Complex state tracking for Task tools and nested operations
+4. **It's thin** — ~900 lines of glue code, not a major component
+
+The bridge is **not technical debt**—it's the minimal connector between your UI and Claude's agent infrastructure.
+
+### Why Not Pure Rust?
+
+The bridge could theoretically be rewritten in Rust, but:
+- You'd still spawn the CLI as a subprocess (can't import it as a library)
+- The current bridge works reliably
+- Node.js is easier to iterate on for event handling logic
+- Most contributors will never touch the bridge anyway
+
+
 ## ⚠️ CRITICAL: Field Name Casing Mismatch ⚠️
 
 > **READ THIS FIRST** - This is the #1 source of subtle bugs in this codebase.
@@ -350,7 +389,7 @@ This flow is **not currently active** since `--permission-prompt-tool stdio` is 
 | `usePermissions` | Permission polling and allow/deny handlers |
 | `useTodoPanel` | Todo panel state with auto-hide timer |
 | `useQuestionPanel` | AskUserQuestion panel state and answer handling |
-| `useLocalCommands` | Local slash commands (/clear, /sync) and keyboard shortcuts (Alt+T) |
+| `useLocalCommands` | Local slash commands (/clear, /thinking) and keyboard shortcuts (Alt+T) |
 
 ### Backend (src-tauri/src/)
 
@@ -362,7 +401,6 @@ This flow is **not currently active** since `--permission-prompt-tool stdio` is 
 | `events.rs` | ClaudeEvent + CommandEvent enum definitions |
 | `config.rs` | App configuration |
 | `streaming.rs` | General-purpose streaming command runner with binary finder |
-| `sync.rs` | CCMS sync integration (pull/push/status) |
 
 ### Bridge Layer
 

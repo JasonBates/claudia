@@ -1,7 +1,7 @@
 import { Accessor, Owner, Setter } from "solid-js";
 import type { UseSessionReturn } from "./useSession";
 import type { UseSidebarReturn } from "./useSidebar";
-import { runStreamingCommand, CommandEvent, ClaudeEvent, clearSession, sendInterrupt, quitApp } from "../lib/tauri";
+import { ClaudeEvent, clearSession, sendInterrupt, quitApp, runStreamingCommand, CommandEvent } from "../lib/tauri";
 import type { Message, ToolUse, ContentBlock } from "../lib/types";
 import { estimateCost, formatTokenCount, getContextPercentage, DEFAULT_CONTEXT_LIMIT } from "../lib/context-utils";
 
@@ -39,7 +39,7 @@ export interface UseStreamingMessagesReturn {
 // ============================================================================
 
 export interface Command {
-  name: string;           // e.g., "clear", "sync", "resume"
+  name: string;           // e.g., "clear", "resume"
   description: string;    // For /help listing
   handler: () => Promise<void>;
   keybinding?: string;    // e.g., "cmd+k", "alt+t", "shift+enter"
@@ -233,96 +233,6 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     } catch (e) {
       console.error("[CLEAR] Error:", e);
       streaming.setError(`Clear failed: ${e}`);
-    } finally {
-      streaming.setIsLoading(false);
-    }
-  };
-
-  /**
-   * Handle /sync command - pull and push ~/.claude config
-   */
-  const handleSync = async () => {
-    const syncMsgId = `sync-${Date.now()}`;
-    const syncToolId = `sync-tool-${Date.now()}`;
-
-    // Helper to update the sync tool result
-    const updateSyncResult = (text: string, loading: boolean = true) => {
-      streaming.setMessages((prev) =>
-        prev.map((m) =>
-          m.id === syncMsgId
-            ? {
-                ...m,
-                toolUses: m.toolUses?.map((t) =>
-                  t.id === syncToolId
-                    ? {
-                        ...t,
-                        isLoading: loading,
-                        result: text,
-                        autoExpanded: !loading ? true : t.autoExpanded,
-                      }
-                    : t
-                ),
-              }
-            : m
-        )
-      );
-    };
-
-    // Block input while syncing
-    streaming.setIsLoading(true);
-
-    // Add message with loading state
-    streaming.setMessages((prev) => [
-      ...prev,
-      {
-        id: syncMsgId,
-        role: "assistant",
-        content: "",
-        toolUses: [
-          {
-            id: syncToolId,
-            name: "Sync",
-            input: { operation: "pull & push" },
-            isLoading: true,
-            result: "",
-          },
-        ],
-      },
-    ]);
-
-    let output = "";
-
-    try {
-      console.log("[SYNC] Starting bidirectional sync...");
-
-      // Use ccms sync which does push-then-pull safely
-      output = "▶ Syncing (push then pull)...\n";
-      updateSyncResult(output);
-
-      await runStreamingCommand(
-        "ccms",
-        ["--force", "--fast", "--verbose", "sync"],
-        (event: CommandEvent) => {
-          if (event.type === "stdout" || event.type === "stderr") {
-            output += (event.line || "") + "\n";
-            updateSyncResult(output);
-          } else if (event.type === "completed") {
-            output += event.success ? "✓ Sync complete\n" : "✗ Sync failed\n";
-            updateSyncResult(output, false);
-          } else if (event.type === "error") {
-            output += `✗ Sync error: ${event.message}\n`;
-            updateSyncResult(output, false);
-          }
-        },
-        undefined,
-        owner
-      );
-
-      console.log("[SYNC] Bidirectional sync complete");
-    } catch (e) {
-      console.error("[SYNC] Streaming sync error:", e);
-      output += `\n✗ Error: ${e}`;
-      updateSyncResult(output, false);
     } finally {
       streaming.setIsLoading(false);
     }
@@ -670,11 +580,6 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       name: "clear",
       description: "Clear conversation history",
       handler: handleClear,
-    },
-    {
-      name: "sync",
-      description: "Sync ~/.claude between machines",
-      handler: handleSync,
     },
     {
       name: "thinking",

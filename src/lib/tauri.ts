@@ -264,46 +264,6 @@ export async function getLaunchDir(): Promise<string> {
 }
 
 // ============================================================================
-// Sync Functions (CCMS integration)
-// ============================================================================
-
-export interface SyncResult {
-  success: boolean;
-  output: string;
-  error?: string;
-}
-
-/**
- * Pull latest ~/.claude/ from remote machine
- * Called on app startup to get latest session data
- */
-export async function syncPull(): Promise<SyncResult> {
-  return await invoke<SyncResult>("sync_pull");
-}
-
-/**
- * Push local ~/.claude/ to remote machine
- * Called periodically during work and on app close
- */
-export async function syncPush(): Promise<SyncResult> {
-  return await invoke<SyncResult>("sync_push");
-}
-
-/**
- * Get sync status (dry-run showing what would change)
- */
-export async function syncStatus(): Promise<SyncResult> {
-  return await invoke<SyncResult>("sync_status");
-}
-
-/**
- * Check if sync is available (ccms installed and configured)
- */
-export async function isSyncAvailable(): Promise<boolean> {
-  return await invoke<boolean>("is_sync_available");
-}
-
-// ============================================================================
 // Streaming Command Runner
 // ============================================================================
 
@@ -323,7 +283,7 @@ export interface CommandEvent {
 /**
  * Run an external command with streaming output
  *
- * @param program - The command to run (e.g., "ccms", "npm", "cargo")
+ * @param program - The command to run (e.g., "npm", "cargo")
  * @param args - Command arguments
  * @param onEvent - Callback for each event (stdout line, stderr line, completion)
  * @param workingDir - Optional working directory
