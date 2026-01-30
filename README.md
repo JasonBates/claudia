@@ -1,17 +1,29 @@
-# Claudia (Claude Terminal)
+# Claudia
 
-A native macOS desktop app that wraps Claude Code CLI, providing a streamlined terminal-like interface for interacting with Claude.
+**The better-looking younger sister of Claude Code.**
+
+Claudia is an expandable GUI wrapper around [Claude Code](https://github.com/anthropics/claude-code), designed for knowledge work. It leverages everything great about Claude Code—config, skills, hooks, MCPs, session management—while providing a cleaner, more visual frontend experience.
+
+> *Why rebuild the agent runtime when you can wrap it?*
+
+## Why Claudia?
+
+Claude Code CLI is powerful but terminal-focused. Claudia gives you:
+
+- **Visual tool tracking** — See what Claude is doing with collapsible, syntax-highlighted tool blocks
+- **Real-time streaming** — Text and results appear as they're generated
+- **Desktop integration** — Native macOS app, multi-window support, project-aware launching
+- **All of Claude Code's power** — MCPs, skills, hooks, CLAUDE.md, session persistence, prompt caching
 
 ## Features
 
-- **Native macOS app** - Built with Tauri + SolidJS for fast, lightweight performance
-- **CLI launcher** - Launch from terminal with `claudia` to use project-specific `.claude` configs
-- **Multi-instance support** - Run multiple Claudia windows, each in different project directories
-- **Real-time streaming** - Text and tool outputs stream as they're generated
-- **Tool visualization** - Collapsible tool use blocks with syntax-highlighted results
-- **Type-ahead input** - Continue typing while waiting for responses
-- **Smart permissions** - Auto-approves in "auto" mode, shows dialog in "plan" mode
-- **MCP integration** - Loads MCP servers from project or global `~/.claude/` config
+- **Native macOS app** — Built with Tauri + SolidJS for fast, lightweight performance
+- **CLI launcher** — Run `claudia` from any directory to use project-specific `.claude` configs
+- **Multi-instance support** — Multiple windows, each in different project directories
+- **Type-ahead input** — Keep typing while waiting for responses
+- **Smart permissions** — Auto-approve, plan mode, or per-tool dialogs
+- **Extended thinking** — Expandable thinking blocks when enabled
+- **Subagent visualization** — Track nested Task agents and their progress
 
 ## Documentation
 
@@ -26,29 +38,63 @@ A native macOS desktop app that wraps Claude Code CLI, providing a streamlined t
 
 ## Architecture
 
+Claudia wraps the Claude Code CLI to leverage its built-in features (MCPs, skills, hooks, session management) while providing a custom native UI.
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Claudia.app (Tauri)                        │
+│              Custom UI + Desktop Integration                    │
 ├─────────────────────────────────────────────────────────────────┤
 │  Frontend (SolidJS)          │  Backend (Rust)                  │
-│  ├─ App.tsx                  │  ├─ commands.rs                  │
-│  ├─ MessageList.tsx          │  │   └─ Event loop with          │
-│  ├─ CommandInput.tsx         │  │      timeout handling         │
-│  └─ lib/tauri.ts             │  ├─ claude_process.rs            │
-│      └─ Tauri IPC channel    │  │   └─ JSON event parser        │
-│                              │  └─ events.rs                    │
-│                              │      └─ Event type definitions   │
+│  └─ Reactive UI components   │  └─ Process management, IPC      │
 ├─────────────────────────────────────────────────────────────────┤
 │                     sdk-bridge-v2.mjs (Node.js)                 │
-│                     └─ Spawns Claude CLI                        │
-│                     └─ Translates CLI JSON to app events        │
+│                     └─ Thin event translation layer             │
 ├─────────────────────────────────────────────────────────────────┤
 │                     Claude Code CLI                             │
-│                     └─ --input-format stream-json               │
-│                     └─ --output-format stream-json              │
-│                     └─ Uses control_request for permissions      │
+│         └─ Full agent runtime: MCPs, skills, hooks,             │
+│            sessions, compaction, prompt caching                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+### Why This Architecture?
+
+#### Why Wrap the CLI Instead of Using the SDK?
+
+The Claude Code CLI is more than an API wrapper—it's a complete agent runtime with features that would take months to rebuild:
+
+| Feature | Build from SDK | Use via CLI |
+|---------|----------------|-------------|
+| **MCP servers** | Implement protocol yourself | ✅ Built-in |
+| **Skills** (`/commit`, `/review-pr`) | Write each from scratch | ✅ Built-in |
+| **Hooks** (pre/post tool execution) | Design hook system | ✅ Built-in |
+| **CLAUDE.md** support | Parse and inject yourself | ✅ Built-in |
+| **Session management** | Build persistence layer | ✅ Built-in |
+| **Context compaction** | Implement summarization | ✅ Built-in |
+| **Prompt caching** | Handle cache tokens | ✅ Built-in |
+
+Claudia provides a custom UI on top of this battle-tested runtime, rather than rebuilding it.
+
+#### Why a Node.js Bridge?
+
+The bridge (`sdk-bridge-v2.mjs`) exists because:
+
+1. **Event translation** — The CLI's JSON streaming format needs transformation for the frontend
+2. **Session persistence** — The bridge survives interrupts and respawns Claude with `--resume`
+3. **Subagent tracking** — Complex state tracking for Task tools and nested operations
+4. **It's thin** — ~900 lines of glue code, not a major component
+
+The bridge is **not technical debt**—it's the minimal connector between your UI and Claude's agent infrastructure.
+
+#### Why Not Pure Rust?
+
+The bridge could theoretically be rewritten in Rust, but:
+- You'd still spawn the CLI as a subprocess (can't import it as a library)
+- The current bridge works reliably
+- Node.js is easier to iterate on for event handling logic
+- Most contributors will never touch the bridge anyway
+
+The effort/benefit ratio doesn't justify a rewrite.
 
 ### Data Flow
 
@@ -316,6 +362,10 @@ Tool results that show progress (like sync output) need special handling. Watch 
 ```
 
 When `result` starts as `""` (empty string), the condition `"" && anything` short-circuits to `""` (falsy), hiding the loading state. The fix prioritizes `isLoading` so the result container shows immediately, allowing streaming output to appear as it arrives.
+
+### 12. Wrap, Don't Rebuild
+
+The Claude Code CLI represents thousands of hours of engineering (MCPs, skills, hooks, session management, prompt caching, context compaction, etc.). Early experiments with the SDK (`unstable_v2_createSession`) revealed we'd be rebuilding all of this from scratch. The CLI gives you a complete agent runtime; the SDK gives you raw API access. Wrapping the CLI with a thin bridge was the pragmatic choice—ship a custom UI on top of battle-tested infrastructure, not a ground-up rewrite.
 
 ## File Structure
 
