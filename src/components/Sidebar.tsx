@@ -1,4 +1,4 @@
-import { Component, For, Show } from "solid-js";
+import { Component, For, Show, createSignal, onMount, onCleanup } from "solid-js";
 import type { SessionEntry } from "../lib/types";
 import SessionItem from "./SessionItem";
 
@@ -16,17 +16,90 @@ interface SidebarProps {
   onReturnToOriginal: () => void;
 }
 
+const SIDEBAR_WIDTH_KEY = "claudia-sidebar-width";
+const DEFAULT_WIDTH = 280;
+const MIN_WIDTH = 200;
+const MAX_WIDTH = 500;
+
 const Sidebar: Component<SidebarProps> = (props) => {
-  // Sort sessions with current session at top, then by modified date
+  // Resizable width state
+  const [width, setWidth] = createSignal(DEFAULT_WIDTH);
+  const [isResizing, setIsResizing] = createSignal(false);
+
+  // Load saved width on mount
+  onMount(() => {
+    try {
+      const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+      if (saved) {
+        const w = parseInt(saved, 10);
+        if (w >= MIN_WIDTH && w <= MAX_WIDTH) {
+          setWidth(w);
+        }
+      }
+    } catch {
+      // localStorage might be unavailable
+    }
+  });
+
+  // Handle resize drag
+  const handleMouseDown = (e: MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isResizing()) return;
+    // Sidebar is on the left, so width = mouse X position
+    const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX));
+    setWidth(newWidth);
+  };
+
+  const handleMouseUp = () => {
+    if (isResizing()) {
+      setIsResizing(false);
+      // Save width to localStorage
+      try {
+        localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width()));
+      } catch {
+        // localStorage might be unavailable
+      }
+    }
+  };
+
+  // Global mouse listeners for resize
+  onMount(() => {
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  });
+
+  onCleanup(() => {
+    window.removeEventListener("mousemove", handleMouseMove);
+    window.removeEventListener("mouseup", handleMouseUp);
+  });
+  // Sort sessions by modified date (newest first)
+  // Current session stays in its natural position based on last meaningful content
   const sortedSessions = () => {
-    const sessions = [...props.sessions];
-    return sessions.sort((a, b) => {
-      // Current session always first
-      if (a.sessionId === props.currentSessionId) return -1;
-      if (b.sessionId === props.currentSessionId) return 1;
-      // Then by modified date (newest first)
-      return b.modified.localeCompare(a.modified);
-    });
+    let sessions = [...props.sessions];
+
+    // Ensure current session is in the list (might be filtered if only warmup messages)
+    const currentId = props.currentSessionId;
+    if (currentId && !sessions.some((s) => s.sessionId === currentId)) {
+      // Add a placeholder for the current session at the top
+      sessions.unshift({
+        sessionId: currentId,
+        fullPath: "",
+        fileMtime: Date.now(),
+        firstPrompt: "Current session",
+        messageCount: 0,
+        created: new Date().toISOString(),
+        modified: new Date().toISOString(),
+        gitBranch: "",
+        projectPath: "",
+        isSidechain: false,
+      });
+    }
+
+    return sessions.sort((a, b) => b.modified.localeCompare(a.modified));
   };
 
   // Show "Original Session" button when:
@@ -44,7 +117,11 @@ const Sidebar: Component<SidebarProps> = (props) => {
   return (
     <>
       {/* Sidebar panel - toggled via Cmd+Shift+[ or /resume command */}
-      <div class="sidebar" classList={{ collapsed: props.collapsed }}>
+      <div
+        class="sidebar"
+        classList={{ collapsed: props.collapsed, resizing: isResizing() }}
+        style={{ width: props.collapsed ? undefined : `${width()}px` }}
+      >
         <div class="sidebar-header">
           <span class="sidebar-title">Sessions</span>
           <span class="sidebar-count">{props.sessions.length}</span>
@@ -116,6 +193,12 @@ const Sidebar: Component<SidebarProps> = (props) => {
             </div>
           </Show>
         </div>
+
+        {/* Resize handle */}
+        <div
+          class="sidebar-resize-handle"
+          onMouseDown={handleMouseDown}
+        />
       </div>
     </>
   );
