@@ -17,6 +17,7 @@ interface CommandInputProps {
   mode?: Mode;
   onModeChange?: () => void;
   ref?: (handle: CommandInputHandle) => void;
+  isPlanning?: boolean;
 }
 
 const CommandInput: Component<CommandInputProps> = (props) => {
@@ -158,6 +159,10 @@ const CommandInput: Component<CommandInputProps> = (props) => {
   };
 
   const getModeInfo = () => {
+    // Show "Planning" when Claude is in planning mode (via EnterPlanMode tool)
+    if (props.isPlanning) {
+      return { label: "Planning", icon: "📋", class: "mode-planning" };
+    }
     switch (props.mode) {
       case "request":
         return { label: "ask", icon: "?", class: "mode-request" };

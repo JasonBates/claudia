@@ -90,10 +90,16 @@ export interface ConversationState {
     isActive: boolean;
     /** Detected plan file path */
     filePath: string | null;
-    /** Approval modal visibility */
-    showApproval: boolean;
-    /** Plan file contents */
+    /** Plan file contents (streams in as written) */
     content: string;
+    /** ID of the Planning tool block */
+    toolId: string | null;
+    /** Tools used during planning (for activity display) */
+    nestedTools: { name: string; input?: string }[];
+    /** True when ExitPlanMode called (show approval buttons) */
+    isReady: boolean;
+    /** Path of plan file that needs refresh (set when Edit tool modifies it) */
+    needsRefresh: string | null;
   };
 
   // === Permissions ===
@@ -154,8 +160,11 @@ export function createInitialState(): ConversationState {
     planning: {
       isActive: false,
       filePath: null,
-      showApproval: false,
       content: "",
+      toolId: null,
+      nestedTools: [],
+      isReady: false,
+      needsRefresh: null,
     },
     permission: {
       pending: null,

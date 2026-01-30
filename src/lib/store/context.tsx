@@ -75,10 +75,16 @@ export interface StoreContextValue {
   isPlanning: () => boolean;
   /** Plan file path */
   planFilePath: () => string | null;
-  /** Whether plan approval is visible */
-  showPlanApproval: () => boolean;
   /** Plan content */
   planContent: () => string;
+  /** Planning tool ID */
+  planningToolId: () => string | null;
+  /** Nested tools used during planning */
+  planningNestedTools: () => { name: string; input?: string }[];
+  /** Whether plan is ready for approval */
+  planReady: () => boolean;
+  /** Path of plan file that needs refresh (after Edit) */
+  planNeedsRefresh: () => string | null;
   /** Pending permission request */
   pendingPermission: () => PermissionRequest | null;
   /** Pre-compaction token count */
@@ -293,8 +299,11 @@ export const StoreProvider: ParentComponent = (props) => {
     questionRequestId: () => state.question.requestId,
     isPlanning: () => state.planning.isActive,
     planFilePath: () => state.planning.filePath,
-    showPlanApproval: () => state.planning.showApproval,
     planContent: () => state.planning.content,
+    planningToolId: () => state.planning.toolId,
+    planningNestedTools: () => state.planning.nestedTools,
+    planReady: () => state.planning.isReady,
+    planNeedsRefresh: () => state.planning.needsRefresh,
     pendingPermission: () => state.permission.pending,
     lastCompactionPreTokens: () => state.compaction.preTokens,
     compactionMessageId: () => state.compaction.messageId,
