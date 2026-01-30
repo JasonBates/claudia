@@ -10,6 +10,7 @@ Claudia is an expandable GUI wrapper around [Claude Code](https://github.com/ant
 
 Claude Code CLI is powerful but terminal-focused. Claudia gives you:
 
+- **Proportional Fonts and styling** - Who wants to stare at monospaced text all day
 - **Visual tool tracking** — See what Claude is doing with collapsible, syntax-highlighted tool blocks
 - **Real-time streaming** — Text and results appear as they're generated
 - **Desktop integration** — Native macOS app, multi-window support, project-aware launching
