@@ -25,6 +25,56 @@ Claude Code CLI is powerful but terminal-focused. Claudia gives you:
 - **Extended thinking** — Expandable thinking blocks when enabled
 - **Subagent visualization** — Track nested Task agents and their progress
 
+## Usage
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| **Escape** | Interrupt current response (while streaming) |
+| **⌘ ,** | Open settings |
+| **⌘ ⇧ [** | Toggle session sidebar |
+| **⌥ T** | Toggle thinking display |
+| **⌥ L** | Focus message input |
+| **⌥ Q** | Quit application |
+
+### Slash Commands
+
+**Claudia Commands** (handled locally):
+
+| Command | Description |
+|---------|-------------|
+| `/clear` | Clear conversation history (restarts Claude process) |
+| `/sync` | Sync `~/.claude` config between machines (requires [ccms](https://github.com/JasonBates/ccms)) |
+| `/resume` | Open sidebar to resume a previous session |
+| `/settings` | Open appearance settings |
+| `/thinking` | Toggle extended thinking display |
+| `/sidebar` | Toggle session sidebar |
+| `/exit` `/quit` `/q` `/x` | Close the application |
+
+**Claude Code Commands** (forwarded to CLI):
+
+| Command | Description |
+|---------|-------------|
+| `/compact` | Compact conversation to reduce context size |
+| `/cost` | Show token usage and cost for current session |
+| `/model` | Show or change the current model |
+| `/status` | Show session status |
+| `/config` | Show current configuration |
+| `/memory` | Show CLAUDE.md memory contents |
+| `/review` | Start a code review |
+| `/doctor` | Run diagnostics |
+
+### Resuming Sessions
+
+Claudia can resume previous Claude Code sessions:
+
+1. **Via sidebar**: Press `⌘ ⇧ [` or type `/resume` to open the session sidebar
+2. **Via CLI**: Launch with `claudia --resume <session-id>`
+3. **Browse history**: The sidebar shows recent sessions with timestamps and previews
+
+Resumed sessions restore the full conversation context, including any tools Claude was using.
+
 ## Documentation
 
 | Document | Description |
