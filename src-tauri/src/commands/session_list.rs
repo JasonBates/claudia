@@ -134,10 +134,23 @@ fn list_sessions_sync(working_dir: &str) -> Result<Vec<SessionEntry>, String> {
     for (path, _) in files.into_iter().take(MAX_SESSIONS) {
         match parse_session_file(&path, working_dir) {
             Ok(session) => {
-                // Filter out sidechains and empty sessions
-                if !session.is_sidechain && session.message_count > 0 {
-                    sessions.push(session);
+                // Filter out sidechains
+                if session.is_sidechain {
+                    continue;
                 }
+
+                // Sessions with only warmup messages have empty first_prompt
+                // (warmup = isMeta caveat + /status command)
+                // Filter these out but don't delete - the current session might be empty
+                if session.first_prompt.is_empty() {
+                    cmd_debug_log(
+                        "SESSION_LIST",
+                        &format!("Filtering empty session: {}", session.session_id),
+                    );
+                    continue;
+                }
+
+                sessions.push(session);
             }
             Err(e) => {
                 cmd_debug_log("SESSION_LIST", &format!("Skipping {:?}: {}", path, e));
@@ -177,6 +190,7 @@ fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, St
     // Parse lines to extract metadata
     let mut first_prompt = String::new();
     let mut created = String::new();
+    let mut last_meaningful_timestamp = String::new(); // Track last real content, not warmup
     let mut is_sidechain = false;
     let mut message_count: u32 = 0;
 
@@ -198,54 +212,57 @@ fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, St
                 message_count += 1;
             }
 
-            // Get first user message for firstPrompt and created timestamp
-            // Skip meta messages (isMeta: true) and slash commands (like /status)
-            if entry_type == "user" && first_prompt.is_empty() {
+            // Check if this is a meaningful message (not warmup noise)
+            let is_meaningful = if entry_type == "user" {
                 // Skip meta messages (like "Caveat: The messages below...")
                 let is_meta = entry
                     .get("isMeta")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 if is_meta {
-                    continue;
+                    false
+                } else {
+                    let content = entry
+                        .get("message")
+                        .and_then(|m| m.get("content"))
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("");
+                    // Skip warmup noise (slash commands, error responses)
+                    !content.starts_with('/')
+                        && !content.starts_with("Unknown slash command")
+                        && !content.starts_with("Unknown skill:")
+                }
+            } else {
+                // Assistant messages are meaningful (they're responses to real prompts)
+                entry_type == "assistant"
+            };
+
+            if is_meaningful {
+                // Update last meaningful timestamp
+                if let Some(ts) = entry.get("timestamp").and_then(|t| t.as_str()) {
+                    last_meaningful_timestamp = ts.to_string();
                 }
 
-                let content = entry
-                    .get("message")
-                    .and_then(|m| m.get("content"))
-                    .and_then(|c| c.as_str())
-                    .unwrap_or("");
-
-                // Skip noise messages that aren't meaningful session titles:
-                // - Slash commands (like "/status" warmup)
-                // - Claude's error responses to slash commands/skills
-                if content.starts_with('/')
-                    || content.starts_with("Unknown slash command")
-                    || content.starts_with("Unknown skill:")
-                {
-                    continue;
+                // Capture first prompt and created timestamp
+                if entry_type == "user" && first_prompt.is_empty() {
+                    let content = entry
+                        .get("message")
+                        .and_then(|m| m.get("content"))
+                        .and_then(|c| c.as_str())
+                        .unwrap_or("");
+                    first_prompt = content.to_string();
+                    created = last_meaningful_timestamp.clone();
                 }
-
-                first_prompt = content.to_string();
-                created = entry
-                    .get("timestamp")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("")
-                    .to_string();
             }
         }
     }
 
-    // Get modified timestamp from last line
-    let modified = lines
-        .last()
-        .and_then(|line| serde_json::from_str::<Value>(line).ok())
-        .and_then(|entry| {
-            entry
-                .get("timestamp")
-                .and_then(|t| t.as_str().map(String::from))
-        })
-        .unwrap_or_else(|| created.clone());
+    // Use last meaningful timestamp for sorting (not warmup messages)
+    let modified = if last_meaningful_timestamp.is_empty() {
+        created.clone()
+    } else {
+        last_meaningful_timestamp
+    };
 
     // Get file modification time
     let file_mtime = metadata
@@ -267,6 +284,51 @@ fn parse_session_file(path: &Path, working_dir: &str) -> Result<SessionEntry, St
         project_path: working_dir.to_string(),
         is_sidechain,
     })
+}
+
+/// Delete a session file and its associated tool results directory
+/// Used internally to clean up empty sessions during listing
+fn delete_session_file(session_file: &Path, session_id: &str, project_dir: &Path) {
+    // Delete the session JSONL file
+    if let Err(e) = fs::remove_file(session_file) {
+        cmd_debug_log(
+            "SESSION_CLEANUP",
+            &format!("Failed to delete session file: {}", e),
+        );
+        return;
+    }
+
+    // Also delete any associated tool results directory
+    let tool_results_dir = project_dir.join(session_id);
+    if tool_results_dir.exists() && tool_results_dir.is_dir() {
+        let _ = fs::remove_dir_all(&tool_results_dir);
+    }
+
+    // Update sessions-index.json if it exists
+    let index_path = project_dir.join("sessions-index.json");
+    if index_path.exists() {
+        if let Ok(content) = fs::read_to_string(&index_path) {
+            if let Ok(mut index) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(entries) = index.get_mut("entries").and_then(|e| e.as_array_mut()) {
+                    entries.retain(|entry| {
+                        entry
+                            .get("sessionId")
+                            .and_then(|id| id.as_str())
+                            .map(|id| id != session_id)
+                            .unwrap_or(true)
+                    });
+                    if let Ok(updated) = serde_json::to_string_pretty(&index) {
+                        let _ = fs::write(&index_path, updated);
+                    }
+                }
+            }
+        }
+    }
+
+    cmd_debug_log(
+        "SESSION_CLEANUP",
+        &format!("Cleaned up empty session: {}", session_id),
+    );
 }
 
 /// Delete a session by removing its JSONL file
@@ -478,6 +540,11 @@ fn get_session_history_sync(
         // Extract text content from the message
         let content = extract_text_content(message);
         if content.is_empty() {
+            continue;
+        }
+
+        // Skip "No response requested." messages from warmup/resume
+        if role == "assistant" && content.trim() == "No response requested." {
             continue;
         }
 

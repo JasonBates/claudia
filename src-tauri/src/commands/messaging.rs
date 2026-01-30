@@ -110,9 +110,10 @@ pub async fn send_message(
             while let Ok(Some(event)) =
                 timeout(Duration::from_millis(10), process.recv_event()).await
             {
-                // Forward Status events to frontend instead of draining
-                if matches!(&event, ClaudeEvent::Status { .. }) {
-                    cmd_debug_log("DRAIN", &format!("Forwarding Status: {:?}", event));
+                // Forward Status and Ready events to frontend instead of draining
+                // Ready contains session metadata (sessionId, model) needed for resume
+                if matches!(&event, ClaudeEvent::Status { .. } | ClaudeEvent::Ready { .. }) {
+                    cmd_debug_log("DRAIN", &format!("Forwarding event: {:?}", event));
                     let _ = channel.send(event);
                     forwarded += 1;
                 } else {
@@ -131,7 +132,7 @@ pub async fn send_message(
                 cmd_debug_log(
                     "DRAIN",
                     &format!(
-                        "Drained {} events, forwarded {} Status events",
+                        "Drained {} events, forwarded {} events",
                         drained, forwarded
                     ),
                 );
