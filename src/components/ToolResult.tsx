@@ -1,7 +1,30 @@
-import { Component, createSignal, createEffect, onCleanup, Show, For } from "solid-js";
+import { Component, createSignal, createEffect, onCleanup, Show, For, createMemo } from "solid-js";
 import MessageContent from "./MessageContent";
 import PlanningTool from "./PlanningTool";
+import ImageModal from "./ImageModal";
 import type { Todo, SubagentInfo } from "../lib/types";
+
+// Check if result contains base64 image data from Read tool
+// Format: [{"type":"image","source":{"type":"base64","data":"..."}}]
+interface ImageContent {
+  type: "image";
+  source: { type: "base64"; data: string; media_type?: string };
+}
+
+function extractImageFromResult(result: string): ImageContent | null {
+  try {
+    const parsed = JSON.parse(result);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const first = parsed[0];
+      if (first?.type === "image" && first?.source?.type === "base64" && first?.source?.data) {
+        return first as ImageContent;
+      }
+    }
+  } catch {
+    // Not JSON or not image format
+  }
+  return null;
+}
 
 interface PlanningState {
   nestedTools: { name: string; input?: string }[];
@@ -148,6 +171,21 @@ const SubagentTree: Component<{ subagent: SubagentInfo }> = (props) => {
 const ToolResult: Component<ToolResultProps> = (props) => {
   // Track user's explicit override (null = no override, use autoExpanded)
   const [userOverride, setUserOverride] = createSignal<boolean | null>(null);
+  const [showImageModal, setShowImageModal] = createSignal(false);
+
+  // Check if result contains image data (from Read tool on image files)
+  const imageData = createMemo(() => {
+    if (!props.result) return null;
+    return extractImageFromResult(props.result);
+  });
+
+  // Build data URL for image display
+  const imageDataUrl = createMemo(() => {
+    const img = imageData();
+    if (!img) return null;
+    const mediaType = img.source.media_type || "image/png";
+    return `data:${mediaType};base64,${img.source.data}`;
+  });
 
   // Effective expanded state: user override takes priority, then autoExpanded, then default false
   const isExpanded = () => {
@@ -356,8 +394,27 @@ const ToolResult: Component<ToolResultProps> = (props) => {
         <SubagentTree subagent={props.subagent!} />
       </Show>
 
-      {/* Result content - visible when: loading or expanded (via autoExpanded or user toggle) */}
-      <Show when={!isTodoWrite() && !isTask() && (props.isLoading || isExpanded())}>
+      {/* Image result - always show inline when result contains image data */}
+      <Show when={!isTodoWrite() && !isTask() && imageData()}>
+        <div class="tool-result-image">
+          <img
+            src={imageDataUrl()!}
+            alt="Image from Read tool"
+            class="inline-image"
+            onClick={() => setShowImageModal(true)}
+          />
+        </div>
+        <Show when={showImageModal()}>
+          <ImageModal
+            src={imageDataUrl()!}
+            alt="Image from Read tool"
+            onClose={() => setShowImageModal(false)}
+          />
+        </Show>
+      </Show>
+
+      {/* Result content - visible when: loading or expanded (and not an image) */}
+      <Show when={!isTodoWrite() && !isTask() && !imageData() && (props.isLoading || isExpanded())}>
         <div class="tool-result-preview">
           <div class="tool-result-content">
             <Show when={props.result} fallback={<span class="loading-text">Running...</span>}>
