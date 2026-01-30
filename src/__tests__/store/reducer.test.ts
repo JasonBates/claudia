@@ -672,6 +672,7 @@ describe("conversationReducer", () => {
           nestedTools: [{ name: "Read" }],
           isReady: true,
           needsRefresh: null,
+          permissionRequestId: "req-123",
         },
       };
 

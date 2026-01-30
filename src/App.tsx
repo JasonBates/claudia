@@ -266,25 +266,48 @@ function App() {
     }
   };
 
-  // Plan approval actions
+  // Plan approval actions - send control_response to the ExitPlanMode permission request
   const handlePlanApprove = async () => {
+    const requestId = store.planPermissionRequestId();
+    // Update UI immediately for responsiveness
     store.dispatch(actions.exitPlanning());
-    // Keep plan window open - user can close manually
     setPlanWindowOpen(false);
-    await handleSubmit("I approve this plan. Proceed with implementation.");
+    // Then send the approval (don't block UI on this)
+    if (requestId) {
+      console.log("[PLAN_APPROVE] Sending approval control_response, requestId:", requestId);
+      sendPermissionResponse(requestId, true, false).catch(err => {
+        console.error("[PLAN_APPROVE] Failed to send approval:", err);
+      });
+    }
   };
 
   const handlePlanRequestChanges = async (feedback: string) => {
-    // Keep planning active but reset ready state for continued iteration
+    const requestId = store.planPermissionRequestId();
+    // Reset ready state but keep planning active for iteration
     store.dispatch(actions.setPlanReady(false));
-    await handleSubmit(feedback);
+    store.dispatch(actions.setPlanPermissionRequestId(null));
+
+    // Deny ExitPlanMode with feedback message - Claude stays in plan mode and iterates
+    // The message is passed to Claude as context for revising the plan
+    if (requestId) {
+      const feedbackMessage = `User requested changes to the plan. Please revise the plan based on this feedback:\n\n${feedback}`;
+      console.log("[PLAN_FEEDBACK] Denying ExitPlanMode with feedback, requestId:", requestId);
+      await sendPermissionResponse(requestId, false, false, undefined, feedbackMessage);
+    }
   };
 
   const handlePlanCancel = async () => {
+    const requestId = store.planPermissionRequestId();
+    // Update UI immediately for responsiveness
     store.dispatch(actions.exitPlanning());
-    // Keep plan window open - user can close manually
     setPlanWindowOpen(false);
-    await handleSubmit("Cancel this plan. Let's start over with a different approach.");
+    // Then send the denial (don't block UI on this)
+    if (requestId) {
+      console.log("[PLAN_CANCEL] Sending denial control_response, requestId:", requestId);
+      sendPermissionResponse(requestId, false, false).catch(err => {
+        console.error("[PLAN_CANCEL] Failed to send denial:", err);
+      });
+    }
   };
 
   // Open plan in a separate window with file path
@@ -811,7 +834,7 @@ function App() {
                 handleSubmit(text, images);
               }
             }}
-            disabled={store.isLoading() || !store.sessionActive()}
+            disabled={(store.isLoading() && !store.planReady()) || !store.sessionActive()}
             placeholder={
               store.isPlanning() && planWindowOpen()
                 ? "How can I improve the plan?"

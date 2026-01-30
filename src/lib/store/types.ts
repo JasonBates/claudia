@@ -100,6 +100,8 @@ export interface ConversationState {
     isReady: boolean;
     /** Path of plan file that needs refresh (set when Edit tool modifies it) */
     needsRefresh: string | null;
+    /** Permission request ID for ExitPlanMode (to send control_response) */
+    permissionRequestId: string | null;
   };
 
   // === Permissions ===
@@ -165,6 +167,7 @@ export function createInitialState(): ConversationState {
       nestedTools: [],
       isReady: false,
       needsRefresh: null,
+      permissionRequestId: null,
     },
     permission: {
       pending: null,

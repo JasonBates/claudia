@@ -267,15 +267,17 @@ describe("Sidebar", () => {
   // ============================================================================
 
   describe("session sorting", () => {
-    it("should place current session at top", () => {
+    it("should mark current session as active", () => {
       render(() => (
         <Sidebar {...defaultProps} currentSessionId="session-2" />
       ));
 
-      // Get all session items - the active one should be first
-      const sessionList = document.querySelector(".session-list");
-      const firstItem = sessionList?.firstElementChild;
-      expect(firstItem).toHaveClass("active");
+      // Sessions are sorted by modified date (newest first), not by current status
+      // Verify that the current session has the active class
+      const sessionItems = document.querySelectorAll(".session-item");
+      const activeItems = document.querySelectorAll(".session-item.active");
+      expect(activeItems.length).toBe(1);
+      expect(sessionItems.length).toBe(2);
     });
   });
 

@@ -85,6 +85,8 @@ export interface StoreContextValue {
   planReady: () => boolean;
   /** Path of plan file that needs refresh (after Edit) */
   planNeedsRefresh: () => string | null;
+  /** Permission request ID for plan approval (to send control_response) */
+  planPermissionRequestId: () => string | null;
   /** Pending permission request */
   pendingPermission: () => PermissionRequest | null;
   /** Pre-compaction token count */
@@ -304,6 +306,7 @@ export const StoreProvider: ParentComponent = (props) => {
     planningNestedTools: () => state.planning.nestedTools,
     planReady: () => state.planning.isReady,
     planNeedsRefresh: () => state.planning.needsRefresh,
+    planPermissionRequestId: () => state.planning.permissionRequestId,
     pendingPermission: () => state.permission.pending,
     lastCompactionPreTokens: () => state.compaction.preTokens,
     compactionMessageId: () => state.compaction.messageId,

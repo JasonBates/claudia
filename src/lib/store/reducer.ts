@@ -518,6 +518,15 @@ export function conversationReducer(
         },
       };
 
+    case "SET_PLAN_PERMISSION_REQUEST_ID":
+      return {
+        ...state,
+        planning: {
+          ...state.planning,
+          permissionRequestId: action.payload,
+        },
+      };
+
     case "EXIT_PLANNING":
       return {
         ...state,
@@ -530,6 +539,7 @@ export function conversationReducer(
           nestedTools: [],
           isReady: false,
           needsRefresh: null,
+          permissionRequestId: null,
         },
       };
 
