@@ -504,13 +504,32 @@ export function handleToolResult(event: NormalizedToolResultEvent, ctx: EventCon
     // Plan file edit - signal that the plan file was modified
     // The Edit tool doesn't give us the full content, so we dispatch an action
     // to indicate the file needs to be re-read
-    if (tool.name === "Edit" && isInPlanningMode && inputPath?.endsWith(".md")) {
+    // Note: We check for plan file edits even outside planning mode to handle
+    // resumed sessions where Claude continues editing without calling EnterPlanMode
+    if (tool.name === "Edit" && inputPath?.endsWith(".md")) {
       const isMatchingPath = planFilePath && inputPath === planFilePath;
       const looksLikePlanFile = inputPath &&
         (inputPath.includes("plan") || inputPath.includes(".claude/plans"));
 
       if (isMatchingPath || looksLikePlanFile) {
         console.log("[PLANNING] Plan file edited:", inputPath);
+        // Activate planning mode if not already active (e.g., resumed session)
+        if (!isInPlanningMode) {
+          console.log("[PLANNING] Activating planning mode from Edit");
+          ctx.dispatch({ type: "SET_PLANNING_ACTIVE", payload: true });
+          // Add Planning tool block to show activity
+          const toolId = `planning-${Date.now()}`;
+          ctx.dispatch({ type: "SET_PLANNING_TOOL_ID", payload: toolId });
+          ctx.dispatch({
+            type: "ADD_TOOL",
+            payload: { id: toolId, name: "Planning", input: {}, isLoading: true },
+          });
+        }
+        // Set the plan file path if not already set (e.g., editing existing plan file)
+        if (!planFilePath) {
+          console.log("[PLANNING] Setting plan file path from Edit:", inputPath);
+          ctx.dispatch({ type: "SET_PLAN_FILE_PATH", payload: inputPath });
+        }
         // Dispatch action to signal plan needs refresh
         ctx.dispatch({ type: "SET_PLAN_NEEDS_REFRESH", payload: inputPath });
       }
