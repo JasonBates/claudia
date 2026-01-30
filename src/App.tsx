@@ -41,6 +41,9 @@ function App() {
   // Ref to CommandInput for focus management
   let commandInputRef: CommandInputHandle | undefined;
 
+  // Ref to track todo panel hide timer (so it can be cancelled)
+  let todoHideTimerRef: ReturnType<typeof setTimeout> | null = null;
+
   // ============================================================================
   // Store - Single Source of Truth
   // ============================================================================
@@ -204,17 +207,45 @@ function App() {
   const startTodoHideTimer = () => {
     if (!store.showTodoPanel()) return;
 
+    // Clear any existing timer first
+    if (todoHideTimerRef) {
+      clearTimeout(todoHideTimerRef);
+      todoHideTimerRef = null;
+    }
+
+    // Only auto-hide if all tasks are completed
+    const todos = store.currentTodos();
+    const hasIncompleteTasks = todos.some(
+      (t) => t.status === "pending" || t.status === "in_progress"
+    );
+    if (hasIncompleteTasks) {
+      return; // Don't hide while there are still tasks to do
+    }
+
     store.dispatch(actions.setTodoPanelHiding(true));
 
-    setTimeout(() => {
+    todoHideTimerRef = setTimeout(() => {
       runWithOwner(owner, () => {
         batch(() => {
           store.dispatch(actions.setTodoPanelVisible(false));
           store.dispatch(actions.setTodoPanelHiding(false));
         });
       });
+      todoHideTimerRef = null;
     }, 2000);
   };
+
+  // Cancel hide timer when panel is re-shown (e.g., new TodoWrite)
+  createEffect(() => {
+    const isVisible = store.showTodoPanel();
+    const isHiding = store.todoPanelHiding();
+
+    // If panel is visible and not in hiding state, cancel any pending hide timer
+    if (isVisible && !isHiding && todoHideTimerRef) {
+      clearTimeout(todoHideTimerRef);
+      todoHideTimerRef = null;
+    }
+  });
 
   // ============================================================================
   // Actions
@@ -393,16 +424,22 @@ function App() {
     }
   });
 
+  // Reset all session-related state (used when switching/starting sessions)
+  const resetSessionState = () => {
+    store.dispatch(actions.clearMessages());
+    store.dispatch(actions.resetStreaming());
+    store.dispatch(actions.exitPlanning());
+    resetStreamingRefs(store.refs);
+    store.dispatch(actions.setSessionError(null));
+  };
+
   // Start a new session from the sidebar
   const handleNewSession = async () => {
     console.log("[NEW_SESSION] Starting new session");
 
     sidebar.toggleSidebar();
     store.dispatch(actions.setLaunchSessionId(null));
-    store.dispatch(actions.clearMessages());
-    store.dispatch(actions.resetStreaming());
-    resetStreamingRefs(store.refs);
-    store.dispatch(actions.setSessionError(null));
+    resetSessionState();
 
     // Reset context display
     const currentInfo = store.sessionInfo();
@@ -433,10 +470,7 @@ function App() {
       console.log("[ORIGINAL] Session not saved, returning to blank state");
 
       sidebar.toggleSidebar();
-      store.dispatch(actions.clearMessages());
-      store.dispatch(actions.resetStreaming());
-      resetStreamingRefs(store.refs);
-      store.dispatch(actions.setSessionError(null));
+      resetSessionState();
 
       const currentInfo = store.sessionInfo();
       store.dispatch(actions.setSessionInfo({
@@ -452,11 +486,7 @@ function App() {
   const handleResumeSession = async (sessionId: string) => {
     console.log("[RESUME] Resuming session:", sessionId);
 
-    store.dispatch(actions.clearMessages());
-    store.dispatch(actions.resetStreaming());
-    resetStreamingRefs(store.refs);
-    store.dispatch(actions.setSessionError(null));
-
+    resetSessionState();
     sidebar.toggleSidebar();
 
     const workingDir = session.workingDir();
@@ -851,7 +881,11 @@ function App() {
 
       {/* Floating Todo Panel */}
       <Show when={store.showTodoPanel() && store.currentTodos().length > 0}>
-        <TodoPanel todos={store.currentTodos()} hiding={store.todoPanelHiding()} />
+        <TodoPanel
+          todos={store.currentTodos()}
+          hiding={store.todoPanelHiding()}
+          onClose={() => store.dispatch(actions.setTodoPanelVisible(false))}
+        />
       </Show>
 
       {/* Question Panel Overlay */}

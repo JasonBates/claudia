@@ -4,6 +4,7 @@ import type { Todo } from "../lib/types";
 interface TodoPanelProps {
   todos: Todo[];
   hiding?: boolean;
+  onClose?: () => void;
 }
 
 const TodoPanel: Component<TodoPanelProps> = (props) => {
@@ -16,6 +17,9 @@ const TodoPanel: Component<TodoPanelProps> = (props) => {
       <div class="todo-panel-header">
         <span class="todo-panel-title">Tasks</span>
         <span class="todo-panel-count">{completedCount()}/{totalCount()}</span>
+        <button class="todo-panel-close" onClick={props.onClose} title="Hide tasks">
+          ×
+        </button>
       </div>
 
       <div class="todo-panel-list">

@@ -1406,6 +1406,25 @@ del {
   background: rgba(38, 139, 210, 0.2);  /* Solarized blue */
   padding: 2px 6px;
   border-radius: 4px;
+  margin-right: auto;
+  margin-left: 8px;
+}
+
+.todo-panel-close {
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.todo-panel-close:hover {
+  opacity: 1;
+  color: var(--fg);
 }
 
 .todo-panel-list {
