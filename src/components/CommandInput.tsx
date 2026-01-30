@@ -160,12 +160,12 @@ const CommandInput: Component<CommandInputProps> = (props) => {
   const getModeInfo = () => {
     switch (props.mode) {
       case "request":
-        return { label: "Request", icon: "?", class: "mode-request" };
+        return { label: "ask", icon: "?", class: "mode-request" };
       case "plan":
         return { label: "Plan", icon: "◇", class: "mode-plan" };
       case "auto":
       default:
-        return { label: "Auto", icon: "»", class: "mode-auto" };
+        return { label: "VIBE", icon: "»", class: "mode-auto" };
     }
   };
 
