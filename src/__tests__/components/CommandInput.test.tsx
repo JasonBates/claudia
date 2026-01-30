@@ -38,14 +38,14 @@ describe("CommandInput", () => {
   // ============================================================================
 
   describe("mode display", () => {
-    it("should display Auto mode by default", () => {
+    it("should display VIBE mode by default", () => {
       render(() => <CommandInput onSubmit={() => {}} />);
-      expect(screen.getByText("Auto")).toBeInTheDocument();
+      expect(screen.getByText("VIBE")).toBeInTheDocument();
     });
 
-    it("should display Auto mode when mode is 'auto'", () => {
+    it("should display VIBE mode when mode is 'auto'", () => {
       render(() => <CommandInput onSubmit={() => {}} mode="auto" />);
-      expect(screen.getByText("Auto")).toBeInTheDocument();
+      expect(screen.getByText("VIBE")).toBeInTheDocument();
       expect(screen.getByText("»")).toBeInTheDocument();
     });
 
