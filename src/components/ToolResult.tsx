@@ -3,6 +3,7 @@ import MessageContent from "./MessageContent";
 import PlanningTool from "./PlanningTool";
 import ImageModal from "./ImageModal";
 import type { Todo, SubagentInfo } from "../lib/types";
+import { formatJsonResult } from "../lib/json-formatter";
 
 // Check if result contains base64 image data from Read tool
 // Format: [{"type":"image","source":{"type":"base64","data":"..."}}]
@@ -177,6 +178,12 @@ const ToolResult: Component<ToolResultProps> = (props) => {
   const imageData = createMemo(() => {
     if (!props.result) return null;
     return extractImageFromResult(props.result);
+  });
+
+  // Format result as JSON with syntax highlighting if applicable
+  const formattedResult = createMemo(() => {
+    if (!props.result) return props.result;
+    return formatJsonResult(props.result);
   });
 
   // Build data URL for image display
@@ -418,7 +425,7 @@ const ToolResult: Component<ToolResultProps> = (props) => {
         <div class="tool-result-preview">
           <div class="tool-result-content">
             <Show when={props.result} fallback={<span class="loading-text">Running...</span>}>
-              <MessageContent content={props.result!} />
+              <MessageContent content={formattedResult()!} />
             </Show>
           </div>
         </div>
