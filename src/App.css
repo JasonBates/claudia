@@ -2054,6 +2054,17 @@ del {
   color: var(--warning);
 }
 
+.mode-planning {
+  border-color: var(--accent-secondary);
+  background: color-mix(in srgb, var(--accent-secondary) 25%, transparent);
+}
+
+.mode-planning .mode-icon,
+.mode-planning .mode-label {
+  color: var(--accent-secondary);
+  font-weight: 500;
+}
+
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;
@@ -2071,44 +2082,6 @@ del {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--fg-muted);
-}
-
-/* Planning Mode Banner */
-.planning-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  background: linear-gradient(135deg, #073642 0%, #002b36 100%);
-  border-bottom: 1px solid var(--cyan);
-  animation: planningPulse 2s ease-in-out infinite;
-}
-
-@keyframes planningPulse {
-  0%, 100% {
-    background: linear-gradient(135deg, #073642 0%, #002b36 100%);
-  }
-  50% {
-    background: linear-gradient(135deg, #0a4959 0%, #073642 100%);
-  }
-}
-
-.planning-icon {
-  font-size: 22px;
-}
-
-.planning-text {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--cyan);
-}
-
-.planning-file {
-  font-family: "SF Mono", monospace;
-  font-size: 14px;
-  color: var(--blue);
-  opacity: 0.7;
-  margin-left: auto;
 }
 
 /* Plan Approval Modal */
@@ -2237,6 +2210,121 @@ del {
 
 .plan-btn-cancel:hover {
   color: var(--fg);
+}
+
+/* Inline Planning Tool */
+.planning-tool {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.planning-tool.complete {
+  border-color: var(--success);
+}
+
+.planning-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.planning-spinner {
+  color: var(--cyan);
+  animation: spin 1s linear infinite;
+  font-size: 16px;
+}
+
+.planning-check {
+  color: var(--success);
+  font-size: 16px;
+}
+
+.planning-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.planning-status {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-muted);
+}
+
+.planning-activity {
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--border);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.planning-activity-line {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  padding: 2px 0;
+  color: var(--fg-muted);
+}
+
+.planning-activity-line .activity-tool-name {
+  color: var(--cyan);
+}
+
+.planning-activity-line .activity-tool-detail {
+  color: var(--fg-muted);
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planning-content {
+  padding: 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.planning-feedback {
+  padding: 0 16px 12px;
+}
+
+.planning-feedback-input {
+  width: 100%;
+  min-height: 60px;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+  outline: none;
+}
+
+.planning-feedback-input:focus {
+  border-color: var(--accent);
+}
+
+.planning-feedback-input::placeholder {
+  color: var(--fg-muted);
+}
+
+.planning-actions {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
 }
 
 /* Permission Dialog */
@@ -3102,4 +3190,131 @@ del {
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Plan Approval Bar - Footer component for plan review */
+.plan-approval-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--accent-secondary) 15%, var(--bg));
+  border: 1px solid var(--accent-secondary);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.plan-approval-label {
+  color: var(--accent-secondary);
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.plan-approval-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.plan-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.plan-btn-approve {
+  background: var(--green);
+  color: var(--bg);
+  border-color: var(--green);
+}
+
+.plan-btn-approve:hover {
+  background: color-mix(in srgb, var(--green) 80%, white);
+}
+
+.plan-btn-cancel {
+  background: transparent;
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.plan-btn-cancel:hover {
+  background: color-mix(in srgb, var(--red) 15%, transparent);
+}
+
+.plan-btn-open {
+  background: transparent;
+  color: var(--accent-secondary);
+  border-color: var(--accent-secondary);
+}
+
+.plan-btn-open:hover {
+  background: color-mix(in srgb, var(--accent-secondary) 15%, transparent);
+}
+
+/* Plan Viewer Window */
+.plan-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  /* Use explicit colors as fallbacks since CSS vars may not be set in secondary windows */
+  background: var(--bg, #002b36);
+  color: var(--fg, #93a1a1);
+  font-family: var(--body-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+  font-size: var(--font-size, 16px);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.plan-viewer-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  padding-top: 40px; /* Space for traffic lights */
+  background: var(--bg-secondary, #073642);
+  border-bottom: 1px solid var(--border, #0a4959);
+}
+
+.plan-viewer-header .drag-region {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+}
+
+.plan-viewer-title {
+  font-weight: 600;
+  color: var(--accent-secondary, #6c71c4);
+  font-size: 16px;
+}
+
+.plan-viewer-path {
+  font-family: var(--font-mono, "SF Mono", "Fira Code", monospace);
+  font-size: 12px;
+  color: var(--fg-muted, #657b83);
+  margin-left: auto;
+}
+
+.plan-viewer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.plan-viewer-loading {
+  color: var(--fg-muted, #657b83);
+  font-style: italic;
+}
+
+.plan-viewer-error {
+  padding: 16px;
+  background: color-mix(in srgb, var(--red, #dc322f) 15%, transparent);
+  color: var(--red, #dc322f);
+  border-radius: 8px;
+  margin: 16px;
 }

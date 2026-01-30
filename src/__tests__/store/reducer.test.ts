@@ -628,15 +628,26 @@ describe("conversationReducer", () => {
       expect(newState.planning.filePath).toBe("/path/to/plan.md");
     });
 
-    it("SET_PLAN_APPROVAL_VISIBLE should toggle approval modal", () => {
+    it("SET_PLANNING_TOOL_ID should set the planning tool ID", () => {
       const state = createInitialState();
 
       const newState = conversationReducer(state, {
-        type: "SET_PLAN_APPROVAL_VISIBLE",
+        type: "SET_PLANNING_TOOL_ID",
+        payload: "planning-123",
+      });
+
+      expect(newState.planning.toolId).toBe("planning-123");
+    });
+
+    it("SET_PLAN_READY should toggle ready state", () => {
+      const state = createInitialState();
+
+      const newState = conversationReducer(state, {
+        type: "SET_PLAN_READY",
         payload: true,
       });
 
-      expect(newState.planning.showApproval).toBe(true);
+      expect(newState.planning.isReady).toBe(true);
     });
 
     it("SET_PLAN_CONTENT should set plan content", () => {
@@ -656,8 +667,11 @@ describe("conversationReducer", () => {
         planning: {
           isActive: true,
           filePath: "/path/to/plan.md",
-          showApproval: true,
           content: "Plan content",
+          toolId: "planning-123",
+          nestedTools: [{ name: "Read" }],
+          isReady: true,
+          needsRefresh: null,
         },
       };
 
@@ -665,8 +679,10 @@ describe("conversationReducer", () => {
 
       expect(newState.planning.isActive).toBe(false);
       expect(newState.planning.filePath).toBeNull();
-      expect(newState.planning.showApproval).toBe(false);
       expect(newState.planning.content).toBe("");
+      expect(newState.planning.toolId).toBeNull();
+      expect(newState.planning.nestedTools).toEqual([]);
+      expect(newState.planning.isReady).toBe(false);
     });
   });
 

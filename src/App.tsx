@@ -1,13 +1,14 @@
-import { createSignal, onMount, onCleanup, Show, getOwner } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, Show, getOwner } from "solid-js";
 import { batch, runWithOwner } from "solid-js";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { readFile } from "@tauri-apps/plugin-fs";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { emitTo } from "@tauri-apps/api/event";
+import { readFile, readTextFile } from "@tauri-apps/plugin-fs";
 import MessageList from "./components/MessageList";
 import CommandInput, { CommandInputHandle } from "./components/CommandInput";
 import TodoPanel from "./components/TodoPanel";
 import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel";
-import PlanningBanner from "./components/PlanningBanner";
-import PlanApprovalModal from "./components/PlanApprovalModal";
+import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
 import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel } from "./lib/tauri";
@@ -76,6 +77,9 @@ function App() {
 
   // Window-level drag state for drop zone overlay (Tauri native)
   const [windowDragOver, setWindowDragOver] = createSignal(false);
+
+  // Track plan viewer window
+  const [planWindowOpen, setPlanWindowOpen] = createSignal(false);
 
   // ============================================================================
   // Store-based Helpers
@@ -166,6 +170,8 @@ function App() {
     getSessionInfo: store.sessionInfo,
     getLaunchSessionId: store.launchSessionId,
     getPlanFilePath: store.planFilePath,
+    getPlanningToolId: store.planningToolId,
+    isPlanning: store.isPlanning,
     getCompactionPreTokens: store.lastCompactionPreTokens,
     getCompactionMessageId: store.compactionMessageId,
     getCurrentToolUses: store.currentToolUses,
@@ -262,21 +268,107 @@ function App() {
 
   // Plan approval actions
   const handlePlanApprove = async () => {
-    store.dispatch(actions.setPlanApprovalVisible(false));
-    store.dispatch(actions.setPlanningActive(false));
-    store.dispatch(actions.setPlanContent(""));
+    store.dispatch(actions.exitPlanning());
+    // Keep plan window open - user can close manually
+    setPlanWindowOpen(false);
     await handleSubmit("I approve this plan. Proceed with implementation.");
   };
 
   const handlePlanRequestChanges = async (feedback: string) => {
-    store.dispatch(actions.setPlanApprovalVisible(false));
+    // Keep planning active but reset ready state for continued iteration
+    store.dispatch(actions.setPlanReady(false));
     await handleSubmit(feedback);
   };
 
   const handlePlanCancel = async () => {
     store.dispatch(actions.exitPlanning());
+    // Keep plan window open - user can close manually
+    setPlanWindowOpen(false);
     await handleSubmit("Cancel this plan. Let's start over with a different approach.");
   };
+
+  // Open plan in a separate window with file path
+  const openPlanWindow = async (filePath: string) => {
+    // Quick check using local state
+    if (planWindowOpen()) {
+      // Try to focus existing window
+      const existing = await WebviewWindow.getByLabel("plan-viewer");
+      if (existing) {
+        await existing.setFocus();
+        return;
+      }
+      // Window was closed externally, reset state
+      setPlanWindowOpen(false);
+    }
+
+    console.log("[PLAN_WINDOW] Opening plan viewer for:", filePath);
+
+    const planWindow = new WebviewWindow("plan-viewer", {
+      url: `index.html?plan-viewer=true&file=${encodeURIComponent(filePath)}`,
+      title: "Plan",
+      width: 600,
+      height: 800,
+      titleBarStyle: "overlay",
+      hiddenTitle: true,
+      backgroundColor: "#002b36",
+    });
+
+    planWindow.once("tauri://created", () => {
+      console.log("[PLAN_WINDOW] Window created");
+      setPlanWindowOpen(true);
+    });
+
+    planWindow.once("tauri://error", (e) => {
+      console.error("[PLAN_WINDOW] Failed to create window:", e);
+    });
+
+    planWindow.once("tauri://destroyed", () => {
+      console.log("[PLAN_WINDOW] Window destroyed");
+      setPlanWindowOpen(false);
+    });
+  };
+
+  // Emit plan content updates to the plan viewer window
+  createEffect(() => {
+    const content = store.planContent();
+    if (planWindowOpen() && content) {
+      console.log("[PLAN_CONTENT] Emitting update to plan-viewer");
+      emitTo("plan-viewer", "plan-content-updated", content);
+    }
+  });
+
+  // Automatically open plan window when plan is ready AND we have a file path
+  createEffect(() => {
+    const ready = store.planReady();
+    const planning = store.isPlanning();
+    const filePath = store.planFilePath();
+    const windowOpen = planWindowOpen();
+
+    console.log("[PLAN_AUTO_OPEN] State:", { ready, planning, filePath, windowOpen });
+
+    if (ready && planning && filePath && !windowOpen) {
+      console.log("[PLAN_AUTO_OPEN] Opening plan window...");
+      openPlanWindow(filePath);
+    }
+  });
+
+  // Re-read plan file when Edit tool modifies it
+  createEffect(() => {
+    const needsRefresh = store.planNeedsRefresh();
+    if (needsRefresh) {
+      console.log("[PLAN_REFRESH] Re-reading plan file:", needsRefresh);
+      readTextFile(needsRefresh)
+        .then((content) => {
+          console.log("[PLAN_REFRESH] Got updated content");
+          store.dispatch(actions.setPlanContent(content));
+          store.dispatch(actions.clearPlanNeedsRefresh());
+        })
+        .catch((err) => {
+          console.error("[PLAN_REFRESH] Failed to read file:", err);
+          store.dispatch(actions.clearPlanNeedsRefresh());
+        });
+    }
+  });
 
   // Start a new session from the sidebar
   const handleNewSession = async () => {
@@ -665,10 +757,6 @@ function App() {
           </div>
         </Show>
 
-        <Show when={store.isPlanning()}>
-          <PlanningBanner planFile={store.planFilePath()} />
-        </Show>
-
         <Show when={store.error()}>
           <div class="error-banner">
             {store.error()}
@@ -699,19 +787,41 @@ function App() {
             streamingThinking={store.isLoading() ? store.streamingThinking() : undefined}
             showThinking={store.showThinking()}
             forceScrollToBottom={forceScroll()}
+            planning={{
+              nestedTools: store.planningNestedTools(),
+              isReady: store.planReady(),
+            }}
           />
         </main>
 
         <footer class="app-footer">
+          <Show when={store.isPlanning() && planWindowOpen()}>
+            <PlanApprovalBar
+              onApprove={handlePlanApprove}
+              onCancel={handlePlanCancel}
+            />
+          </Show>
           <CommandInput
             ref={(handle) => (commandInputRef = handle)}
-            onSubmit={handleSubmit}
+            onSubmit={(text, images) => {
+              // Route to plan feedback when in planning mode with window open
+              if (store.isPlanning() && planWindowOpen() && text.trim()) {
+                handlePlanRequestChanges(text);
+              } else {
+                handleSubmit(text, images);
+              }
+            }}
             disabled={store.isLoading() || !store.sessionActive()}
             placeholder={
-              store.sessionActive() ? "Type a message... (Enter to send, Shift+Tab to change mode)" : ""
+              store.isPlanning() && planWindowOpen()
+                ? "How can I improve the plan?"
+                : store.sessionActive()
+                  ? "Type a message... (Enter to send, Shift+Tab to change mode)"
+                  : ""
             }
             mode={currentMode()}
             onModeChange={cycleMode}
+            isPlanning={store.isPlanning()}
           />
         </footer>
       </div>
@@ -732,16 +842,7 @@ function App() {
         </div>
       </Show>
 
-      {/* Plan Approval Modal */}
-      <Show when={store.showPlanApproval()}>
-        <PlanApprovalModal
-          planContent={store.planContent()}
-          planFile={store.planFilePath()}
-          onApprove={handlePlanApprove}
-          onRequestChanges={handlePlanRequestChanges}
-          onCancel={handlePlanCancel}
-        />
-      </Show>
+      {/* Plan approval is now inline in PlanningTool component */}
 
       {/* Settings Modal */}
       <Show when={settings.isOpen()}>

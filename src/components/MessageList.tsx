@@ -52,6 +52,11 @@ function groupBlocks(blocks: ContentBlock[]): GroupedBlock[] {
   return result;
 }
 
+interface PlanningState {
+  nestedTools: { name: string; input?: string }[];
+  isReady: boolean;
+}
+
 interface MessageListProps {
   messages: Message[];
   streamingContent?: string;
@@ -61,6 +66,7 @@ interface MessageListProps {
   showThinking?: boolean;  // Whether to show thinking in expanded view (global toggle)
   forceScrollToBottom?: boolean;  // Force scroll on new user message
   header?: any;  // Optional header element (e.g., branding) that scrolls with content
+  planning?: PlanningState;  // Planning state for inline plan display
 }
 
 const MessageList: Component<MessageListProps> = (props) => {
@@ -210,6 +216,7 @@ const MessageList: Component<MessageListProps> = (props) => {
                               isLoading={(block as { type: "tool_use"; tool: ToolUse }).tool.isLoading}
                               autoExpanded={(block as { type: "tool_use"; tool: ToolUse }).tool.autoExpanded}
                               subagent={(block as { type: "tool_use"; tool: ToolUse }).tool.subagent}
+                              planning={(block as { type: "tool_use"; tool: ToolUse }).tool.name === "Planning" ? props.planning : undefined}
                             />
                           </div>
                         }>
@@ -357,6 +364,7 @@ const MessageList: Component<MessageListProps> = (props) => {
                             isLoading={toolBlock.tool.isLoading}
                             autoExpanded={toolBlock.tool.autoExpanded}
                             subagent={toolBlock.tool.subagent}
+                            planning={toolBlock.tool.name === "Planning" ? props.planning : undefined}
                           />
                         </div>
                       );

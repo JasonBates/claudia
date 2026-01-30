@@ -1,6 +1,12 @@
 import { Component, createSignal, createEffect, onCleanup, Show, For } from "solid-js";
 import MessageContent from "./MessageContent";
+import PlanningTool from "./PlanningTool";
 import type { Todo, SubagentInfo } from "../lib/types";
+
+interface PlanningState {
+  nestedTools: { name: string; input?: string }[];
+  isReady: boolean;
+}
 
 interface ToolResultProps {
   name: string;
@@ -10,6 +16,7 @@ interface ToolResultProps {
   autoExpanded?: boolean;  // Forces expanded state (survives component recreation)
   subagent?: SubagentInfo; // Subagent state (only for Task tools)
   grouped?: boolean;       // When true, renders without header (for grouped Task tools)
+  planning?: PlanningState; // Planning state (only for Planning tools)
 }
 
 // Special renderer for TodoWrite
@@ -306,6 +313,18 @@ const ToolResult: Component<ToolResultProps> = (props) => {
         </div>
       );
     }
+  }
+
+  // Special rendering for Planning tool - shows status only (content in separate window)
+  // Approval actions are in the footer (PlanApprovalBar)
+  if (props.name === "Planning" && props.planning) {
+    return (
+      <PlanningTool
+        isLoading={props.isLoading || false}
+        nestedTools={props.planning.nestedTools}
+        isReady={props.planning.isReady}
+      />
+    );
   }
 
   return (
