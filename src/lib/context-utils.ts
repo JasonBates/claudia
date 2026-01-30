@@ -50,3 +50,46 @@ export function getContextPercentage(
   if (limit <= 0) return 0;
   return (usedTokens / limit) * 100;
 }
+
+/**
+ * Model pricing per million tokens (approximate, as of 2025)
+ */
+const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+  "claude-sonnet-4-20250514": { input: 3, output: 15 },
+  "claude-opus-4-5-20251101": { input: 15, output: 75 },
+  "claude-3-5-sonnet-20241022": { input: 3, output: 15 },
+  "claude-3-opus-20240229": { input: 15, output: 75 },
+  "claude-3-5-haiku-20241022": { input: 1, output: 5 },
+};
+
+// Default pricing if model not found (use sonnet pricing)
+const DEFAULT_PRICING = { input: 3, output: 15 };
+
+export interface CostEstimate {
+  inputCost: number;
+  outputCost: number;
+  totalCost: number;
+}
+
+/**
+ * Estimates cost based on token usage and model
+ *
+ * @param inputTokens - Number of input tokens
+ * @param outputTokens - Number of output tokens
+ * @param model - Model name (e.g., "claude-sonnet-4-20250514")
+ * @returns Cost estimate in dollars
+ */
+export function estimateCost(
+  inputTokens: number,
+  outputTokens: number,
+  model: string
+): CostEstimate {
+  const pricing = MODEL_PRICING[model] || DEFAULT_PRICING;
+  const inputCost = (inputTokens / 1_000_000) * pricing.input;
+  const outputCost = (outputTokens / 1_000_000) * pricing.output;
+  return {
+    inputCost,
+    outputCost,
+    totalCost: inputCost + outputCost,
+  };
+}

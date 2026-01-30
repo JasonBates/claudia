@@ -3,6 +3,7 @@ import type { UseSessionReturn } from "./useSession";
 import type { UseSidebarReturn } from "./useSidebar";
 import { runStreamingCommand, CommandEvent, ClaudeEvent, clearSession, sendInterrupt, quitApp } from "../lib/tauri";
 import type { Message, ToolUse, ContentBlock } from "../lib/types";
+import { estimateCost, formatTokenCount, getContextPercentage, DEFAULT_CONTEXT_LIMIT } from "../lib/context-utils";
 
 // Streaming messages interface - defined locally since there's no separate hook
 export interface UseStreamingMessagesReturn {
@@ -406,6 +407,260 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     onFocusInput?.();
   };
 
+  /**
+   * Show all available commands (/help)
+   */
+  const handleHelp = async () => {
+    const helpMsgId = `help-${Date.now()}`;
+    const helpToolId = `help-tool-${Date.now()}`;
+
+    // Group commands by category (exclude duplicates like /quit, /x, /q)
+    const primaryCommands = commands.filter(
+      (c) => !["quit", "x", "q"].includes(c.name)
+    );
+
+    const lines = primaryCommands.map((cmd) => {
+      const keybind = cmd.keybinding ? ` (${cmd.keybinding})` : "";
+      return `/${cmd.name}${keybind} - ${cmd.description}`;
+    });
+
+    const output = lines.join("\n");
+
+    streaming.setMessages((prev) => [
+      ...prev,
+      {
+        id: helpMsgId,
+        role: "assistant",
+        content: "",
+        toolUses: [
+          {
+            id: helpToolId,
+            name: "Help",
+            input: {},
+            isLoading: false,
+            result: output,
+            autoExpanded: true,
+          },
+        ],
+      },
+    ]);
+  };
+
+  /**
+   * Show token usage and cost (/cost)
+   */
+  const handleCost = async () => {
+    const costMsgId = `cost-${Date.now()}`;
+    const costToolId = `cost-tool-${Date.now()}`;
+
+    const info = session.sessionInfo();
+    const inputTokens = info.totalContext || 0;
+    const outputTokens = info.outputTokens || 0;
+    const model = info.model || "unknown";
+
+    const cost = estimateCost(inputTokens, outputTokens, model);
+    const contextPercent = Math.round(getContextPercentage(inputTokens));
+
+    const output = [
+      `Model: ${model}`,
+      `Input tokens: ${formatTokenCount(inputTokens)} (~$${cost.inputCost.toFixed(4)})`,
+      `Output tokens: ${formatTokenCount(outputTokens)} (~$${cost.outputCost.toFixed(4)})`,
+      `Context used: ${contextPercent}% of ${formatTokenCount(DEFAULT_CONTEXT_LIMIT)}`,
+      `---`,
+      `Estimated session cost: ~$${cost.totalCost.toFixed(4)}`,
+    ].join("\n");
+
+    streaming.setMessages((prev) => [
+      ...prev,
+      {
+        id: costMsgId,
+        role: "assistant",
+        content: "",
+        toolUses: [
+          {
+            id: costToolId,
+            name: "Cost",
+            input: {},
+            isLoading: false,
+            result: output,
+            autoExpanded: true,
+          },
+        ],
+      },
+    ]);
+  };
+
+  /**
+   * Show session status (/status)
+   */
+  const handleStatus = async () => {
+    const statusMsgId = `status-${Date.now()}`;
+    const statusToolId = `status-tool-${Date.now()}`;
+
+    const info = session.sessionInfo();
+    const isConnected = session.sessionActive();
+    const isStreaming = streaming.isLoading();
+    const activeTools = streaming.currentToolUses();
+
+    const lines = [
+      `Connection: ${isConnected ? "✓ Connected" : "✗ Disconnected"}`,
+      `Session ID: ${info.sessionId || "none"}`,
+      `Model: ${info.model || "unknown"}`,
+      `---`,
+      `Streaming: ${isStreaming ? "yes" : "no"}`,
+      `Active tools: ${activeTools.length > 0 ? activeTools.map((t) => t.name).join(", ") : "none"}`,
+    ];
+
+    const output = lines.join("\n");
+
+    streaming.setMessages((prev) => [
+      ...prev,
+      {
+        id: statusMsgId,
+        role: "assistant",
+        content: "",
+        toolUses: [
+          {
+            id: statusToolId,
+            name: "Status",
+            input: {},
+            isLoading: false,
+            result: output,
+            autoExpanded: true,
+          },
+        ],
+      },
+    ]);
+  };
+
+  /**
+   * Run diagnostics (/doctor)
+   */
+  const handleDoctor = async () => {
+    const doctorMsgId = `doctor-${Date.now()}`;
+    const doctorToolId = `doctor-tool-${Date.now()}`;
+
+    const updateResult = (text: string, loading: boolean = true) => {
+      streaming.setMessages((prev) =>
+        prev.map((m) =>
+          m.id === doctorMsgId
+            ? {
+                ...m,
+                toolUses: m.toolUses?.map((t) =>
+                  t.id === doctorToolId
+                    ? {
+                        ...t,
+                        isLoading: loading,
+                        result: text,
+                        autoExpanded: !loading ? true : t.autoExpanded,
+                      }
+                    : t
+                ),
+              }
+            : m
+        )
+      );
+    };
+
+    streaming.setIsLoading(true);
+
+    // Add message with loading state
+    streaming.setMessages((prev) => [
+      ...prev,
+      {
+        id: doctorMsgId,
+        role: "assistant",
+        content: "",
+        toolUses: [
+          {
+            id: doctorToolId,
+            name: "Doctor",
+            input: {},
+            isLoading: true,
+            result: "",
+          },
+        ],
+      },
+    ]);
+
+    let output = "Running diagnostics...\n\n";
+    updateResult(output);
+
+    try {
+      // Check Claude CLI version
+      output += "▶ Checking Claude CLI...\n";
+      updateResult(output);
+
+      let claudeVersion = "";
+      await runStreamingCommand(
+        "claude",
+        ["--version"],
+        (event: CommandEvent) => {
+          if (event.type === "stdout" && event.line) {
+            claudeVersion = event.line.trim();
+          } else if (event.type === "completed") {
+            if (event.success && claudeVersion) {
+              output += `  ✓ Claude CLI: ${claudeVersion}\n`;
+            } else {
+              output += `  ✗ Claude CLI not found or error\n`;
+            }
+            updateResult(output);
+          }
+        },
+        undefined,
+        owner
+      );
+
+      // Check Node version
+      output += "\n▶ Checking Node.js...\n";
+      updateResult(output);
+
+      let nodeVersion = "";
+      await runStreamingCommand(
+        "node",
+        ["--version"],
+        (event: CommandEvent) => {
+          if (event.type === "stdout" && event.line) {
+            nodeVersion = event.line.trim();
+          } else if (event.type === "completed") {
+            if (event.success && nodeVersion) {
+              output += `  ✓ Node.js: ${nodeVersion}\n`;
+            } else {
+              output += `  ✗ Node.js not found\n`;
+            }
+            updateResult(output);
+          }
+        },
+        undefined,
+        owner
+      );
+
+      // Check session state
+      output += "\n▶ Checking session...\n";
+      updateResult(output);
+
+      const info = session.sessionInfo();
+      const isConnected = session.sessionActive();
+
+      if (isConnected) {
+        output += `  ✓ Connected to Claude\n`;
+        output += `  ✓ Model: ${info.model || "unknown"}\n`;
+        output += `  ✓ Session: ${info.sessionId || "unknown"}\n`;
+      } else {
+        output += `  ✗ Not connected to Claude\n`;
+      }
+      updateResult(output);
+
+      output += "\n✓ Diagnostics complete\n";
+      updateResult(output, false);
+    } catch (e) {
+      output += `\n✗ Error: ${e}`;
+      updateResult(output, false);
+    } finally {
+      streaming.setIsLoading(false);
+    }
+  };
+
   // ==========================================================================
   // Command Registry
   // ==========================================================================
@@ -471,6 +726,31 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       keybinding: "alt+l",
       handler: handleFocusInput,
     },
+    {
+      name: "help",
+      description: "Show available commands",
+      handler: handleHelp,
+    },
+    {
+      name: "cost",
+      description: "Show token usage and estimated cost",
+      handler: handleCost,
+    },
+    {
+      name: "status",
+      description: "Show session status",
+      handler: handleStatus,
+    },
+    {
+      name: "doctor",
+      description: "Run diagnostics",
+      handler: handleDoctor,
+    },
+    {
+      name: "compact",
+      description: "Compact context (sent to Claude CLI)",
+      handler: async () => {}, // No-op, handled specially in dispatch
+    },
   ];
 
   // Pre-parse keybindings for faster matching
@@ -493,6 +773,11 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     if (!trimmed.startsWith("/")) return false;
 
     const commandName = trimmed.slice(1).split(" ")[0];
+
+    // Special case: /compact should be sent to Claude CLI, not handled locally
+    // The CLI handles compaction natively and sends back status events
+    if (commandName === "compact") return false;
+
     const command = commands.find((c) => c.name === commandName);
     if (!command) return false;
 
