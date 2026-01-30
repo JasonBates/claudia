@@ -11,7 +11,8 @@ import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel"
 import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors } from "./lib/tauri";
+import type { ThemeSettings } from "./lib/theme-utils";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
 import { useStore, createEventDispatcher, actions, resetStreamingRefs } from "./lib/store";
@@ -357,14 +358,36 @@ function App() {
 
     console.log("[PLAN_WINDOW] Opening plan viewer for:", filePath);
 
+    // Get current theme settings
+    const currentScheme = settings.colorScheme() || "Solarized Dark";
+
+    // Fetch the background color for the current scheme
+    let backgroundColor = "#002b36"; // Default fallback
+    try {
+      const colors = await getSchemeColors(currentScheme);
+      backgroundColor = colors.bg;
+    } catch (e) {
+      console.error("[PLAN_WINDOW] Failed to get scheme colors:", e);
+    }
+
+    // Build URL with theme settings
+    const params = new URLSearchParams({
+      "plan-viewer": "true",
+      file: filePath,
+      colorScheme: currentScheme,
+      fontFamily: settings.fontFamily(),
+      fontSize: String(settings.fontSize()),
+      contentMargin: String(settings.contentMargin()),
+    });
+
     const planWindow = new WebviewWindow("plan-viewer", {
-      url: `index.html?plan-viewer=true&file=${encodeURIComponent(filePath)}`,
+      url: `index.html?${params.toString()}`,
       title: "Plan",
       width: 600,
       height: 800,
       titleBarStyle: "overlay",
       hiddenTitle: true,
-      backgroundColor: "#002b36",
+      backgroundColor,
     });
 
     planWindow.once("tauri://created", () => {
@@ -388,6 +411,29 @@ function App() {
     if (planWindowOpen() && content) {
       console.log("[PLAN_CONTENT] Emitting update to plan-viewer");
       emitTo("plan-viewer", "plan-content-updated", content);
+    }
+  });
+
+  // Emit theme updates to the plan viewer window when settings change
+  createEffect(() => {
+    // Track all theme-related settings
+    const scheme = settings.colorScheme();
+    const font = settings.fontFamily();
+    const size = settings.fontSize();
+    const margin = settings.contentMargin();
+
+    // Only emit if plan window is open and we have a scheme
+    if (planWindowOpen() && scheme) {
+      const themeSettings: ThemeSettings = {
+        colorScheme: scheme,
+        fontFamily: font,
+        fontSize: size,
+        contentMargin: margin,
+      };
+      console.log("[PLAN_THEME] Emitting theme update to plan-viewer");
+      emitTo("plan-viewer", "theme-updated", themeSettings).catch(() => {
+        // Plan viewer window may have been closed, ignore errors
+      });
     }
   });
 
