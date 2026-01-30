@@ -130,6 +130,10 @@ export interface ConversationState {
     messageId: string | null;
     /** Context warning dismissal state */
     warningDismissed: boolean;
+    /** Message ID waiting for real context from next context_update */
+    pendingUpdateMessageId: string | null;
+    /** Pre-tokens to display while waiting for update */
+    pendingPreTokens: number | null;
   };
 }
 
@@ -182,6 +186,8 @@ export function createInitialState(): ConversationState {
       preTokens: null,
       messageId: null,
       warningDismissed: false,
+      pendingUpdateMessageId: null,
+      pendingPreTokens: null,
     },
   };
 }

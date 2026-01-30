@@ -566,14 +566,43 @@ export function conversationReducer(
         },
       };
 
-    case "UPDATE_SESSION_INFO":
+    case "UPDATE_SESSION_INFO": {
+      const newInfo = { ...state.session.info, ...action.payload };
+
+      // Check if we have a pending compaction update and received new totalContext
+      const pendingMsgId = state.compaction.pendingUpdateMessageId;
+      const pendingPreTokens = state.compaction.pendingPreTokens;
+      let newMessages = state.messages;
+      let newCompaction = state.compaction;
+
+      if (pendingMsgId && action.payload.totalContext && action.payload.totalContext > 0) {
+        // We have real context data - update the compaction message
+        const preK = Math.round((pendingPreTokens || 0) / 1000);
+        const postK = Math.round(action.payload.totalContext / 1000);
+        const content = `${preK}k → ${postK}k`;
+
+        newMessages = state.messages.map((msg) =>
+          msg.id === pendingMsgId ? { ...msg, content } : msg
+        );
+
+        // Clear the pending update
+        newCompaction = {
+          ...state.compaction,
+          pendingUpdateMessageId: null,
+          pendingPreTokens: null,
+        };
+      }
+
       return {
         ...state,
+        messages: newMessages,
         session: {
           ...state.session,
-          info: { ...state.session.info, ...action.payload },
+          info: newInfo,
         },
+        compaction: newCompaction,
       };
+    }
 
     case "SET_SESSION_INFO":
       return {
@@ -658,11 +687,18 @@ export function conversationReducer(
       const { preTokens, postTokens, baseContext } = action.payload;
       const estimatedContext = baseContext + postTokens;
       const preK = Math.round(preTokens / 1000);
-      const postK = estimatedContext > 0 ? Math.round(estimatedContext / 1000) : "?";
-      const content = `${preK}k → ${postK}k`;
+
+      // If baseContext is too low (< 5000 tokens), we likely don't have reliable cache data.
+      // In this case, wait for the next context_update to get the real total.
+      const MIN_RELIABLE_BASE_CONTEXT = 5000;
+      const needsUpdate = baseContext < MIN_RELIABLE_BASE_CONTEXT;
+
+      const postK = needsUpdate ? "..." : (estimatedContext > 0 ? `${Math.round(estimatedContext / 1000)}k` : "?");
+      const content = `${preK}k → ${postK}`;
 
       // Update the compaction message if it exists
       const existingMsgId = state.compaction.messageId;
+      const msgId = existingMsgId || `compaction-${Date.now()}`;
       let newMessages = state.messages;
       if (existingMsgId) {
         newMessages = state.messages.map((msg) =>
@@ -671,7 +707,7 @@ export function conversationReducer(
       } else {
         // Add a new compaction message if none exists
         const compactionMsg: Message = {
-          id: `compaction-${Date.now()}`,
+          id: msgId,
           role: "system",
           content,
           variant: "compaction",
@@ -693,6 +729,9 @@ export function conversationReducer(
           preTokens: null,
           messageId: null,
           warningDismissed: false,
+          // If we need an update, keep track of the message to update later
+          pendingUpdateMessageId: needsUpdate ? msgId : null,
+          pendingPreTokens: needsUpdate ? preTokens : null,
         },
       };
     }
