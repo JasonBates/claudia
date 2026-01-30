@@ -5,7 +5,6 @@
 //! - `messaging` - Message sending and event streaming
 //! - `config_cmd` - Configuration management
 //! - `permission` - Permission request handling
-//! - `sync_cmd` - CCMS sync operations
 //! - `streaming_cmd` - External command streaming
 
 pub mod appearance_cmd;
@@ -15,7 +14,6 @@ pub mod permission;
 pub mod session;
 pub mod session_list;
 pub mod streaming_cmd;
-pub mod sync_cmd;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;

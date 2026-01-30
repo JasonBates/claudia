@@ -18,7 +18,6 @@ Open DevTools (Cmd+Option+I in dev mode) to see:
 - `[EVENT]` - Event receipt from backend
 - `[FINISH]` - Response finalization
 - `[PERMISSION]` - Permission flow
-- `[SYNC]` - Sync command progress
 - `[TAURI CHANNEL]` - Channel message receipt
 
 ## Common Issues
@@ -431,3 +430,62 @@ When you solve a non-trivial bug:
 4. Reference the **file** (where to look)
 
 This helps future developers (and AI assistants) avoid rediscovering the same issues.
+
+---
+
+### Event Draining Before New Messages
+
+**Symptom**: Stale events from a previous response corrupt the next response. Text or tool results from the old conversation appear in the new one.
+
+**Cause**: Events from a previous response may still be in the bridge's buffer when a new message is sent.
+
+**Solution**: The Rust backend drains any pending events before sending a new message:
+
+```rust
+loop {
+    match timeout(Duration::from_millis(10), process.recv_event()).await {
+        Ok(Some(event)) => { /* drain */ }
+        _ => break,
+    }
+}
+```
+
+**File**: `src-tauri/src/commands/messaging.rs`
+
+---
+
+### Multiple Events Updating Same State
+
+**Symptom**: Context window shows inconsistent values, flickering between different numbers.
+
+**Cause**: Different events (`context_update` vs `result`) try to update the same state with different values. The CLI aggregates tokens differently than the raw API.
+
+**Solution**: Use a single source of truth pattern:
+- `context_update` (from `message_start`) → Sets input context
+- `result` → Only ADDS output tokens to existing context
+
+Don't let `result`'s `input_tokens` overwrite context—they have different semantics.
+
+**File**: `src/lib/event-handlers.ts`
+
+---
+
+### SolidJS Show Components Flicker
+
+**Symptom**: UI elements flicker or briefly disappear when their condition changes.
+
+**Cause**: Using `<Show when={value}>` with values that can be 0 or undefined causes unstable conditions:
+
+```tsx
+// BAD - flickers when totalContext is 0
+<Show when={sessionInfo().totalContext}>
+
+// GOOD - stable condition
+<Show when={sessionActive()}>
+  {sessionInfo().totalContext ? `${Math.round(sessionInfo().totalContext / 1000)}k` : '—'}
+</Show>
+```
+
+**Solution**: Base `Show` conditions on stable booleans, not values that might be 0 or empty.
+
+**File**: `src/App.tsx`

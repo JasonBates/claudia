@@ -13,7 +13,6 @@ import type { SessionInfo } from "../lib/event-handlers";
 
 // Mock the tauri module
 vi.mock("../lib/tauri", () => ({
-  runStreamingCommand: vi.fn(),
   clearSession: vi.fn(),
   sendInterrupt: vi.fn(),
   quitApp: vi.fn(),
@@ -21,7 +20,6 @@ vi.mock("../lib/tauri", () => ({
 
 // Import mocked functions
 import {
-  runStreamingCommand as mockRunStreamingCommand,
   clearSession as mockClearSession,
   sendInterrupt as mockSendInterrupt,
   quitApp as mockQuitApp,
@@ -165,7 +163,6 @@ describe("useLocalCommands", () => {
       const commandNames = hook.commands().map((c: Command) => c.name);
 
       expect(commandNames).toContain("clear");
-      expect(commandNames).toContain("sync");
       expect(commandNames).toContain("thinking");
       expect(commandNames).toContain("sidebar");
       expect(commandNames).toContain("resume");
@@ -239,22 +236,6 @@ describe("useLocalCommands", () => {
 
       expect(result).toBe(true);
       expect(mockClearSession).toHaveBeenCalled();
-    });
-
-    it("should return true and handle /sync", async () => {
-      const hook = createHook();
-      vi.mocked(mockRunStreamingCommand).mockResolvedValue("cmd-123");
-
-      const result = await hook.dispatch("/sync");
-
-      expect(result).toBe(true);
-      expect(mockRunStreamingCommand).toHaveBeenCalledWith(
-        "ccms",
-        expect.any(Array),
-        expect.any(Function),
-        undefined,
-        null
-      );
     });
 
     it("should return true and handle /thinking", async () => {
@@ -507,37 +488,6 @@ describe("useLocalCommands", () => {
 
       expect(mockClearSession).toHaveBeenCalledWith(
         expect.any(Function),
-        null
-      );
-    });
-  });
-
-  // ============================================================================
-  // /sync Command
-  // ============================================================================
-
-  describe("/sync command", () => {
-    it("should add sync message to messages", async () => {
-      const hook = createHook();
-      vi.mocked(mockRunStreamingCommand).mockResolvedValue("cmd-123");
-
-      await hook.dispatch("/sync");
-
-      // Should have added a message (check the signal value)
-      expect(streaming.messages().length).toBeGreaterThan(0);
-    });
-
-    it("should run ccms with correct arguments", async () => {
-      const hook = createHook();
-      vi.mocked(mockRunStreamingCommand).mockResolvedValue("cmd-123");
-
-      await hook.dispatch("/sync");
-
-      expect(mockRunStreamingCommand).toHaveBeenCalledWith(
-        "ccms",
-        ["--force", "--fast", "--verbose", "sync"],
-        expect.any(Function),
-        undefined,
         null
       );
     });
