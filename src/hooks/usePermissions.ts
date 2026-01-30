@@ -36,6 +36,18 @@ export interface UsePermissionsOptions {
    * Default: true (stream-based is the primary mechanism now)
    */
   useStreamBasedResponse?: boolean;
+
+  /**
+   * External pending permission accessor (from store).
+   * If provided, the hook will use this instead of its own internal signal.
+   */
+  pendingPermission?: Accessor<PermissionRequest | null>;
+
+  /**
+   * Callback to clear the pending permission (from store dispatch).
+   * Required if pendingPermission is provided.
+   */
+  clearPendingPermission?: () => void;
 }
 
 /**
@@ -51,7 +63,23 @@ export interface UsePermissionsOptions {
  * writing allow/deny responses.
  */
 export function usePermissions(options: UsePermissionsOptions): UsePermissionsReturn {
-  const [pendingPermission, setPendingPermission] = createSignal<PermissionRequest | null>(null);
+  // Use external permission state from store if provided, otherwise create local signal
+  const [localPendingPermission, setLocalPendingPermission] = createSignal<PermissionRequest | null>(null);
+
+  // When external permission state is provided (from store), use it for reading
+  const pendingPermission = options.pendingPermission ?? localPendingPermission;
+
+  // For setting permission in polling mode (only used when no external state)
+  const setPendingPermission = setLocalPendingPermission;
+
+  // Clear function that works with either local or external state
+  const clearPendingPermission = () => {
+    if (options.clearPendingPermission) {
+      options.clearPendingPermission();
+    } else {
+      setLocalPendingPermission(null);
+    }
+  };
 
   let permissionPollInterval: number | null = null;
 
@@ -116,7 +144,7 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
     const permission = pendingPermission();
     if (!permission) return;
 
-    setPendingPermission(null);
+    clearPendingPermission();
 
     // Use stream-based response by default (control_response via stdin)
     // Fall back to file-based response for MCP hook compatibility
@@ -137,7 +165,7 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
     const permission = pendingPermission();
     if (!permission) return;
 
-    setPendingPermission(null);
+    clearPendingPermission();
 
     // Use stream-based response by default (control_response via stdin)
     // Fall back to file-based response for MCP hook compatibility

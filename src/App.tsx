@@ -61,10 +61,12 @@ function App() {
   // Permission mode state (local, not in store)
   const [currentMode, setCurrentMode] = createSignal<Mode>("auto");
 
-  // Permissions hook (polling logic)
+  // Permissions hook (polling logic + handlers)
   const permissions = usePermissions({
     owner,
     getCurrentMode: currentMode,
+    pendingPermission: store.pendingPermission,
+    clearPendingPermission: () => store.dispatch(actions.setPendingPermission(null)),
   });
 
   // Sidebar (session history)
