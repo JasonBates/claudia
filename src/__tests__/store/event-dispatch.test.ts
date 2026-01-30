@@ -45,6 +45,8 @@ function createMockContext(overrides: Partial<EventContext> = {}): EventContext 
     getSessionInfo: () => ({}),
     getLaunchSessionId: () => null,
     getPlanFilePath: () => null,
+    getPlanningToolId: () => null,
+    isPlanning: () => false,
     getCompactionPreTokens: () => null,
     getCompactionMessageId: () => null,
     getCurrentToolUses: () => [],
@@ -418,8 +420,10 @@ describe("Event Dispatch Functions", () => {
       });
     });
 
-    it("should dispatch SET_PLAN_APPROVAL_VISIBLE for ExitPlanMode", () => {
-      const ctx = createMockContext();
+    it("should dispatch SET_PLAN_READY for ExitPlanMode", () => {
+      const ctx = createMockContext({
+        getPlanningToolId: () => "planning-123",
+      });
       const event: NormalizedEvent = {
         type: "tool_start",
         id: "exit-plan-123",
@@ -429,8 +433,12 @@ describe("Event Dispatch Functions", () => {
       handleToolStart(event, ctx);
 
       expect(ctx.dispatch).toHaveBeenCalledWith({
-        type: "SET_PLAN_APPROVAL_VISIBLE",
+        type: "SET_PLAN_READY",
         payload: true,
+      });
+      expect(ctx.dispatch).toHaveBeenCalledWith({
+        type: "UPDATE_TOOL",
+        payload: { id: "planning-123", updates: { isLoading: false } },
       });
     });
 

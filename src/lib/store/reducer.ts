@@ -464,12 +464,30 @@ export function conversationReducer(
         },
       };
 
-    case "SET_PLAN_APPROVAL_VISIBLE":
+    case "SET_PLANNING_TOOL_ID":
       return {
         ...state,
         planning: {
           ...state.planning,
-          showApproval: action.payload,
+          toolId: action.payload,
+        },
+      };
+
+    case "ADD_PLANNING_NESTED_TOOL":
+      return {
+        ...state,
+        planning: {
+          ...state.planning,
+          nestedTools: [...state.planning.nestedTools, action.payload],
+        },
+      };
+
+    case "SET_PLAN_READY":
+      return {
+        ...state,
+        planning: {
+          ...state.planning,
+          isReady: action.payload,
         },
       };
 
@@ -482,15 +500,36 @@ export function conversationReducer(
         },
       };
 
+    case "SET_PLAN_NEEDS_REFRESH":
+      return {
+        ...state,
+        planning: {
+          ...state.planning,
+          needsRefresh: action.payload,
+        },
+      };
+
+    case "CLEAR_PLAN_NEEDS_REFRESH":
+      return {
+        ...state,
+        planning: {
+          ...state.planning,
+          needsRefresh: null,
+        },
+      };
+
     case "EXIT_PLANNING":
       return {
         ...state,
         planning: {
           ...state.planning,
           isActive: false,
-          showApproval: false,
           filePath: null,
           content: "",
+          toolId: null,
+          nestedTools: [],
+          isReady: false,
+          needsRefresh: null,
         },
       };
 

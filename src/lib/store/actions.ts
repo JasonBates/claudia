@@ -70,8 +70,12 @@ export type Action =
   // === Planning Actions ===
   | { type: "SET_PLANNING_ACTIVE"; payload: boolean }
   | { type: "SET_PLAN_FILE_PATH"; payload: string | null }
-  | { type: "SET_PLAN_APPROVAL_VISIBLE"; payload: boolean }
   | { type: "SET_PLAN_CONTENT"; payload: string }
+  | { type: "SET_PLANNING_TOOL_ID"; payload: string | null }
+  | { type: "ADD_PLANNING_NESTED_TOOL"; payload: { name: string; input?: string } }
+  | { type: "SET_PLAN_READY"; payload: boolean }
+  | { type: "SET_PLAN_NEEDS_REFRESH"; payload: string }
+  | { type: "CLEAR_PLAN_NEEDS_REFRESH" }
   | { type: "EXIT_PLANNING" }
 
   // === Permission Actions ===
@@ -221,14 +225,27 @@ export const actions = {
     type: "SET_PLAN_FILE_PATH",
     payload: path,
   }),
-  setPlanApprovalVisible: (visible: boolean): Action => ({
-    type: "SET_PLAN_APPROVAL_VISIBLE",
-    payload: visible,
-  }),
   setPlanContent: (content: string): Action => ({
     type: "SET_PLAN_CONTENT",
     payload: content,
   }),
+  setPlanningToolId: (id: string | null): Action => ({
+    type: "SET_PLANNING_TOOL_ID",
+    payload: id,
+  }),
+  addPlanningNestedTool: (tool: { name: string; input?: string }): Action => ({
+    type: "ADD_PLANNING_NESTED_TOOL",
+    payload: tool,
+  }),
+  setPlanReady: (ready: boolean): Action => ({
+    type: "SET_PLAN_READY",
+    payload: ready,
+  }),
+  setPlanNeedsRefresh: (path: string): Action => ({
+    type: "SET_PLAN_NEEDS_REFRESH",
+    payload: path,
+  }),
+  clearPlanNeedsRefresh: (): Action => ({ type: "CLEAR_PLAN_NEEDS_REFRESH" }),
   exitPlanning: (): Action => ({ type: "EXIT_PLANNING" }),
 
   // === Permission Actions ===

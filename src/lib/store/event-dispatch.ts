@@ -79,6 +79,12 @@ export interface EventContext {
   /** Get plan file path */
   getPlanFilePath: () => string | null;
 
+  /** Get planning tool ID */
+  getPlanningToolId: () => string | null;
+
+  /** Check if planning mode is active */
+  isPlanning: () => boolean;
+
   /** Get pre-compaction token count */
   getCompactionPreTokens: () => number | null;
 
@@ -308,11 +314,31 @@ export function handleToolStart(event: NormalizedToolStartEvent, ctx: EventConte
 
   if (event.name === "EnterPlanMode") {
     ctx.dispatch({ type: "SET_PLANNING_ACTIVE", payload: true });
+    // Add Planning tool block to show activity
+    const toolId = `planning-${Date.now()}`;
+    ctx.dispatch({ type: "SET_PLANNING_TOOL_ID", payload: toolId });
+    const newTool: ToolUse = {
+      id: toolId,
+      name: "Planning",
+      input: {},
+      isLoading: true,
+    };
+    ctx.dispatch({ type: "ADD_TOOL", payload: newTool });
     return;
   }
 
   if (event.name === "ExitPlanMode") {
-    ctx.dispatch({ type: "SET_PLAN_APPROVAL_VISIBLE", payload: true });
+    console.log("[PLANNING] ExitPlanMode called, planFilePath:", ctx.getPlanFilePath());
+    // Mark planning as ready - approval buttons will appear
+    ctx.dispatch({ type: "SET_PLAN_READY", payload: true });
+    // Update the Planning tool to show complete state
+    const planToolId = ctx.getPlanningToolId();
+    if (planToolId) {
+      ctx.dispatch({
+        type: "UPDATE_TOOL",
+        payload: { id: planToolId, updates: { isLoading: false } },
+      });
+    }
     return;
   }
 
@@ -337,6 +363,14 @@ export function handleToolStart(event: NormalizedToolStartEvent, ctx: EventConte
   };
 
   ctx.dispatch({ type: "ADD_TOOL", payload: newTool });
+
+  // Track nested tools during planning for activity display
+  if (ctx.isPlanning() && event.name !== "Planning") {
+    ctx.dispatch({
+      type: "ADD_PLANNING_NESTED_TOOL",
+      payload: { name: event.name || "unknown" },
+    });
+  }
 }
 
 /**
@@ -430,12 +464,64 @@ export function handleToolResult(event: NormalizedToolResultEvent, ctx: EventCon
     return;
   }
 
-  // Check for plan file read
+  // Capture plan file content from Read or Write tools during planning
   const tool = currentTools.find((t) => t.id === targetToolId);
-  if (tool?.name === "Read" && ctx.getPlanFilePath()) {
-    const inputPath = (tool.input as Record<string, unknown>)?.file_path;
-    if (inputPath === ctx.getPlanFilePath()) {
-      ctx.dispatch({ type: "SET_PLAN_CONTENT", payload: event.stdout || "" });
+  const planFilePath = ctx.getPlanFilePath();
+  const isInPlanningMode = ctx.isPlanning();
+
+  if (tool) {
+    const inputPath = (tool.input as Record<string, unknown>)?.file_path as string | undefined;
+
+    // Plan file read - capture from result (if path matches or looks like a plan file)
+    if (tool.name === "Read") {
+      const isMatchingPath = planFilePath && inputPath === planFilePath;
+      const looksLikePlanFile = isInPlanningMode && inputPath &&
+        (inputPath.includes("plan") || inputPath.includes(".claude/plans")) &&
+        inputPath.endsWith(".md");
+
+      if (isMatchingPath || looksLikePlanFile) {
+        console.log("[PLANNING] Captured plan content from Read:", inputPath);
+        // Strip line numbers from Read tool output (format: "  123→content" or "123→content")
+        const rawContent = event.stdout || "";
+        const strippedContent = rawContent
+          .split("\n")
+          .map(line => line.replace(/^\s*\d+→/, ""))
+          .join("\n");
+        ctx.dispatch({ type: "SET_PLAN_CONTENT", payload: strippedContent });
+        if (!planFilePath && inputPath) {
+          console.log("[PLANNING] Setting plan file path from Read:", inputPath);
+          ctx.dispatch({ type: "SET_PLAN_FILE_PATH", payload: inputPath });
+        }
+      }
+    }
+
+    // Plan file write - capture from input content (if in planning mode and writing .md)
+    // In planning mode, capture ANY markdown file as the plan
+    if (tool.name === "Write" && isInPlanningMode && inputPath?.endsWith(".md")) {
+      const content = (tool.input as Record<string, unknown>)?.content;
+      if (typeof content === "string") {
+        console.log("[PLANNING] Captured plan content from Write:", inputPath);
+        ctx.dispatch({ type: "SET_PLAN_CONTENT", payload: content });
+        if (!planFilePath) {
+          console.log("[PLANNING] Setting plan file path from Write:", inputPath);
+          ctx.dispatch({ type: "SET_PLAN_FILE_PATH", payload: inputPath });
+        }
+      }
+    }
+
+    // Plan file edit - signal that the plan file was modified
+    // The Edit tool doesn't give us the full content, so we dispatch an action
+    // to indicate the file needs to be re-read
+    if (tool.name === "Edit" && isInPlanningMode && inputPath?.endsWith(".md")) {
+      const isMatchingPath = planFilePath && inputPath === planFilePath;
+      const looksLikePlanFile = inputPath &&
+        (inputPath.includes("plan") || inputPath.includes(".claude/plans"));
+
+      if (isMatchingPath || looksLikePlanFile) {
+        console.log("[PLANNING] Plan file edited:", inputPath);
+        // Dispatch action to signal plan needs refresh
+        ctx.dispatch({ type: "SET_PLAN_NEEDS_REFRESH", payload: inputPath });
+      }
     }
   }
 
