@@ -103,13 +103,14 @@ pub async fn send_permission_response(
     allow: bool,
     remember: bool,
     tool_input: Option<serde_json::Value>,
+    message: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     cmd_debug_log(
         "PERMISSION",
         &format!(
-            "Sending control_response: request_id={}, allow={}, remember={}",
-            request_id, allow, remember
+            "Sending control_response: request_id={}, allow={}, remember={}, message={:?}",
+            request_id, allow, remember, message
         ),
     );
 
@@ -118,12 +119,14 @@ pub async fn send_permission_response(
 
     // Send as control_response JSON that the bridge will forward to Claude CLI
     // Include tool_input for the SDK's updatedInput field
+    // Include message for feedback when denying (e.g., plan change requests)
     let msg = serde_json::json!({
         "type": "control_response",
         "request_id": request_id,
         "allow": allow,
         "remember": remember,
-        "tool_input": tool_input.unwrap_or(serde_json::json!({}))
+        "tool_input": tool_input.unwrap_or(serde_json::json!({})),
+        "message": message
     });
 
     process.send_message(&msg.to_string())?;

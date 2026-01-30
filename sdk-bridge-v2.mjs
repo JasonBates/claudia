@@ -769,9 +769,10 @@ async function main() {
           // The inner response must match canUseTool callback return format:
           // For "allow": { behavior: "allow", updatedInput: {...} }
           // For "deny": { behavior: "deny", message: "..." }
+          // When denying with feedback (e.g., plan iteration), use the message from the UI
           const permissionResponse = parsed.allow
             ? { behavior: "allow", updatedInput: parsed.tool_input || {} }
-            : { behavior: "deny", message: "User denied permission" };
+            : { behavior: "deny", message: parsed.message || "User denied permission" };
 
           const msg = JSON.stringify({
             type: "control_response",

@@ -229,8 +229,8 @@ export async function isSessionActive(): Promise<boolean> {
   return await invoke("is_session_active");
 }
 
-export async function sendPermissionResponse(requestId: string, allow: boolean, remember?: boolean, toolInput?: unknown): Promise<void> {
-  await invoke("send_permission_response", { requestId, allow, remember: remember || false, toolInput: toolInput || {} });
+export async function sendPermissionResponse(requestId: string, allow: boolean, remember?: boolean, toolInput?: unknown, message?: string): Promise<void> {
+  await invoke("send_permission_response", { requestId, allow, remember: remember || false, toolInput: toolInput || {}, message: message || null });
 }
 
 export async function sendQuestionResponse(requestId: string, questions: unknown[], answers: Record<string, string | string[]>): Promise<void> {

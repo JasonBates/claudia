@@ -328,17 +328,9 @@ export function handleToolStart(event: NormalizedToolStartEvent, ctx: EventConte
   }
 
   if (event.name === "ExitPlanMode") {
-    console.log("[PLANNING] ExitPlanMode called, planFilePath:", ctx.getPlanFilePath());
-    // Mark planning as ready - approval buttons will appear
-    ctx.dispatch({ type: "SET_PLAN_READY", payload: true });
-    // Update the Planning tool to show complete state
-    const planToolId = ctx.getPlanningToolId();
-    if (planToolId) {
-      ctx.dispatch({
-        type: "UPDATE_TOOL",
-        payload: { id: planToolId, updates: { isLoading: false } },
-      });
-    }
+    // ExitPlanMode is handled via permission_request event where we get the requestId
+    // Just return early to avoid adding it as a tool block
+    console.log("[PLANNING] ExitPlanMode tool_start - waiting for permission_request");
     return;
   }
 
@@ -546,6 +538,22 @@ export function handlePermissionRequest(
   ctx: EventContext
 ): void {
   const { requestId, toolName, toolInput, description } = event;
+
+  // ExitPlanMode requires special handling - route to plan approval flow
+  if (toolName === "ExitPlanMode") {
+    console.log("[PERMISSION] ExitPlanMode - routing to plan approval, requestId:", requestId);
+    ctx.dispatch({ type: "SET_PLAN_PERMISSION_REQUEST_ID", payload: requestId });
+    ctx.dispatch({ type: "SET_PLAN_READY", payload: true });
+    // Update the Planning tool to show complete state
+    const planToolId = ctx.getPlanningToolId();
+    if (planToolId) {
+      ctx.dispatch({
+        type: "UPDATE_TOOL",
+        payload: { id: planToolId, updates: { isLoading: false } },
+      });
+    }
+    return;
+  }
 
   // In auto mode, immediately approve without showing dialog
   if (ctx.getCurrentMode() === "auto") {

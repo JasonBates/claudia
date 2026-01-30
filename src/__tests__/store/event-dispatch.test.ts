@@ -420,7 +420,7 @@ describe("Event Dispatch Functions", () => {
       });
     });
 
-    it("should dispatch SET_PLAN_READY for ExitPlanMode", () => {
+    it("should return early for ExitPlanMode without dispatching (handled via permission_request)", () => {
       const ctx = createMockContext({
         getPlanningToolId: () => "planning-123",
       });
@@ -432,14 +432,9 @@ describe("Event Dispatch Functions", () => {
 
       handleToolStart(event, ctx);
 
-      expect(ctx.dispatch).toHaveBeenCalledWith({
-        type: "SET_PLAN_READY",
-        payload: true,
-      });
-      expect(ctx.dispatch).toHaveBeenCalledWith({
-        type: "UPDATE_TOOL",
-        payload: { id: "planning-123", updates: { isLoading: false } },
-      });
+      // ExitPlanMode is handled via permission_request, not tool_start
+      // Should return early without dispatching anything
+      expect(ctx.dispatch).not.toHaveBeenCalled();
     });
 
     it("should apply pending result if tool_result arrived first", () => {
@@ -645,6 +640,38 @@ describe("Event Dispatch Functions", () => {
         undefined
       );
       expect(ctx.dispatch).not.toHaveBeenCalled();
+    });
+
+    it("should route ExitPlanMode to plan approval flow (not auto-accept)", () => {
+      const ctx = createMockContext({
+        getCurrentMode: () => "auto",
+        getPlanningToolId: () => "planning-123",
+      });
+      const event: NormalizedEvent = {
+        type: "permission_request",
+        requestId: "exit-req-123",
+        toolName: "ExitPlanMode",
+        toolInput: { plan: "Test plan" },
+        description: "",
+      };
+
+      handlePermissionRequest(event as Parameters<typeof handlePermissionRequest>[0], ctx);
+
+      // Should NOT auto-accept - ExitPlanMode requires user approval
+      expect(ctx.sendPermissionResponse).not.toHaveBeenCalled();
+      // Should dispatch plan approval actions
+      expect(ctx.dispatch).toHaveBeenCalledWith({
+        type: "SET_PLAN_PERMISSION_REQUEST_ID",
+        payload: "exit-req-123",
+      });
+      expect(ctx.dispatch).toHaveBeenCalledWith({
+        type: "SET_PLAN_READY",
+        payload: true,
+      });
+      expect(ctx.dispatch).toHaveBeenCalledWith({
+        type: "UPDATE_TOOL",
+        payload: { id: "planning-123", updates: { isLoading: false } },
+      });
     });
   });
 

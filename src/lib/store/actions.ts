@@ -76,6 +76,7 @@ export type Action =
   | { type: "SET_PLAN_READY"; payload: boolean }
   | { type: "SET_PLAN_NEEDS_REFRESH"; payload: string }
   | { type: "CLEAR_PLAN_NEEDS_REFRESH" }
+  | { type: "SET_PLAN_PERMISSION_REQUEST_ID"; payload: string | null }
   | { type: "EXIT_PLANNING" }
 
   // === Permission Actions ===
@@ -246,6 +247,10 @@ export const actions = {
     payload: path,
   }),
   clearPlanNeedsRefresh: (): Action => ({ type: "CLEAR_PLAN_NEEDS_REFRESH" }),
+  setPlanPermissionRequestId: (requestId: string | null): Action => ({
+    type: "SET_PLAN_PERMISSION_REQUEST_ID",
+    payload: requestId,
+  }),
   exitPlanning: (): Action => ({ type: "EXIT_PLANNING" }),
 
   // === Permission Actions ===
