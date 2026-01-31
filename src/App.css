@@ -451,12 +451,13 @@ body {
   border: none;
   border-radius: 4px;
   z-index: 1000;
-  font-size: 16px;
+  font-size: 20px;
   line-height: 1;
   color: var(--fg-muted);
   cursor: pointer;
   transition: all 0.15s ease;
   -webkit-app-region: no-drag;
+  padding-bottom: 4px;
 }
 
 .settings-btn:hover {
