@@ -1,5 +1,8 @@
 # Claudia
 
+[![Test](https://github.com/JasonBates/claudia/actions/workflows/test.yml/badge.svg)](https://github.com/JasonBates/claudia/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 **The better-looking younger sister of Claude Code.**
 
 Claudia is an expandable GUI wrapper around [Claude Code](https://github.com/anthropics/claude-code), designed for knowledge work. It leverages everything great about Claude Code—config, skills, hooks, MCPs, session management—while providing a cleaner, more visual frontend experience.
@@ -150,7 +153,7 @@ For detailed architecture, data flow, event types, and implementation details, s
 # Development mode
 npm run tauri dev
 
-# Run all tests (592 tests: 97 Rust + 495 TypeScript)
+# Run all tests (608 tests: 113 Rust + 495 TypeScript)
 npm run test:all
 
 # TypeScript tests only
@@ -167,6 +170,7 @@ npm run test:rust
 | **[docs/architecture.md](docs/architecture.md)** | Data flow, event types, state management, testing, design decisions |
 | **[docs/streaming.md](docs/streaming.md)** | Streaming command runner pattern |
 | **[docs/troubleshooting.md](docs/troubleshooting.md)** | Common issues, debugging techniques, lessons learned |
+| **[CONTRIBUTING.md](CONTRIBUTING.md)** | How to contribute to Claudia |
 | **[CHANGELOG.md](CHANGELOG.md)** | Version history and release notes |
 
 ## License
