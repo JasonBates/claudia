@@ -8,6 +8,7 @@ export interface UseSessionReturn {
   setSessionActive: Setter<boolean>;
   launchDir: Accessor<string | null>;
   workingDir: Accessor<string | null>;
+  setWorkingDir: Setter<string | null>;
   sessionInfo: Accessor<SessionInfo>;
   setSessionInfo: Setter<SessionInfo>;
 
