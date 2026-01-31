@@ -16,6 +16,7 @@ vi.mock("../lib/tauri", () => ({
   clearSession: vi.fn(),
   sendInterrupt: vi.fn(),
   quitApp: vi.fn(),
+  runStreamingCommand: vi.fn(),
 }));
 
 // Import mocked functions
@@ -23,6 +24,7 @@ import {
   clearSession as mockClearSession,
   sendInterrupt as mockSendInterrupt,
   quitApp as mockQuitApp,
+  runStreamingCommand as mockRunStreamingCommand,
 } from "../lib/tauri";
 
 /**
@@ -594,6 +596,149 @@ describe("useLocalCommands", () => {
       await hook.dispatch("/q");
 
       expect(mockQuitApp).toHaveBeenCalled();
+    });
+  });
+
+  // ============================================================================
+  // ! (Bang) Commands - Bash Passthrough
+  // ============================================================================
+
+  describe("! (bang) commands", () => {
+    beforeEach(() => {
+      vi.mocked(mockRunStreamingCommand).mockClear();
+    });
+
+    it("should return true for ! commands", async () => {
+      const hook = createHook();
+      vi.mocked(mockRunStreamingCommand).mockResolvedValue("cmd-id");
+
+      const result = await hook.dispatch("! ls");
+
+      expect(result).toBe(true);
+    });
+
+    it("should return false for just ! with no command", async () => {
+      const hook = createHook();
+
+      const result = await hook.dispatch("!");
+
+      expect(result).toBe(false);
+      expect(mockRunStreamingCommand).not.toHaveBeenCalled();
+    });
+
+    it("should return false for ! with only whitespace", async () => {
+      const hook = createHook();
+
+      const result = await hook.dispatch("!   ");
+
+      expect(result).toBe(false);
+      expect(mockRunStreamingCommand).not.toHaveBeenCalled();
+    });
+
+    it("should call runStreamingCommand with /bin/bash -c", async () => {
+      const hook = createHook();
+      vi.mocked(mockRunStreamingCommand).mockResolvedValue("cmd-id");
+
+      await hook.dispatch("! ls -la");
+
+      expect(mockRunStreamingCommand).toHaveBeenCalledWith(
+        "/bin/bash",
+        ["-c", "ls -la"],
+        expect.any(Function),
+        "/work",  // Working directory from mock session
+        null      // Owner
+      );
+    });
+
+    it("should trim whitespace from command", async () => {
+      const hook = createHook();
+      vi.mocked(mockRunStreamingCommand).mockResolvedValue("cmd-id");
+
+      await hook.dispatch("!   git status   ");
+
+      expect(mockRunStreamingCommand).toHaveBeenCalledWith(
+        "/bin/bash",
+        ["-c", "git status"],
+        expect.any(Function),
+        "/work",
+        null
+      );
+    });
+
+    it("should add user message with bang command", async () => {
+      const hook = createHook();
+      vi.mocked(mockRunStreamingCommand).mockResolvedValue("cmd-id");
+
+      await hook.dispatch("! echo hello");
+
+      const messages = streaming.messages();
+      const userMessage = messages.find(m => m.role === "user" && m.content.includes("echo hello"));
+      expect(userMessage).toBeDefined();
+      expect(userMessage?.content).toBe("! echo hello");
+    });
+
+    it("should add assistant message with Bash tool use", async () => {
+      const hook = createHook();
+      vi.mocked(mockRunStreamingCommand).mockResolvedValue("cmd-id");
+
+      await hook.dispatch("! pwd");
+
+      const messages = streaming.messages();
+      const assistantMessage = messages.find(
+        m => m.role === "assistant" && m.toolUses?.some(t => t.name === "Bash")
+      );
+      expect(assistantMessage).toBeDefined();
+      expect(assistantMessage?.toolUses?.[0].input).toEqual({ command: "pwd" });
+    });
+
+    it("should set loading state during command execution", async () => {
+      const hook = createHook();
+      vi.mocked(mockRunStreamingCommand).mockImplementation(async () => {
+        expect(streaming.isLoading()).toBe(true);
+        return "cmd-id";
+      });
+
+      await hook.dispatch("! ls");
+    });
+
+    it("should handle errors gracefully", async () => {
+      const hook = createHook();
+      vi.mocked(mockRunStreamingCommand).mockRejectedValue(new Error("Command failed"));
+
+      const result = await hook.dispatch("! bad-command");
+
+      expect(result).toBe(true);
+      // Should still complete without throwing
+    });
+
+    it("should not conflict with slash commands", async () => {
+      const hook = createHook();
+
+      // Slash command should still work
+      const slashResult = await hook.dispatch("/thinking");
+      expect(slashResult).toBe(true);
+      expect(mockRunStreamingCommand).not.toHaveBeenCalled();
+
+      // Bang command should work
+      vi.mocked(mockRunStreamingCommand).mockResolvedValue("cmd-id");
+      const bangResult = await hook.dispatch("! ls");
+      expect(bangResult).toBe(true);
+      expect(mockRunStreamingCommand).toHaveBeenCalled();
+    });
+
+    it("should handle commands with special characters", async () => {
+      const hook = createHook();
+      vi.mocked(mockRunStreamingCommand).mockResolvedValue("cmd-id");
+
+      await hook.dispatch('! echo "hello world" | grep hello');
+
+      expect(mockRunStreamingCommand).toHaveBeenCalledWith(
+        "/bin/bash",
+        ["-c", 'echo "hello world" | grep hello'],
+        expect.any(Function),
+        "/work",
+        null
+      );
     });
   });
 });
