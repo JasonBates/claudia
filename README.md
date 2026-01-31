@@ -5,7 +5,7 @@
 
 **The better-looking younger sister of Claude Code.**
 
-Claudia is an expandable GUI wrapper around [Claude Code](https://github.com/anthropics/claude-code), designed for knowledge work. It leverages everything great about Claude Code—config, skills, hooks, MCPs, session management—while providing a cleaner, more visual frontend experience.
+Claudia is an expandable GUI wrapper around [Claude Code](https://github.com/anthropics/claude-code), built for the Mac OS. It is designed for knowledge work, leveraging everything great about Claude Code: projects, config, skills, hooks, MCPs, session management, while providing a cleaner, more visual frontend experience.
 
 > *Why rebuild the agent runtime when you can wrap it?*
 
