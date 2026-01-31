@@ -37,6 +37,18 @@ Claude Code CLI is powerful but terminal-focused. Claudia gives you:
 - **Desktop integration** — Native macOS app, multi-window support, project-aware launching
 - **All of Claude Code's power** — MCPs, skills, hooks, CLAUDE.md, session persistence, prompt caching
 
+## Why Claudia instead of Cowork?
+
+Cowork is Anthropic's managed desktop experience—great for users who want zero-config simplicity. Claudia is for developers who already use Claude Code and want more control:
+
+- **Fully customizable** — UI, workflows, features, and memory are yours to modify
+- **Per-project configuration** — different context, tools, and MCPs for each project directory
+- **Your setup just works** — existing CLAUDE.md files, hooks, and MCP configs carry over
+- **Direct file system access** — no sandboxed VM sitting between you and your files
+- **Custom visualizations** — build data renderers directly into your MCPs
+
+Cowork wraps a sandboxed environment. Claudia wraps Claude Code itself—so you keep everything you've already built.
+
 ## Features
 
 - **Native macOS app** — Built with Tauri + SolidJS for fast, lightweight performance
