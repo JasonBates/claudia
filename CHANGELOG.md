@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Question panel for `AskUserQuestion` responses
 - Planning mode with approval workflow
 - Streaming command runner for external tools
-- Comprehensive test suite (542 tests)
+- Comprehensive test suite (608 tests: 495 TypeScript + 113 Rust)
 
 ### Architecture
 - SolidJS frontend with custom hooks pattern
