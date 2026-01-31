@@ -9,6 +9,8 @@ Claudia is an expandable GUI wrapper around [Claude Code](https://github.com/ant
 
 > *Why rebuild the agent runtime when you can wrap it?*
 
+_Note: this is only a few days of development work, there are still bugs to work out, please open issues, and contribute fixes._
+
 ## Screenshots
 
 <p align="center">
