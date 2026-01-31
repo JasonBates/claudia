@@ -10,6 +10,7 @@ This script:
 
 import os
 import sys
+from datetime import datetime, timezone
 from openai import OpenAI
 from github import Github
 
@@ -101,7 +102,8 @@ def post_review_comment(gh: Github, repo_name: str, pr_number: int, review_text:
     pr = repo.get_pull(pr_number)
 
     # Add a header to identify this as an AI review
-    comment = f"## AI Code Review\n\n{review_text}\n\n---\n*Powered by LaoZhang API*"
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    comment = f"## AI Code Review\n\n{review_text}\n\n---\n*Model: `{MODEL}` | {timestamp} | Powered by LaoZhang API*"
 
     pr.create_issue_comment(comment)
 
