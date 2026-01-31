@@ -6,7 +6,7 @@ use super::cmd_debug_log;
 
 /// Open a new Claudia window with the specified directory
 ///
-/// Uses macOS `open -n -a Claudia --args <directory>` to spawn a new app instance.
+/// Re-launches the current executable with the specified directory as an argument.
 #[tauri::command]
 pub async fn open_new_window(directory: String) -> Result<(), String> {
     cmd_debug_log(
@@ -23,10 +23,13 @@ pub async fn open_new_window(directory: String) -> Result<(), String> {
         return Err(format!("Path is not a directory: {}", directory));
     }
 
-    // Spawn new Claudia instance using macOS open command
-    // -n flag opens a new instance even if already running
-    let result = Command::new("open")
-        .args(["-n", "-a", "Claudia", "--args", &directory])
+    // Get the current executable path
+    let exe_path = std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
+    cmd_debug_log("NEW_WINDOW", &format!("Current executable: {:?}", exe_path));
+
+    // Spawn new instance by running the executable directly
+    let result = Command::new(&exe_path)
+        .arg(&directory)
         .spawn();
 
     match result {
