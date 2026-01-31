@@ -763,6 +763,11 @@ function App() {
     window.addEventListener("keydown", handleKeyDown, true);
     document.addEventListener("click", handleRefocusClick, true);
 
+    // Prevent browser's default drag/drop so Tauri's native handler works
+    const preventDefaultDrag = (e: DragEvent) => e.preventDefault();
+    document.addEventListener("dragover", preventDefaultDrag);
+    document.addEventListener("drop", preventDefaultDrag);
+
     // Tauri native drag/drop for files from filesystem
     try {
       const webview = getCurrentWebview();
