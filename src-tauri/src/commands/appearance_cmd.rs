@@ -140,11 +140,11 @@ fn get_bundled_scheme(name: &str) -> Option<ColorSchemeColors> {
             quote: "#6c71c4".to_string(), // Solarized violet - softer than magenta
         }),
         "Solarized Light" => Some(ColorSchemeColors {
-            bg: "#fdf6e3".to_string(),
+            bg: "#f5eedb".to_string(),
             bg_secondary: "#eee8d5".to_string(),
-            bg_tertiary: "#fdf6e3".to_string(),
+            bg_tertiary: "#f5eedb".to_string(),
             fg: "#586e75".to_string(),
-            fg_muted: "#839496".to_string(),
+            fg_muted: "#657b83".to_string(),
             accent: "#268bd2".to_string(),
             red: "#dc322f".to_string(),
             green: "#859900".to_string(),
