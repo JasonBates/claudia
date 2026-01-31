@@ -3,8 +3,9 @@
 [![Test](https://github.com/JasonBates/claudia/actions/workflows/test.yml/badge.svg)](https://github.com/JasonBates/claudia/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Claudia is an expandable GUI wrapper around [Claude Code](https://github.com/anthropics/claude-code), built for the Mac OS. It is designed for knowledge work, leveraging everything great about Claude Code: projects, config, skills, hooks, MCPs, session management, while providing a cleaner, more visual frontend experience. 
+Claude Code, but pretty
 
+Claude Code is powerful. The terminal is not where you want to live. Claudia wraps the CLI in a native macOS app so you keep everything—MCPs, CLAUDE.md files, hooks, session persistence—and gain a visual interface that doesn't hurt to look at.
 
 > *Why rebuild the agent runtime when you can wrap it?*
 
