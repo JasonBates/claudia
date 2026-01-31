@@ -171,6 +171,104 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
   // ==========================================================================
 
   /**
+   * Handle ! prefix - execute bash command directly
+   * Similar to Claude Code's ! passthrough feature
+   */
+  const handleBangCommand = async (command: string) => {
+    const bangMsgId = `bang-${Date.now()}`;
+    const bangToolId = `bang-tool-${Date.now()}`;
+
+    const updateResult = (text: string, loading: boolean = true) => {
+      streaming.setMessages((prev) =>
+        prev.map((m) =>
+          m.id === bangMsgId
+            ? {
+                ...m,
+                toolUses: m.toolUses?.map((t) =>
+                  t.id === bangToolId
+                    ? {
+                        ...t,
+                        isLoading: loading,
+                        result: text,
+                        autoExpanded: !loading ? true : t.autoExpanded,
+                      }
+                    : t
+                ),
+              }
+            : m
+        )
+      );
+    };
+
+    streaming.setIsLoading(true);
+
+    // Add user message showing the command
+    streaming.setMessages((prev) => [
+      ...prev,
+      {
+        id: `bang-user-${Date.now()}`,
+        role: "user",
+        content: `! ${command}`,
+      },
+    ]);
+
+    // Add assistant message with loading state
+    streaming.setMessages((prev) => [
+      ...prev,
+      {
+        id: bangMsgId,
+        role: "assistant",
+        content: "",
+        toolUses: [
+          {
+            id: bangToolId,
+            name: "Bash",
+            input: { command },
+            isLoading: true,
+            result: "",
+          },
+        ],
+      },
+    ]);
+
+    let output = "";
+
+    try {
+      // Get working directory from session
+      const workingDir = session.workingDir?.() ?? undefined;
+
+      await runStreamingCommand(
+        "/bin/bash",
+        ["-c", command],
+        (event: CommandEvent) => {
+          if (event.type === "stdout" && event.line) {
+            output += event.line + "\n";
+            updateResult(output);
+          } else if (event.type === "stderr" && event.line) {
+            output += event.line + "\n";
+            updateResult(output);
+          } else if (event.type === "completed") {
+            if (!event.success) {
+              const exitInfo = event.exit_code !== undefined
+                ? `Exit code: ${event.exit_code}`
+                : "";
+              output += exitInfo ? `\n${exitInfo}` : "";
+            }
+            updateResult(output.trim() || "(no output)", false);
+          }
+        },
+        workingDir,
+        owner
+      );
+    } catch (e) {
+      output += `\nError: ${e}`;
+      updateResult(output.trim(), false);
+    } finally {
+      streaming.setIsLoading(false);
+    }
+  };
+
+  /**
    * Handle /clear command - clear conversation by generating new session ID
    *
    * This is a hybrid approach that mirrors Claude Code's instant /clear:
@@ -671,13 +769,31 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
   // ==========================================================================
 
   /**
-   * Dispatch a slash command. Returns true if handled locally.
+   * Dispatch a slash command or bang command. Returns true if handled locally.
    */
   const dispatch = async (text: string): Promise<boolean> => {
-    const trimmed = text.trim().toLowerCase();
-    if (!trimmed.startsWith("/")) return false;
+    const trimmed = text.trim();
 
-    const commandName = trimmed.slice(1).split(" ")[0];
+    // Handle ! (bang) commands - execute bash directly
+    if (trimmed.startsWith("!")) {
+      const bashCommand = trimmed.slice(1).trim();
+      if (!bashCommand) return false; // Just "!" with no command
+
+      console.log(`[COMMANDS] Dispatching bash command: ${bashCommand}`);
+      try {
+        await handleBangCommand(bashCommand);
+      } catch (e) {
+        console.error(`[COMMANDS] Handler error for bash command:`, e);
+        streaming.setError(`Bash command error: ${e}`);
+      }
+      return true;
+    }
+
+    // Handle / (slash) commands
+    const lowerTrimmed = trimmed.toLowerCase();
+    if (!lowerTrimmed.startsWith("/")) return false;
+
+    const commandName = lowerTrimmed.slice(1).split(" ")[0];
 
     // Special case: /compact should be sent to Claude CLI, not handled locally
     // The CLI handles compaction natively and sends back status events

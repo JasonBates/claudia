@@ -389,7 +389,7 @@ This flow is **not currently active** since `--permission-prompt-tool stdio` is 
 | `usePermissions` | Permission polling and allow/deny handlers |
 | `useTodoPanel` | Todo panel state with auto-hide timer |
 | `useQuestionPanel` | AskUserQuestion panel state and answer handling |
-| `useLocalCommands` | Local slash commands (/clear, /thinking) and keyboard shortcuts (Alt+T) |
+| `useLocalCommands` | Local commands: slash commands (/clear, /thinking), bang commands (! ls), and keyboard shortcuts (Alt+T) |
 
 ### Backend (src-tauri/src/)
 
@@ -694,9 +694,9 @@ New developers understand the app's capabilities by listing the hooks directory.
 |-------|-------|--------|
 | **Rust backend** | 97 tests | ✅ Complete |
 | **Frontend utilities** | ~133 tests | ✅ Complete |
-| **Frontend hooks** | ~209 tests | ✅ Complete |
+| **Frontend hooks** | ~217 tests | ✅ Complete |
 | **UI Components** | ~96 tests | ✅ Key components covered |
-| **Total** | **542 tests** | All passing |
+| **Total** | **592 tests** | All passing |
 
 ### Running Tests
 
@@ -737,7 +737,7 @@ src/__tests__/
   usePermissions.test.ts      # Permission polling
   useTodoPanel.test.ts        # Todo panel state
   useQuestionPanel.test.ts    # Question panel
-  useLocalCommands.test.ts    # Slash commands (39 tests)
+  useLocalCommands.test.ts    # Slash commands & bang commands (47 tests)
   useSidebar.test.ts          # Session sidebar
 
   # Components
