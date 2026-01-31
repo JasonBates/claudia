@@ -437,11 +437,10 @@ body {
   margin: 0 2px;
 }
 
-/* Settings button in top bar */
-.settings-btn {
+/* Top bar buttons (settings, open project, etc.) */
+.top-bar-btn {
   position: fixed;
   top: 0;
-  right: 32px;
   height: 32px;
   width: 24px;
   display: flex;
@@ -459,16 +458,25 @@ body {
   -webkit-app-region: no-drag;
 }
 
-.settings-btn:hover {
+.top-bar-btn:hover {
   background: var(--bg-secondary);
   color: var(--fg);
+}
+
+/* Position top bar buttons from right edge */
+.top-bar-btn:nth-of-type(1) {
+  right: 56px;  /* Open project button */
+}
+
+.top-bar-btn:nth-of-type(2) {
+  right: 32px;  /* Settings button */
 }
 
 /* Right-aligned Token Indicator */
 .token-indicator {
   position: fixed;
   top: 0;
-  right: 56px;
+  right: 80px;
   height: 32px;
   display: flex;
   align-items: center;
@@ -544,27 +552,34 @@ body {
 
 /* Error Banner */
 .error-banner {
+  position: fixed;
+  top: 32px;  /* Below the top bar */
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 16px;
-  background: rgba(220, 50, 47, 0.15);  /* Solarized red */
-  color: var(--error);
-  font-size: 16px;
+  background: rgba(220, 50, 47, 0.95);  /* Solarized red */
+  color: #fff;
+  font-size: 14px;
+  z-index: 100;
 }
 
 .error-banner button {
   background: transparent;
-  border: 1px solid var(--error);
-  color: var(--error);
-  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  color: #fff;
+  padding: 4px 12px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 .error-banner button:hover {
-  background: rgba(220, 50, 47, 0.25);  /* Solarized red */
+  background: rgba(255, 255, 255, 0.15);
+  border-color: #fff;
 }
 
 /* Message List */
@@ -3102,6 +3117,188 @@ del {
 .settings-reset-btn:hover {
   border-color: var(--fg-muted);
   color: var(--fg);
+}
+
+/* ============================================================================
+   Directory Picker Modal
+   ============================================================================ */
+
+.directory-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 210;
+  animation: fadeIn 0.15s ease;
+}
+
+.directory-picker-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.2s ease;
+}
+
+.directory-picker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.directory-picker-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0;
+}
+
+.directory-picker-close-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--fg-muted);
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.directory-picker-close-btn:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.directory-picker-content {
+  padding: 20px;
+}
+
+.directory-picker-section {
+  margin-bottom: 20px;
+}
+
+.directory-picker-section:last-child {
+  margin-bottom: 0;
+}
+
+.directory-picker-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.directory-picker-path-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+  font-size: 14px;
+  color: var(--fg);
+  background: var(--bg);
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.directory-picker-path-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.directory-picker-path-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.directory-picker-path-btn.selected {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.directory-picker-path-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.directory-picker-path-icon {
+  color: var(--fg-muted);
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.directory-picker-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(220, 50, 47, 0.15);
+  border: 1px solid var(--red);
+  border-radius: 6px;
+  color: var(--red);
+  font-size: 14px;
+}
+
+.directory-picker-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.directory-picker-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.directory-picker-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.directory-picker-btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+}
+
+.directory-picker-btn-secondary:hover:not(:disabled) {
+  border-color: var(--fg-muted);
+  color: var(--fg);
+}
+
+.directory-picker-btn-primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--bg);
+}
+
+.directory-picker-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
 }
 
 /* ============================================================================

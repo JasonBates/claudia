@@ -87,6 +87,7 @@ export function useSession(): UseSessionReturn {
     setSessionActive,
     launchDir,
     workingDir,
+    setWorkingDir,
     sessionInfo,
     setSessionInfo,
     launchSessionId,

@@ -20,6 +20,7 @@ pub fn run() {
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Parse CLI arguments to get optional directory
             let cli_dir = app.cli().matches().ok().and_then(|matches| {
@@ -66,6 +67,8 @@ pub fn run() {
             // Appearance commands
             commands::appearance_cmd::list_color_schemes,
             commands::appearance_cmd::get_scheme_colors,
+            // New window command
+            commands::directory_cmd::open_new_window,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -401,3 +401,19 @@ export async function listColorSchemes(): Promise<ColorSchemeInfo[]> {
 export async function getSchemeColors(name: string): Promise<ColorSchemeColors> {
   return await invoke<ColorSchemeColors>("get_scheme_colors", { name });
 }
+
+// ============================================================================
+// New Window
+// ============================================================================
+
+/**
+ * Open a new Claudia window with the specified directory.
+ * Uses the Rust backend to spawn a new app instance via macOS open command.
+ *
+ * @param directory - The directory to open in the new window
+ */
+export async function openInNewWindow(directory: string): Promise<void> {
+  console.log("[TAURI] Opening new window for directory:", directory);
+  await invoke("open_new_window", { directory });
+  console.log("[TAURI] New window opened");
+}

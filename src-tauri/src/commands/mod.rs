@@ -9,6 +9,7 @@
 
 pub mod appearance_cmd;
 pub mod config_cmd;
+pub mod directory_cmd;
 pub mod messaging;
 pub mod permission;
 pub mod session;
