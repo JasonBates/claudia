@@ -73,7 +73,7 @@ function createMockStreaming(): UseStreamingMessagesReturn {
 function createMockSession(): UseSessionReturn {
   const [sessionActive, setSessionActive] = createSignal(true);
   const [launchDir] = createSignal<string | null>("/launch");
-  const [workingDir] = createSignal<string | null>("/work");
+  const [workingDir, setWorkingDir] = createSignal<string | null>("/work");
   const [sessionInfo, setSessionInfo] = createSignal<SessionInfo>({});
   const [sessionError] = createSignal<string | null>(null);
   const [launchSessionId, setLaunchSessionId] = createSignal<string | null>(null);
@@ -83,6 +83,7 @@ function createMockSession(): UseSessionReturn {
     setSessionActive,
     launchDir,
     workingDir,
+    setWorkingDir,
     sessionInfo,
     setSessionInfo,
     sessionError,

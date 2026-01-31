@@ -16,6 +16,7 @@
     "core:event:allow-listen",
     "process:allow-exit",
     "fs:read-all",
+    "dialog:default",
     "fs:allow-watch",
     {
       "identifier": "fs:scope",

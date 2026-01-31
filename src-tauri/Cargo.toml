@@ -33,4 +33,5 @@ uuid = { version = "1", features = ["v4"] }
 thiserror = "2"
 plist = "1"
 tauri-plugin-window-state = "2"
+tauri-plugin-dialog = "2"
 

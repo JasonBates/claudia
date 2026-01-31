@@ -11,7 +11,7 @@ import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel"
 import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow } from "./lib/tauri";
 import type { ThemeSettings } from "./lib/theme-utils";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode } from "./lib/mode-utils";
@@ -473,6 +473,20 @@ function App() {
     }
   });
 
+  // Handle opening a new window for the current project
+  const handleOpenNewWindow = async () => {
+    const dir = session.workingDir();
+    if (!dir) return;
+
+    console.log("[NEW_WINDOW] Opening new window for:", dir);
+    try {
+      await openInNewWindow(dir);
+    } catch (e) {
+      console.error("[NEW_WINDOW] Failed:", e);
+      store.dispatch(actions.setSessionError(`Failed to open new window: ${e}`));
+    }
+  };
+
   // Reset all session-related state (used when switching/starting sessions)
   const resetSessionState = () => {
     store.dispatch(actions.clearMessages());
@@ -828,7 +842,16 @@ function App() {
         </Show>
 
         <button
-          class="settings-btn"
+          class="top-bar-btn"
+          onClick={handleOpenNewWindow}
+          title="New Window (Alt+N)"
+          aria-label="Open new window"
+        >
+          +
+        </button>
+
+        <button
+          class="top-bar-btn"
           onClick={settings.openSettings}
           title="Settings (Cmd+,)"
           aria-label="Open settings"
