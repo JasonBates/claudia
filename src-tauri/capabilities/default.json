@@ -15,18 +15,13 @@
     "core:event:allow-emit",
     "core:event:allow-listen",
     "process:allow-exit",
-    "fs:read-all",
-    "dialog:default",
+    "fs:allow-read",
     "fs:allow-watch",
+    "dialog:default",
     {
       "identifier": "fs:scope",
       "allow": [
-        { "path": "$HOME/**" },
-        { "path": "$HOME/.claude/**" },
-        { "path": "$DESKTOP/**" },
-        { "path": "$DOWNLOAD/**" },
-        { "path": "$PICTURE/**" },
-        { "path": "$DOCUMENT/**" }
+        { "path": "$HOME/**" }
       ]
     }
   ]
