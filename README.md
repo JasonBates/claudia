@@ -6,6 +6,23 @@ Claudia is an expandable GUI wrapper around [Claude Code](https://github.com/ant
 
 > *Why rebuild the agent runtime when you can wrap it?*
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/subagents.png" width="600" alt="Subagent visualization with parallel tasks" />
+</p>
+<p align="center"><em>Parallel subagents running with real-time status tracking</em></p>
+
+<p align="center">
+  <img src="docs/images/plan-mode.png" width="800" alt="Plan mode with task tracking" />
+</p>
+<p align="center"><em>Plan mode with task panel and detailed plan view</em></p>
+
+<p align="center">
+  <img src="docs/images/interactive-question.png" width="500" alt="Interactive question dialog" />
+</p>
+<p align="center"><em>Interactive questions with multiple choice options</em></p>
+
 ## Why Claudia?
 
 Claude Code CLI is powerful but terminal-focused. Claudia gives you:
