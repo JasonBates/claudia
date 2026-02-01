@@ -14,10 +14,14 @@
 
 import { spawn } from "child_process";
 import * as readline from "readline";
-import { writeFileSync, appendFileSync, existsSync } from "fs";
+import * as fs from "fs";
+import { writeFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { tmpdir, homedir } from "os";
 import { fileURLToPath } from "url";
+
+// Debug logging control - set CLAUDIA_DEBUG=1 to enable
+const DEBUG_ENABLED = process.env.CLAUDIA_DEBUG === "1";
 
 // Find binary in common locations (PATH not available in bundled app)
 function findBinary(name) {
@@ -58,21 +62,41 @@ const __dirname = dirname(__filename);
 
 const LOG_FILE = join(tmpdir(), "claude-bridge-debug.log");
 
-// Debug logging to file
-function debugLog(prefix, data) {
-  const timestamp = new Date().toISOString();
-  const msg = `[${timestamp}] [${prefix}] ${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}\n`;
-  appendFileSync(LOG_FILE, msg);
+// Buffered async debug logging - only active when CLAUDIA_DEBUG=1
+let debugBuffer = [];
+let debugTimer = null;
+
+function flushDebugLog() {
+  if (debugBuffer.length > 0) {
+    fs.appendFile(LOG_FILE, debugBuffer.join(""), () => {});
+    debugBuffer = [];
+  }
+  debugTimer = null;
 }
 
-// Clear log on start
-writeFileSync(LOG_FILE, `=== Bridge started at ${new Date().toISOString()} ===\n`);
+function debugLog(prefix, data) {
+  if (!DEBUG_ENABLED) return;
 
-// Unbuffered stdout write
+  const timestamp = new Date().toISOString();
+  const msg = `[${timestamp}] [${prefix}] ${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}\n`;
+  debugBuffer.push(msg);
+
+  // Flush periodically, not on every call
+  if (!debugTimer) {
+    debugTimer = setTimeout(flushDebugLog, 100);
+  }
+}
+
+// Clear log on start (only if debug enabled)
+if (DEBUG_ENABLED) {
+  writeFileSync(LOG_FILE, `=== Bridge started at ${new Date().toISOString()} ===\n`);
+}
+
+// Non-blocking stdout write
 function sendEvent(type, data = {}) {
   const msg = JSON.stringify({ type, ...data }) + '\n';
   debugLog("SEND", { type, ...data });
-  writeFileSync(1, msg);
+  process.stdout.write(msg);  // Non-blocking, with backpressure handling
 }
 
 async function main() {
@@ -102,6 +126,22 @@ async function main() {
   let activeSubagents = new Map();  // tool_use_id -> subagentInfo
   // No stack - use Map ordering for oldest-first attribution
   let taskInputBuffer = "";         // Accumulate JSON for Task tool input parsing
+
+  // Buffer limits to prevent unbounded memory growth
+  const MAX_TASK_INPUT_SIZE = 1024 * 1024;  // 1MB limit for task input buffer
+  const MAX_PENDING_MESSAGES = 100;          // Max queued messages during respawn
+  const SUBAGENT_TTL_MS = 5 * 60 * 1000;     // 5 minutes TTL for stale subagents
+
+  // Periodic cleanup of stale subagents
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, info] of activeSubagents) {
+      if (now - info.startTime > SUBAGENT_TTL_MS) {
+        debugLog("CLEANUP", `Removing stale subagent: ${id}`);
+        activeSubagents.delete(id);
+      }
+    }
+  }, 60000);
 
   // Build Claude args - optionally resume a session
   function buildClaudeArgs(resumeSessionId = null) {
@@ -224,7 +264,10 @@ async function main() {
           if (currentToolName === "Task" && currentToolId) {
             const subagent = activeSubagents.get(currentToolId);
             if (subagent && subagent.status === "starting") {
-              taskInputBuffer += event.delta.partial_json;
+              // Enforce buffer size limit
+              if (taskInputBuffer.length < MAX_TASK_INPUT_SIZE) {
+                taskInputBuffer += event.delta.partial_json;
+              }
               // Try to parse accumulated JSON to extract subagent details
               try {
                 const parsed = JSON.parse(taskInputBuffer);
@@ -705,6 +748,11 @@ async function main() {
     // a message first before it outputs the init event
     if (!claude || !claude.stdin || !claude.stdin.writable) {
       debugLog("QUEUE", "Queueing message - Claude process not ready");
+      // Enforce queue limit - drop oldest if full
+      if (pendingMessages.length >= MAX_PENDING_MESSAGES) {
+        pendingMessages.shift();
+        debugLog("QUEUE", "Queue full, dropped oldest message");
+      }
       pendingMessages.push(msg);
     } else {
       claude.stdin.write(msg);
@@ -843,6 +891,97 @@ async function main() {
         }
       } catch (e) {
         // Not JSON, treat as regular message
+      }
+    }
+
+    // Handle JSON-encoded messages from Rust (preserves newlines)
+    // Format: __MSG__{"text":"..."}
+    if (input.startsWith("__MSG__")) {
+      try {
+        const jsonData = JSON.parse(input.slice(7)); // Remove "__MSG__" prefix
+        const text = jsonData.text;
+        debugLog("MSG_DECODED", `Decoded message with ${text.split('\n').length} lines`);
+
+        // Check if the decoded text is a JSON control message (control_response, etc.)
+        // These need to be handled specially, not sent as user messages
+        try {
+          const innerParsed = JSON.parse(text);
+          if (innerParsed.type === "control_response") {
+            debugLog("CONTROL_RESPONSE_FROM_MSG", innerParsed);
+            // Handle control_response - format for Claude SDK
+            const permissionResponse = innerParsed.allow
+              ? { behavior: "allow", updatedInput: innerParsed.tool_input || {} }
+              : { behavior: "deny", message: innerParsed.message || "User denied permission" };
+
+            const msg = JSON.stringify({
+              type: "control_response",
+              response: {
+                subtype: "success",
+                request_id: innerParsed.request_id,
+                response: permissionResponse
+              }
+            }) + "\n";
+
+            debugLog("CLAUDE_STDIN_FROM_MSG", msg);
+            if (claude && claude.stdin.writable) {
+              claude.stdin.write(msg);
+            }
+            return;
+          }
+
+          if (innerParsed.type === "question_response") {
+            debugLog("QUESTION_RESPONSE_FROM_MSG", innerParsed);
+            const msg = JSON.stringify({
+              type: "control_response",
+              response: {
+                subtype: "success",
+                request_id: innerParsed.request_id,
+                response: {
+                  behavior: "allow",
+                  updatedInput: {
+                    questions: innerParsed.questions,
+                    answers: innerParsed.answers
+                  }
+                }
+              }
+            }) + "\n";
+
+            if (claude && claude.stdin.writable) {
+              claude.stdin.write(msg);
+            }
+            return;
+          }
+
+          if (innerParsed.type === "question_cancel") {
+            debugLog("QUESTION_CANCEL_FROM_MSG", innerParsed);
+            const msg = JSON.stringify({
+              type: "control_response",
+              response: {
+                subtype: "success",
+                request_id: innerParsed.request_id,
+                response: {
+                  behavior: "deny",
+                  message: "User cancelled the question"
+                }
+              }
+            }) + "\n";
+
+            if (claude && claude.stdin.writable) {
+              claude.stdin.write(msg);
+            }
+            return;
+          }
+          // Other JSON messages can fall through to be sent as user messages
+        } catch (innerE) {
+          // Not JSON, continue to send as user message
+        }
+
+        sendEvent("processing", { prompt: text });
+        sendUserMessage(text);
+        return;
+      } catch (e) {
+        debugLog("MSG_DECODE_ERROR", `Failed to parse: ${e.message}`);
+        // Fall through to treat as regular input
       }
     }
 

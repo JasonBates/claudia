@@ -9,12 +9,23 @@ use tokio::sync::mpsc;
 use crate::events::ClaudeEvent;
 
 fn rust_debug_log(prefix: &str, msg: &str) {
+    // Gate debug logging behind CLAUDIA_DEBUG=1 environment variable
+    static DEBUG_ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let enabled = *DEBUG_ENABLED.get_or_init(|| {
+        std::env::var("CLAUDIA_DEBUG").map(|v| v == "1").unwrap_or(false)
+    });
+
+    if !enabled {
+        return;
+    }
+
     use std::io::Write as IoWrite;
     let log_path = std::env::temp_dir().join("claude-rust-debug.log");
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_path) {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let _ = writeln!(file, "[{}] [{}] {}", timestamp, prefix, msg);
     }
+    #[cfg(debug_assertions)]
     eprintln!("[{}] {}", prefix, msg);
 }
 
@@ -201,9 +212,11 @@ impl ClaudeProcess {
             .env("FORCE_COLOR", "0")
             // Pass app session ID for multi-instance permission file safety
             .env("CLAUDIA_SESSION_ID", app_session_id)
+            // Pass debug flag to bridge if set
+            .env("CLAUDIA_DEBUG", std::env::var("CLAUDIA_DEBUG").unwrap_or_default())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::inherit());  // Inherit stderr to avoid deadlock if bridge writes to it
 
         // Pass resume session ID via environment variable
         if let Some(session_id) = resume_session_id {
@@ -240,17 +253,10 @@ impl ClaudeProcess {
     }
 
     fn read_output(stdout: ChildStdout, tx: mpsc::Sender<ClaudeEvent>) {
-        // Clear log on start
-        let log_path = std::env::temp_dir().join("claude-rust-debug.log");
-        let _ = std::fs::write(
-            &log_path,
-            format!("=== Rust reader started at {} ===\n", chrono::Local::now()),
-        );
-
         rust_debug_log("READER", "Starting read_output loop");
 
-        // Use small buffer to reduce latency
-        let reader = BufReader::with_capacity(64, stdout);
+        // Use 1KB buffer - balance between latency and syscall overhead
+        let reader = BufReader::with_capacity(1024, stdout);
 
         for line in reader.lines() {
             let line = match line {
@@ -680,14 +686,16 @@ impl ClaudeProcess {
             format!("Lock error: {}", e)
         })?;
 
-        // Send plain text prompt - the bridge handles JSON encoding
-        stdin.write_all(message.as_bytes()).map_err(|e| {
+        // JSON-encode the message to preserve newlines
+        // The bridge uses readline which splits on newlines, so we must encode
+        // Format: __MSG__<json> where json is {"text":"..."} with escaped newlines
+        let encoded = serde_json::json!({ "text": message });
+        let prefixed = format!("__MSG__{}\n", encoded);
+
+        stdin.write_all(prefixed.as_bytes()).map_err(|e| {
             rust_debug_log("SEND_MSG", &format!("Write error: {}", e));
             format!("Write error: {}", e)
         })?;
-        stdin
-            .write_all(b"\n")
-            .map_err(|e| format!("Write error: {}", e))?;
         stdin.flush().map_err(|e| format!("Flush error: {}", e))?;
 
         rust_debug_log("SEND_MSG", "Message sent and flushed");

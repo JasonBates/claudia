@@ -130,6 +130,18 @@ export const StoreProvider: ParentComponent = (props) => {
    */
   const dispatch = (action: Action): void => {
     batch(() => {
+      // Track tool block index when adding tools for O(1) updates
+      if (action.type === "ADD_TOOL") {
+        // After reducer runs, the new block will be at the end
+        // Set the index BEFORE reconcile so we know where it will be
+        refs.lastToolBlockIndexRef.current = state.streaming.blocks.length;
+      }
+
+      // Clear tool index when streaming finishes
+      if (action.type === "FINISH_STREAMING" || action.type === "RESET_STREAMING") {
+        refs.lastToolBlockIndexRef.current = null;
+      }
+
       // Handle tool-related actions with path-based updates for proper reactivity
       // We REPLACE entire objects to ensure <For> sees the change
       if (action.type === "UPDATE_TOOL" || action.type === "UPDATE_TOOL_SUBAGENT" || action.type === "UPDATE_LAST_TOOL_INPUT") {
@@ -144,7 +156,21 @@ export const StoreProvider: ParentComponent = (props) => {
           const lastTool = tools[lastToolIdx];
           setState("tools", "current", lastToolIdx, { ...lastTool, input: parsedInput });
 
-          // Update last tool_use block in streaming.blocks - REPLACE the block
+          // Use tracked index for O(1) update instead of O(n) search
+          const blockIdx = refs.lastToolBlockIndexRef.current;
+          if (blockIdx !== null && blockIdx < state.streaming.blocks.length) {
+            const block = state.streaming.blocks[blockIdx];
+            if (block.type === "tool_use") {
+              const toolBlock = block as { type: "tool_use"; tool: ToolUse };
+              setState("streaming", "blocks", blockIdx, {
+                type: "tool_use" as const,
+                tool: { ...toolBlock.tool, input: parsedInput }
+              });
+              return;
+            }
+          }
+
+          // Fallback to O(n) search if index is stale (shouldn't happen normally)
           for (let i = state.streaming.blocks.length - 1; i >= 0; i--) {
             const block = state.streaming.blocks[i];
             if (block.type === "tool_use") {
