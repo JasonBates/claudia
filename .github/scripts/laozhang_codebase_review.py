@@ -10,13 +10,17 @@ This script:
 
 import os
 import sys
+import time
 from pathlib import Path
 from openai import OpenAI
 from github import Github
+import github
 
 # Configuration
-MAX_CONTENT_SIZE = 150_000  # Token-friendly limit
-MODEL = os.getenv("OPENAI_MODEL", "gpt-5.2-codex-xhigh")
+MAX_CONTENT_SIZE = 100_000  # Reduced for reliability
+MODEL = os.getenv("OPENAI_MODEL", "gpt-5.2-codex-medium")
+TIMEOUT = 180  # 3 minute timeout
+MAX_RETRIES = 3
 
 # File patterns to include
 INCLUDE_PATTERNS = [
@@ -115,17 +119,28 @@ def format_codebase(files: list[tuple[str, str]], max_size: int) -> str:
 
 
 def review_codebase(client: OpenAI, content: str) -> str:
-    """Send the codebase to LaoZhang for review."""
+    """Send the codebase to LaoZhang for review with retry logic."""
     prompt = REVIEW_PROMPT.format(content=content)
 
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=4000,
-        temperature=0.3,
-    )
-
-    return response.choices[0].message.content
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            print(f"  Attempt {attempt}/{MAX_RETRIES}...")
+            response = client.chat.completions.create(
+                model=MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=4000,
+                temperature=0.3,
+                timeout=TIMEOUT,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"  Attempt {attempt} failed: {type(e).__name__}: {e}")
+            if attempt < MAX_RETRIES:
+                wait_time = 2 ** attempt  # Exponential backoff: 2, 4, 8 seconds
+                print(f"  Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                raise
 
 
 def create_review_issue(gh: Github, repo_name: str, review_text: str):
@@ -154,10 +169,11 @@ def main():
         sys.exit(1)
 
     # Initialize clients
-    gh = Github(os.environ["GITHUB_TOKEN"])
+    gh = Github(auth=github.Auth.Token(os.environ["GITHUB_TOKEN"]))
     openai_client = OpenAI(
         api_key=os.environ["OPENAI_API_KEY"],
         base_url=os.getenv("OPENAI_BASE_URL", "https://api.laozhang.ai/v1"),
+        timeout=TIMEOUT,
     )
 
     repo_name = os.environ["GITHUB_REPOSITORY"]
