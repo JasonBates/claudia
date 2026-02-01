@@ -15,6 +15,7 @@
  * See claude-event-normalizer.ts for the normalization logic.
  */
 
+import { batch } from "solid-js";
 import type {
   NormalizedEvent,
   NormalizedStatusEvent,
@@ -704,70 +705,73 @@ export function handleSubagentEnd(event: NormalizedSubagentEndEvent, ctx: EventC
  */
 export function createEventDispatcher(ctx: EventContext) {
   return (event: NormalizedEvent): void => {
-    switch (event.type) {
-      case "status":
-        handleStatus(event, ctx);
-        break;
-      case "ready":
-        handleReady(event, ctx);
-        break;
-      case "processing":
-        // User message being processed - no action needed
-        break;
-      case "thinking_start":
-        handleThinkingStart(ctx);
-        break;
-      case "thinking_delta":
-        handleThinkingDelta(event, ctx);
-        break;
-      case "text_delta":
-        handleTextDelta(event, ctx);
-        break;
-      case "tool_start":
-        handleToolStart(event, ctx);
-        break;
-      case "tool_input":
-        handleToolInput(event, ctx);
-        break;
-      case "permission_request":
-        handlePermissionRequest(event, ctx);
-        break;
-      case "ask_user_question":
-        handleAskUserQuestion(event, ctx);
-        break;
-      case "tool_pending":
-        handleToolPending(ctx);
-        break;
-      case "tool_result":
-        handleToolResult(event, ctx);
-        break;
-      case "block_end":
-        // Content block ended - no action needed
-        break;
-      case "context_update":
-        handleContextUpdate(event, ctx);
-        break;
-      case "result":
-        handleResult(event, ctx);
-        break;
-      case "done":
-        handleDone(ctx);
-        break;
-      case "closed":
-        handleClosed(event, ctx);
-        break;
-      case "error":
-        handleError(event, ctx);
-        break;
-      case "subagent_start":
-        handleSubagentStart(event, ctx);
-        break;
-      case "subagent_progress":
-        handleSubagentProgress(event, ctx);
-        break;
-      case "subagent_end":
-        handleSubagentEnd(event, ctx);
-        break;
-    }
+    // Batch all dispatches within a single event handler to minimize re-renders
+    batch(() => {
+      switch (event.type) {
+        case "status":
+          handleStatus(event, ctx);
+          break;
+        case "ready":
+          handleReady(event, ctx);
+          break;
+        case "processing":
+          // User message being processed - no action needed
+          break;
+        case "thinking_start":
+          handleThinkingStart(ctx);
+          break;
+        case "thinking_delta":
+          handleThinkingDelta(event, ctx);
+          break;
+        case "text_delta":
+          handleTextDelta(event, ctx);
+          break;
+        case "tool_start":
+          handleToolStart(event, ctx);
+          break;
+        case "tool_input":
+          handleToolInput(event, ctx);
+          break;
+        case "permission_request":
+          handlePermissionRequest(event, ctx);
+          break;
+        case "ask_user_question":
+          handleAskUserQuestion(event, ctx);
+          break;
+        case "tool_pending":
+          handleToolPending(ctx);
+          break;
+        case "tool_result":
+          handleToolResult(event, ctx);
+          break;
+        case "block_end":
+          // Content block ended - no action needed
+          break;
+        case "context_update":
+          handleContextUpdate(event, ctx);
+          break;
+        case "result":
+          handleResult(event, ctx);
+          break;
+        case "done":
+          handleDone(ctx);
+          break;
+        case "closed":
+          handleClosed(event, ctx);
+          break;
+        case "error":
+          handleError(event, ctx);
+          break;
+        case "subagent_start":
+          handleSubagentStart(event, ctx);
+          break;
+        case "subagent_progress":
+          handleSubagentProgress(event, ctx);
+          break;
+        case "subagent_end":
+          handleSubagentEnd(event, ctx);
+          break;
+      }
+    });
   };
 }

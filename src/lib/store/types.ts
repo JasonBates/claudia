@@ -33,6 +33,8 @@ export interface StreamingRefs {
   isCollectingQuestionRef: { current: boolean };
   /** Pending tool results for race condition handling (result before tool_start) */
   pendingResultsRef: { current: Map<string, { result: string; isError: boolean }> };
+  /** Index of current tool block in streaming.blocks for O(1) updates */
+  lastToolBlockIndexRef: { current: number | null };
 }
 
 /**
