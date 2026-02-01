@@ -4,7 +4,7 @@ use tauri::{ipc::Channel, State};
 use tokio::time::{timeout, Duration};
 
 use super::{cmd_debug_log, AppState};
-use crate::claude_process::ClaudeProcess;
+use crate::claude_process::{spawn_claude_process, ClaudeReceiver};
 use crate::events::ClaudeEvent;
 
 // =============================================================================
@@ -90,36 +90,41 @@ pub fn calculate_timeouts(
 }
 
 /// Send a message to Claude and stream the response
+/// Uses split sender/receiver locks for responsive control commands (permissions, interrupts)
 #[tauri::command]
 pub async fn send_message(
     message: String,
     channel: Channel<ClaudeEvent>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    cmd_debug_log(
-        "SEND",
-        &format!("Message: {}", &message[..message.len().min(50)]),
-    );
+    // Safe UTF-8 truncation for logging
+    let msg_preview: String = message.chars().take(50).collect();
+    cmd_debug_log("SEND", &format!("Message: {}", msg_preview));
 
-    // Stream responses - clone Arc for streaming loop
-    let process_arc = state.process.clone();
+    // Clone Arcs for the streaming loop
+    let receiver_arc = state.receiver.clone();
+    let sender_arc = state.sender.clone();
+    let handle_arc = state.process_handle.clone();
 
     // Drain any stale events from previous response before sending new message
     // Forward Status events - they're important feedback (e.g., "Compacted")
     // If we find a Closed event, the bridge died after previous response - restart it
     let mut needs_restart = false;
     {
-        let mut process_guard = process_arc.lock().await;
-        if let Some(process) = process_guard.as_mut() {
+        let mut receiver_guard = receiver_arc.lock().await;
+        if let Some(receiver) = receiver_guard.as_mut() {
             cmd_debug_log("DRAIN", "Draining stale events...");
             let mut drained = 0;
             let mut forwarded = 0;
             while let Ok(Some(event)) =
-                timeout(Duration::from_millis(10), process.recv_event()).await
+                timeout(Duration::from_millis(10), receiver.recv_event()).await
             {
                 // Forward Status and Ready events to frontend instead of draining
                 // Ready contains session metadata (sessionId, model) needed for resume
-                if matches!(&event, ClaudeEvent::Status { .. } | ClaudeEvent::Ready { .. }) {
+                if matches!(
+                    &event,
+                    ClaudeEvent::Status { .. } | ClaudeEvent::Ready { .. }
+                ) {
                     cmd_debug_log("DRAIN", &format!("Forwarding event: {:?}", event));
                     let _ = channel.send(event);
                     forwarded += 1;
@@ -138,14 +143,8 @@ pub async fn send_message(
             if drained > 0 || forwarded > 0 {
                 cmd_debug_log(
                     "DRAIN",
-                    &format!(
-                        "Drained {} events, forwarded {} events",
-                        drained, forwarded
-                    ),
+                    &format!("Drained {} events, forwarded {} events", drained, forwarded),
                 );
-            }
-            if needs_restart {
-                *process_guard = None;
             }
         }
     }
@@ -153,18 +152,34 @@ pub async fn send_message(
     // Restart session if bridge died (Closed event found during drain)
     if needs_restart {
         cmd_debug_log("RESTART", "Restarting session before sending message");
+
+        // Clear all state atomically
+        {
+            let mut sender_guard = sender_arc.lock().await;
+            let mut receiver_guard = receiver_arc.lock().await;
+            let mut handle_guard = handle_arc.lock().await;
+            *sender_guard = None;
+            *receiver_guard = None;
+            *handle_guard = None;
+        }
+
         let working_dir = std::path::PathBuf::from(&state.launch_dir);
         let app_session_id = state.session_id.clone();
 
-        let new_process = tokio::task::spawn_blocking(move || {
-            ClaudeProcess::spawn(&working_dir, &app_session_id)
+        let (new_sender, new_receiver, new_handle) = tokio::task::spawn_blocking(move || {
+            spawn_claude_process(&working_dir, &app_session_id)
         })
         .await
         .map_err(|e| format!("Restart task error: {}", e))??;
 
+        // Store new components
         {
-            let mut process_guard = process_arc.lock().await;
-            *process_guard = Some(new_process);
+            let mut sender_guard = sender_arc.lock().await;
+            let mut receiver_guard = receiver_arc.lock().await;
+            let mut handle_guard = handle_arc.lock().await;
+            *sender_guard = Some(new_sender);
+            *receiver_guard = Some(new_receiver);
+            *handle_guard = Some(new_handle);
         }
 
         // Wait for Ready event before sending message (bridge has warmup sequence)
@@ -172,9 +187,9 @@ pub async fn send_message(
         let mut ready_received = false;
         for _ in 0..60 {
             // 30 second timeout (60 * 500ms)
-            let mut process_guard = process_arc.lock().await;
-            if let Some(process) = process_guard.as_mut() {
-                match timeout(Duration::from_millis(500), process.recv_event()).await {
+            let mut receiver_guard = receiver_arc.lock().await;
+            if let Some(receiver) = receiver_guard.as_mut() {
+                match timeout(Duration::from_millis(500), receiver.recv_event()).await {
                     Ok(Some(event)) => {
                         cmd_debug_log("RESTART", &format!("Event during warmup: {:?}", event));
                         if matches!(&event, ClaudeEvent::Ready { .. }) {
@@ -202,18 +217,21 @@ pub async fn send_message(
         }
     }
 
-    // Send message (brief lock)
+    // Send message (brief sender lock - does not block receiver/streaming)
     {
-        let mut process_guard = state.process.lock().await;
-        let process = process_guard.as_mut().ok_or("No active session")?;
+        let mut sender_guard = state.sender.lock().await;
+        let sender = sender_guard.as_mut().ok_or("No active session")?;
 
-        cmd_debug_log("SEND", "Got process, sending message");
-        process.send_message(&message)?;
+        cmd_debug_log("SEND", "Got sender, sending message");
+        sender.send_message(&message)?;
         cmd_debug_log("SEND", "Message sent to process");
     }
 
     // Read events with timeout to detect end of response
     // Note: Claude can take several seconds to start streaming, especially on first request
+    // IMPORTANT: This loop uses the RECEIVER lock, which is separate from the SENDER lock.
+    // This means permission responses and interrupts can acquire the sender lock instantly
+    // without waiting for streaming to complete.
     let mut idle_count = 0;
     let mut event_count = 0;
     let mut got_first_content = false;
@@ -226,11 +244,12 @@ pub async fn send_message(
     cmd_debug_log("LOOP", "Starting event receive loop");
 
     loop {
-        let mut process_guard = process_arc.lock().await;
-        let process: &mut ClaudeProcess = match process_guard.as_mut() {
-            Some(p) => p,
+        // Use receiver lock - independent of sender lock for responsive control commands
+        let mut receiver_guard = receiver_arc.lock().await;
+        let receiver: &mut ClaudeReceiver = match receiver_guard.as_mut() {
+            Some(r) => r,
             None => {
-                cmd_debug_log("LOOP", "Process is None, breaking");
+                cmd_debug_log("LOOP", "Receiver is None, breaking");
                 break;
             }
         };
@@ -248,7 +267,12 @@ pub async fn send_message(
         );
 
         // Try to receive with timeout
-        match timeout(Duration::from_millis(current_timeout), process.recv_event()).await {
+        match timeout(
+            Duration::from_millis(current_timeout),
+            receiver.recv_event(),
+        )
+        .await
+        {
             Ok(Some(event)) => {
                 event_count += 1;
                 idle_count = 0;
@@ -310,7 +334,10 @@ pub async fn send_message(
                         pending_permission_count -= 1;
                         cmd_debug_log(
                             "PERMISSION",
-                            &format!("Permission resolved - pending: {} permissions", pending_permission_count),
+                            &format!(
+                                "Permission resolved - pending: {} permissions",
+                                pending_permission_count
+                            ),
                         );
                     }
                     // Only decrement for results with tool_use_id (not duplicates)
@@ -393,22 +420,23 @@ pub async fn send_message(
                     }
                 }
 
-                // For permission requests, track pending count and release lock to allow response
-                // The frontend needs to call send_permission_response which acquires the same lock
+                // For permission requests, track pending count
+                // NOTE: With split locks, sender is now independent of receiver, so
+                // send_permission_response can acquire sender lock instantly without waiting
+                // for this streaming loop to release the receiver lock.
                 if is_permission_request {
                     pending_permission_count += 1;
                     cmd_debug_log(
-                        "PERMISSION_YIELD",
+                        "PERMISSION",
                         &format!(
-                            "Permission requested - pending: {} permissions, releasing lock...",
+                            "Permission requested - pending: {} permissions (sender lock is independent)",
                             pending_permission_count
                         ),
                     );
-                    drop(process_guard);
-                    // Give frontend time to process and send the response
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    // Brief yield to let frontend process the event, but no need to
+                    // release receiver lock since sender is independent
+                    drop(receiver_guard);
                     tokio::task::yield_now().await;
-                    // Continue to next iteration which will re-acquire the lock
                     continue;
                 }
 
@@ -420,12 +448,12 @@ pub async fn send_message(
                     // Collect any trailing events that arrived just before/after Done
                     // (Status events from /compact can arrive within ms of Done)
                     // Note: If Closed arrives here, the drain phase of next send_message will handle restart
-                    drop(process_guard); // Release lock for trailing event collection
+                    drop(receiver_guard); // Release lock for trailing event collection
                     let mut trailing_count = 0;
                     for _ in 0..5 {
-                        let mut pg = process_arc.lock().await;
-                        if let Some(p) = pg.as_mut() {
-                            match timeout(Duration::from_millis(20), p.recv_event()).await {
+                        let mut rg = receiver_arc.lock().await;
+                        if let Some(r) = rg.as_mut() {
+                            match timeout(Duration::from_millis(20), r.recv_event()).await {
                                 Ok(Some(trailing_event)) => {
                                     trailing_count += 1;
                                     cmd_debug_log(

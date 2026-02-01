@@ -228,7 +228,10 @@ export function conversationReducer(
     // Tool Actions
     // =========================================================================
     case "ADD_TOOL": {
-      const newTool = action.payload;
+      const newTool = {
+        ...action.payload,
+        startedAt: Date.now(),  // Record when tool started for elapsed time
+      };
       return {
         ...state,
         tools: {
@@ -244,9 +247,14 @@ export function conversationReducer(
     case "UPDATE_TOOL": {
       const { id, updates } = action.payload;
 
+      // If result is being set, also record completedAt timestamp
+      const finalUpdates = updates.result !== undefined
+        ? { ...updates, completedAt: Date.now() }
+        : updates;
+
       // Update in tools.current
       const updatedTools = state.tools.current.map((tool) =>
-        tool.id === id ? { ...tool, ...updates } : tool
+        tool.id === id ? { ...tool, ...finalUpdates } : tool
       );
 
       // Update in streaming blocks
@@ -255,7 +263,7 @@ export function conversationReducer(
           const toolBlock = block as { type: "tool_use"; tool: ToolUse };
           return {
             type: "tool_use" as const,
-            tool: { ...toolBlock.tool, ...updates },
+            tool: { ...toolBlock.tool, ...finalUpdates },
           };
         }
         return block;

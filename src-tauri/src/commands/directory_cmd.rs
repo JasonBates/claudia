@@ -24,13 +24,12 @@ pub async fn open_new_window(directory: String) -> Result<(), String> {
     }
 
     // Get the current executable path
-    let exe_path = std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
+    let exe_path =
+        std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
     cmd_debug_log("NEW_WINDOW", &format!("Current executable: {:?}", exe_path));
 
     // Spawn new instance by running the executable directly
-    let result = Command::new(&exe_path)
-        .arg(&directory)
-        .spawn();
+    let result = Command::new(&exe_path).arg(&directory).spawn();
 
     match result {
         Ok(_) => {

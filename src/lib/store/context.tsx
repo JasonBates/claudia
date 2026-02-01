@@ -134,12 +134,17 @@ export const StoreProvider: ParentComponent = (props) => {
       if (action.type === "ADD_TOOL") {
         // After reducer runs, the new block will be at the end
         // Set the index BEFORE reconcile so we know where it will be
-        refs.lastToolBlockIndexRef.current = state.streaming.blocks.length;
+        const blockIndex = state.streaming.blocks.length;
+        refs.lastToolBlockIndexRef.current = blockIndex;
+        // Also add to the ID -> index map for O(1) lookups in UPDATE_TOOL
+        const toolId = (action.payload as { id: string }).id;
+        refs.toolIdToBlockIndexRef.current.set(toolId, blockIndex);
       }
 
-      // Clear tool index when streaming finishes
+      // Clear tool indices when streaming finishes
       if (action.type === "FINISH_STREAMING" || action.type === "RESET_STREAMING") {
         refs.lastToolBlockIndexRef.current = null;
+        refs.toolIdToBlockIndexRef.current.clear();
       }
 
       // Handle tool-related actions with path-based updates for proper reactivity
@@ -190,14 +195,34 @@ export const StoreProvider: ParentComponent = (props) => {
         if (action.type === "UPDATE_TOOL") {
           const { updates } = action.payload as { id: string; updates: Partial<ToolUse> };
 
-          // Find indices first - early return if tool doesn't exist anywhere
+          // If result is being set, also record completedAt timestamp
+          const finalUpdates = updates.result !== undefined
+            ? { ...updates, completedAt: Date.now() }
+            : updates;
+
+          // O(1) lookup using Map, fallback to O(n) search if not in Map
           const toolIdx = state.tools.current.findIndex(t => t.id === id);
-          let blockIdx = -1;
-          for (let i = 0; i < state.streaming.blocks.length; i++) {
-            const block = state.streaming.blocks[i];
-            if (block.type === "tool_use" && (block as { type: "tool_use"; tool: ToolUse }).tool.id === id) {
-              blockIdx = i;
-              break;
+          let blockIdx = refs.toolIdToBlockIndexRef.current.get(id) ?? -1;
+
+          // Validate the cached index is still correct (defensive check)
+          if (blockIdx !== -1) {
+            const block = state.streaming.blocks[blockIdx];
+            if (!block || block.type !== "tool_use" || (block as { type: "tool_use"; tool: ToolUse }).tool.id !== id) {
+              // Cache is stale, clear it and fall back to O(n) search
+              blockIdx = -1;
+            }
+          }
+
+          // Fallback to O(n) search if Map lookup failed
+          if (blockIdx === -1) {
+            for (let i = 0; i < state.streaming.blocks.length; i++) {
+              const block = state.streaming.blocks[i];
+              if (block.type === "tool_use" && (block as { type: "tool_use"; tool: ToolUse }).tool.id === id) {
+                blockIdx = i;
+                // Repopulate cache so subsequent updates are O(1)
+                refs.toolIdToBlockIndexRef.current.set(id, blockIdx);
+                break;
+              }
             }
           }
 
@@ -207,7 +232,7 @@ export const StoreProvider: ParentComponent = (props) => {
           // Update tools.current if found
           if (toolIdx !== -1) {
             const tool = state.tools.current[toolIdx];
-            setState("tools", "current", toolIdx, { ...tool, ...updates });
+            setState("tools", "current", toolIdx, { ...tool, ...finalUpdates });
           }
 
           // Update streaming.blocks if found (this is what the UI reads)
@@ -215,7 +240,7 @@ export const StoreProvider: ParentComponent = (props) => {
             const toolBlock = state.streaming.blocks[blockIdx] as { type: "tool_use"; tool: ToolUse };
             setState("streaming", "blocks", blockIdx, {
               type: "tool_use" as const,
-              tool: { ...toolBlock.tool, ...updates }
+              tool: { ...toolBlock.tool, ...finalUpdates }
             });
           }
         } else if (action.type === "UPDATE_TOOL_SUBAGENT") {
@@ -224,13 +249,27 @@ export const StoreProvider: ParentComponent = (props) => {
           // Find in tools.current (active streaming)
           const toolIdx = state.tools.current.findIndex(t => t.id === id);
 
-          // Find in streaming.blocks (active streaming)
-          let blockIdx = -1;
-          for (let i = 0; i < state.streaming.blocks.length; i++) {
-            const block = state.streaming.blocks[i];
-            if (block.type === "tool_use" && (block as { type: "tool_use"; tool: ToolUse }).tool.id === id) {
-              blockIdx = i;
-              break;
+          // O(1) lookup using Map for streaming.blocks
+          let blockIdx = refs.toolIdToBlockIndexRef.current.get(id) ?? -1;
+
+          // Validate the cached index is still correct (defensive check)
+          if (blockIdx !== -1) {
+            const block = state.streaming.blocks[blockIdx];
+            if (!block || block.type !== "tool_use" || (block as { type: "tool_use"; tool: ToolUse }).tool.id !== id) {
+              blockIdx = -1;
+            }
+          }
+
+          // Fallback to O(n) search if Map lookup failed
+          if (blockIdx === -1) {
+            for (let i = 0; i < state.streaming.blocks.length; i++) {
+              const block = state.streaming.blocks[i];
+              if (block.type === "tool_use" && (block as { type: "tool_use"; tool: ToolUse }).tool.id === id) {
+                blockIdx = i;
+                // Repopulate cache so subsequent updates are O(1)
+                refs.toolIdToBlockIndexRef.current.set(id, blockIdx);
+                break;
+              }
             }
           }
 

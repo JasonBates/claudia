@@ -46,6 +46,8 @@ interface ToolResultProps {
   subagent?: SubagentInfo; // Subagent state (only for Task tools)
   grouped?: boolean;       // When true, renders without header (for grouped Task tools)
   planning?: PlanningState; // Planning state (only for Planning tools)
+  startedAt?: number;      // Timestamp when tool started
+  completedAt?: number;    // Timestamp when result received
 }
 
 // Special renderer for TodoWrite
@@ -168,6 +170,24 @@ const ToolResult: Component<ToolResultProps> = (props) => {
   // Track user's explicit override (null = no override, use autoExpanded)
   const [userOverride, setUserOverride] = createSignal<boolean | null>(null);
   const [showImageModal, setShowImageModal] = createSignal(false);
+
+  // Elapsed time - updates every second via globalTick
+  const elapsed = () => {
+    if (!props.startedAt) return null;
+    if (props.completedAt) {
+      // Show final duration
+      return props.completedAt - props.startedAt;
+    }
+    // Show live elapsed time while loading
+    return globalTick() - props.startedAt;
+  };
+
+  // Format elapsed time for display
+  const elapsedText = () => {
+    const ms = elapsed();
+    if (ms === null) return null;
+    return formatDuration(ms);
+  };
 
   // Check if result contains image data (from Read tool on image files)
   const imageData = createMemo(() => {
@@ -372,6 +392,9 @@ const ToolResult: Component<ToolResultProps> = (props) => {
       <div class="tool-header">
         <span class="tool-icon" classList={{ complete: !props.isLoading }}>{props.isLoading ? "◐" : "✓"}</span>
         <span class="tool-name">{displayName()}</span>
+        <Show when={elapsedText()}>
+          <span class="tool-elapsed" classList={{ loading: props.isLoading }}>{elapsedText()}</span>
+        </Show>
         <Show when={hasInput()}>
           <span class="tool-input-preview">{inputPreview()}</span>
         </Show>

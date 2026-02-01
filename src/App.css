@@ -1186,6 +1186,19 @@ del {
   font-weight: 600;
 }
 
+.tool-elapsed {
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-family: "SF Mono", "JetBrains Mono", monospace;
+  opacity: 0.5;
+  white-space: nowrap;
+}
+
+.tool-elapsed.loading {
+  color: var(--warning, #f59e0b);
+  opacity: 0.8;
+}
+
 .tool-input-preview {
   font-size: 12px;
   color: var(--fg-muted);

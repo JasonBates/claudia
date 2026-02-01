@@ -97,6 +97,7 @@ pub async fn respond_to_permission(
 }
 
 /// Send permission response via the Claude process
+/// Uses sender lock only - does not block on streaming receiver
 #[tauri::command]
 pub async fn send_permission_response(
     request_id: String,
@@ -114,12 +115,11 @@ pub async fn send_permission_response(
         ),
     );
 
-    let mut process_guard = state.process.lock().await;
-    let process = process_guard.as_mut().ok_or("No active session")?;
+    // Use sender lock - independent of streaming receiver lock
+    let mut sender_guard = state.sender.lock().await;
+    let sender = sender_guard.as_mut().ok_or("No active session")?;
 
     // Send as control_response JSON that the bridge will forward to Claude CLI
-    // Include tool_input for the SDK's updatedInput field
-    // Include message for feedback when denying (e.g., plan change requests)
     let msg = serde_json::json!({
         "type": "control_response",
         "request_id": request_id,
@@ -129,7 +129,7 @@ pub async fn send_permission_response(
         "message": message
     });
 
-    process.send_message(&msg.to_string())?;
+    sender.send_message(&msg.to_string())?;
     Ok(())
 }
 
@@ -141,6 +141,7 @@ pub async fn get_session_id(state: State<'_, AppState>) -> Result<String, String
 }
 
 /// Send response to AskUserQuestion tool via the Claude process
+/// Uses sender lock only - does not block on streaming receiver
 #[tauri::command]
 pub async fn send_question_response(
     request_id: String,
@@ -156,8 +157,9 @@ pub async fn send_question_response(
         ),
     );
 
-    let mut process_guard = state.process.lock().await;
-    let process = process_guard.as_mut().ok_or("No active session")?;
+    // Use sender lock - independent of streaming receiver lock
+    let mut sender_guard = state.sender.lock().await;
+    let sender = sender_guard.as_mut().ok_or("No active session")?;
 
     // Send as question_response JSON that the bridge will forward to Claude CLI
     let msg = serde_json::json!({
@@ -167,11 +169,12 @@ pub async fn send_question_response(
         "answers": answers
     });
 
-    process.send_message(&msg.to_string())?;
+    sender.send_message(&msg.to_string())?;
     Ok(())
 }
 
 /// Cancel AskUserQuestion tool (send deny response so Claude can continue)
+/// Uses sender lock only - does not block on streaming receiver
 #[tauri::command]
 pub async fn send_question_cancel(
     request_id: String,
@@ -182,8 +185,9 @@ pub async fn send_question_cancel(
         &format!("Sending question_cancel: request_id={}", request_id),
     );
 
-    let mut process_guard = state.process.lock().await;
-    let process = process_guard.as_mut().ok_or("No active session")?;
+    // Use sender lock - independent of streaming receiver lock
+    let mut sender_guard = state.sender.lock().await;
+    let sender = sender_guard.as_mut().ok_or("No active session")?;
 
     // Send as question_cancel JSON that the bridge will forward as a deny response
     let msg = serde_json::json!({
@@ -191,6 +195,6 @@ pub async fn send_question_cancel(
         "request_id": request_id
     });
 
-    process.send_message(&msg.to_string())?;
+    sender.send_message(&msg.to_string())?;
     Ok(())
 }

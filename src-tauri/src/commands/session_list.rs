@@ -515,10 +515,7 @@ mod tests {
 
     #[test]
     fn test_path_to_project_dir() {
-        assert_eq!(
-            path_to_project_dir("/Users/alice"),
-            "-Users-alice"
-        );
+        assert_eq!(path_to_project_dir("/Users/alice"), "-Users-alice");
         assert_eq!(
             path_to_project_dir("/Users/alice/code/repos/claudia"),
             "-Users-alice-code-repos-claudia"

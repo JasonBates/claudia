@@ -80,6 +80,8 @@ export interface ToolUse {
   isLoading?: boolean;
   autoExpanded?: boolean;  // Forces expanded state (survives component recreation)
   subagent?: SubagentInfo; // Subagent state (only for Task tools)
+  startedAt?: number;      // Timestamp when tool started (for elapsed time display)
+  completedAt?: number;    // Timestamp when result received
 }
 
 /**

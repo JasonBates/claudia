@@ -35,6 +35,8 @@ export interface StreamingRefs {
   pendingResultsRef: { current: Map<string, { result: string; isError: boolean }> };
   /** Index of current tool block in streaming.blocks for O(1) updates */
   lastToolBlockIndexRef: { current: number | null };
+  /** Map of tool ID to block index for O(1) lookups during UPDATE_TOOL */
+  toolIdToBlockIndexRef: { current: Map<string, number> };
 }
 
 /**
