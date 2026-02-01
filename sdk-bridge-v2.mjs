@@ -846,6 +846,97 @@ async function main() {
       }
     }
 
+    // Handle JSON-encoded messages from Rust (preserves newlines)
+    // Format: __MSG__{"text":"..."}
+    if (input.startsWith("__MSG__")) {
+      try {
+        const jsonData = JSON.parse(input.slice(7)); // Remove "__MSG__" prefix
+        const text = jsonData.text;
+        debugLog("MSG_DECODED", `Decoded message with ${text.split('\n').length} lines`);
+
+        // Check if the decoded text is a JSON control message (control_response, etc.)
+        // These need to be handled specially, not sent as user messages
+        try {
+          const innerParsed = JSON.parse(text);
+          if (innerParsed.type === "control_response") {
+            debugLog("CONTROL_RESPONSE_FROM_MSG", innerParsed);
+            // Handle control_response - format for Claude SDK
+            const permissionResponse = innerParsed.allow
+              ? { behavior: "allow", updatedInput: innerParsed.tool_input || {} }
+              : { behavior: "deny", message: innerParsed.message || "User denied permission" };
+
+            const msg = JSON.stringify({
+              type: "control_response",
+              response: {
+                subtype: "success",
+                request_id: innerParsed.request_id,
+                response: permissionResponse
+              }
+            }) + "\n";
+
+            debugLog("CLAUDE_STDIN_FROM_MSG", msg);
+            if (claude && claude.stdin.writable) {
+              claude.stdin.write(msg);
+            }
+            return;
+          }
+
+          if (innerParsed.type === "question_response") {
+            debugLog("QUESTION_RESPONSE_FROM_MSG", innerParsed);
+            const msg = JSON.stringify({
+              type: "control_response",
+              response: {
+                subtype: "success",
+                request_id: innerParsed.request_id,
+                response: {
+                  behavior: "allow",
+                  updatedInput: {
+                    questions: innerParsed.questions,
+                    answers: innerParsed.answers
+                  }
+                }
+              }
+            }) + "\n";
+
+            if (claude && claude.stdin.writable) {
+              claude.stdin.write(msg);
+            }
+            return;
+          }
+
+          if (innerParsed.type === "question_cancel") {
+            debugLog("QUESTION_CANCEL_FROM_MSG", innerParsed);
+            const msg = JSON.stringify({
+              type: "control_response",
+              response: {
+                subtype: "success",
+                request_id: innerParsed.request_id,
+                response: {
+                  behavior: "deny",
+                  message: "User cancelled the question"
+                }
+              }
+            }) + "\n";
+
+            if (claude && claude.stdin.writable) {
+              claude.stdin.write(msg);
+            }
+            return;
+          }
+          // Other JSON messages can fall through to be sent as user messages
+        } catch (innerE) {
+          // Not JSON, continue to send as user message
+        }
+
+        sendEvent("processing", { prompt: text });
+        sendUserMessage(text);
+        return;
+      } catch (e) {
+        debugLog("MSG_DECODE_ERROR", `Failed to parse: ${e.message}`);
+        // Fall through to treat as regular input
+      }
+    }
+
     // Handle slash commands
     if (input.startsWith("/")) {
       const [cmd, ...args] = input.slice(1).split(" ");

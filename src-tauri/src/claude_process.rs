@@ -680,14 +680,16 @@ impl ClaudeProcess {
             format!("Lock error: {}", e)
         })?;
 
-        // Send plain text prompt - the bridge handles JSON encoding
-        stdin.write_all(message.as_bytes()).map_err(|e| {
+        // JSON-encode the message to preserve newlines
+        // The bridge uses readline which splits on newlines, so we must encode
+        // Format: __MSG__<json> where json is {"text":"..."} with escaped newlines
+        let encoded = serde_json::json!({ "text": message });
+        let prefixed = format!("__MSG__{}\n", encoded);
+
+        stdin.write_all(prefixed.as_bytes()).map_err(|e| {
             rust_debug_log("SEND_MSG", &format!("Write error: {}", e));
             format!("Write error: {}", e)
         })?;
-        stdin
-            .write_all(b"\n")
-            .map_err(|e| format!("Write error: {}", e))?;
         stdin.flush().map_err(|e| format!("Flush error: {}", e))?;
 
         rust_debug_log("SEND_MSG", "Message sent and flushed");

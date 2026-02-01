@@ -576,8 +576,22 @@ export function handlePermissionRequest(
 
   // In auto mode, immediately approve without showing dialog
   if (ctx.getCurrentMode() === "auto") {
-    console.log("[PERMISSION] Auto-accepting:", toolName);
-    ctx.sendPermissionResponse(requestId, true, false, toolInput);
+    console.log("[PERMISSION] Auto-accepting:", toolName, "requestId:", requestId);
+    ctx.sendPermissionResponse(requestId, true, false, toolInput)
+      .then(() => {
+        console.log("[PERMISSION] Auto-accept sent successfully:", toolName);
+      })
+      .catch((err) => {
+        console.error("[PERMISSION] Auto-accept FAILED:", toolName, err);
+        // Show permission dialog as fallback so user can manually approve
+        const permission: PermissionRequest = {
+          requestId,
+          toolName,
+          toolInput,
+          description,
+        };
+        ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });
+      });
     return;
   }
 

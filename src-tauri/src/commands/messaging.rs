@@ -21,6 +21,9 @@ const TIMEOUT_TOOL_EXEC_MS: u64 = 5000;
 const TIMEOUT_STREAMING_MS: u64 = 2000;
 /// Timeout when waiting for first content (500ms polling)
 const TIMEOUT_WAITING_MS: u64 = 500;
+/// Timeout when waiting for user permission response (5 seconds polling)
+/// User may need time to read and decide on permission dialogs
+const TIMEOUT_PERMISSION_MS: u64 = 5000;
 
 /// Max idle count during compaction (~5 minutes at 10s intervals)
 const MAX_IDLE_COMPACTION: u32 = 30;
@@ -33,6 +36,9 @@ const MAX_IDLE_TOOLS: u32 = 24;
 const MAX_IDLE_STREAMING: u32 = 3;
 /// Max idle count waiting for first content (~30 seconds at 500ms intervals)
 const MAX_IDLE_INITIAL: u32 = 60;
+/// Max idle count waiting for permission response (~5 minutes at 5s intervals)
+/// User may need significant time to review permission requests
+const MAX_IDLE_PERMISSION: u32 = 60;
 
 /// Calculate adaptive timeout and max idle count based on current state.
 ///
@@ -40,17 +46,23 @@ const MAX_IDLE_INITIAL: u32 = 60;
 ///
 /// # State Priority (highest to lowest)
 /// 1. Compacting - longest timeout, context compaction can take 60+ seconds
-/// 2. Subagent pending - long timeout, Task agents can take several minutes
-/// 3. Tools pending - medium-long timeout, regular tool execution
-/// 4. Got first content - short timeout, streaming should be continuous
-/// 5. Waiting for response - medium timeout, initial response can take time
+/// 2. Permission pending - long timeout, user needs time to review and respond
+/// 3. Subagent pending - long timeout, Task agents can take several minutes
+/// 4. Tools pending - medium-long timeout, regular tool execution
+/// 5. Got first content - short timeout, streaming should be continuous
+/// 6. Waiting for response - medium timeout, initial response can take time
 pub fn calculate_timeouts(
     compacting: bool,
+    permission_pending: bool,
     subagent_pending: bool,
     tools_pending: bool,
     got_first_content: bool,
 ) -> (u64, u32) {
-    let timeout_ms = if compacting || subagent_pending {
+    let timeout_ms = if compacting {
+        TIMEOUT_SUBAGENT_MS
+    } else if permission_pending {
+        TIMEOUT_PERMISSION_MS
+    } else if subagent_pending {
         TIMEOUT_SUBAGENT_MS
     } else if tools_pending {
         TIMEOUT_TOOL_EXEC_MS
@@ -62,6 +74,8 @@ pub fn calculate_timeouts(
 
     let max_idle = if compacting {
         MAX_IDLE_COMPACTION
+    } else if permission_pending {
+        MAX_IDLE_PERMISSION
     } else if subagent_pending {
         MAX_IDLE_SUBAGENT
     } else if tools_pending {
@@ -212,6 +226,7 @@ pub async fn send_message(
     let mut got_first_content = false;
     let mut pending_tool_count: usize = 0; // Count of regular tools awaiting results
     let mut pending_subagent_count: usize = 0; // Count of Task (subagent) tools - these get longer timeouts
+    let mut pending_permission_count: usize = 0; // Count of permissions awaiting user response
     let mut subagent_tool_ids: std::collections::HashSet<String> = std::collections::HashSet::new(); // Track which tool IDs are subagents
     let mut compacting = false; // Track if compaction is in progress (can take 60+ seconds)
 
@@ -230,8 +245,10 @@ pub async fn send_message(
         // Calculate adaptive timeout based on current state
         let tools_pending = pending_tool_count > 0;
         let subagent_pending = pending_subagent_count > 0;
+        let permission_pending = pending_permission_count > 0;
         let (current_timeout, current_max_idle) = calculate_timeouts(
             compacting,
+            permission_pending,
             subagent_pending,
             tools_pending,
             got_first_content,
@@ -295,6 +312,14 @@ pub async fn send_message(
                             tool_use_id, stdout_len
                         ),
                     );
+                    // Tool result means permission was granted (if any pending)
+                    if pending_permission_count > 0 {
+                        pending_permission_count -= 1;
+                        cmd_debug_log(
+                            "PERMISSION",
+                            &format!("Permission resolved - pending: {} permissions", pending_permission_count),
+                        );
+                    }
                     // Only decrement for results with tool_use_id (not duplicates)
                     if let Some(ref id) = tool_use_id {
                         if subagent_tool_ids.remove(id) {
@@ -303,8 +328,8 @@ pub async fn send_message(
                             cmd_debug_log(
                                 "TOOL",
                                 &format!(
-                                    "Subagent completed (id={}) - pending: {} subagents, {} tools",
-                                    id, pending_subagent_count, pending_tool_count
+                                    "Subagent completed (id={}) - pending: {} subagents, {} tools, {} permissions",
+                                    id, pending_subagent_count, pending_tool_count, pending_permission_count
                                 ),
                             );
                         } else if pending_tool_count > 0 {
@@ -313,8 +338,8 @@ pub async fn send_message(
                             cmd_debug_log(
                                 "TOOL",
                                 &format!(
-                                    "Tool completed (id={}) - pending: {} subagents, {} tools",
-                                    id, pending_subagent_count, pending_tool_count
+                                    "Tool completed (id={}) - pending: {} subagents, {} tools, {} permissions",
+                                    id, pending_subagent_count, pending_tool_count, pending_permission_count
                                 ),
                             );
                         }
@@ -359,6 +384,9 @@ pub async fn send_message(
                 // Check if this is a "done" signal (Done or Interrupted both end the response)
                 let is_done = matches!(event, ClaudeEvent::Done | ClaudeEvent::Interrupted);
 
+                // Check if this is a permission request - we need to release the lock after sending
+                let is_permission_request = matches!(event, ClaudeEvent::PermissionRequest { .. });
+
                 match channel.send(event) {
                     Ok(_) => {
                         cmd_debug_log("CHANNEL", &format!("#{} Sent to frontend", event_count))
@@ -370,6 +398,25 @@ pub async fn send_message(
                         );
                         return Err(e.to_string());
                     }
+                }
+
+                // For permission requests, track pending count and release lock to allow response
+                // The frontend needs to call send_permission_response which acquires the same lock
+                if is_permission_request {
+                    pending_permission_count += 1;
+                    cmd_debug_log(
+                        "PERMISSION_YIELD",
+                        &format!(
+                            "Permission requested - pending: {} permissions, releasing lock...",
+                            pending_permission_count
+                        ),
+                    );
+                    drop(process_guard);
+                    // Give frontend time to process and send the response
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    tokio::task::yield_now().await;
+                    // Continue to next iteration which will re-acquire the lock
+                    continue;
                 }
 
                 if is_done {
