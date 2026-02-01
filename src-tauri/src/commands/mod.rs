@@ -76,7 +76,17 @@ impl Default for AppState {
 }
 
 /// Debug logging helper for command handlers
+/// Gated behind CLAUDIA_DEBUG=1 environment variable
 pub(crate) fn cmd_debug_log(prefix: &str, msg: &str) {
+    static DEBUG_ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let enabled = *DEBUG_ENABLED.get_or_init(|| {
+        std::env::var("CLAUDIA_DEBUG").map(|v| v == "1").unwrap_or(false)
+    });
+
+    if !enabled {
+        return;
+    }
+
     use std::fs::OpenOptions;
     use std::io::Write;
 
@@ -85,5 +95,6 @@ pub(crate) fn cmd_debug_log(prefix: &str, msg: &str) {
         let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
         let _ = writeln!(file, "[{}] [{}] {}", timestamp, prefix, msg);
     }
+    #[cfg(debug_assertions)]
     eprintln!("[CMD:{}] {}", prefix, msg);
 }

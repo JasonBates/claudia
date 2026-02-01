@@ -96,13 +96,6 @@ pub async fn send_message(
     channel: Channel<ClaudeEvent>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    // Clear command log
-    let log_path = std::env::temp_dir().join("claude-commands-debug.log");
-    let _ = std::fs::write(
-        &log_path,
-        format!("=== send_message started at {} ===\n", chrono::Local::now()),
-    );
-
     cmd_debug_log(
         "SEND",
         &format!("Message: {}", &message[..message.len().min(50)]),
