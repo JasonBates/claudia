@@ -15,7 +15,7 @@ from github import Github
 
 # Configuration
 MAX_DIFF_SIZE = 100_000  # Truncate diffs larger than this
-MODEL = os.getenv("OPENAI_MODEL", "gpt-5.2-codex-high")
+MODEL = os.getenv("OPENAI_MODEL", "gpt-5.2-codex-medium")
 
 REVIEW_PROMPT = """You are an expert code reviewer for a Tauri + SolidJS desktop application called Claudia.
 
