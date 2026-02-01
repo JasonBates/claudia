@@ -498,8 +498,8 @@ mod tests {
     #[test]
     fn timeout_compaction_takes_highest_priority() {
         // Compaction should use longest timeout even when other flags are set
-        // Args: compacting, subagent_pending, tools_pending, got_first_content
-        let (timeout, max_idle) = calculate_timeouts(true, true, true, true);
+        // Args: compacting, permission_pending, subagent_pending, tools_pending, got_first_content
+        let (timeout, max_idle) = calculate_timeouts(true, false, true, true, true);
         assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
         assert_eq!(max_idle, MAX_IDLE_COMPACTION);
     }
@@ -507,7 +507,7 @@ mod tests {
     #[test]
     fn timeout_subagent_takes_second_priority() {
         // Subagent pending should use long timeout when not compacting
-        let (timeout, max_idle) = calculate_timeouts(false, true, true, true);
+        let (timeout, max_idle) = calculate_timeouts(false, false, true, true, true);
         assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
         assert_eq!(max_idle, MAX_IDLE_SUBAGENT);
     }
@@ -515,7 +515,7 @@ mod tests {
     #[test]
     fn timeout_tools_pending_third_priority() {
         // Regular tools use medium-long timeout
-        let (timeout, max_idle) = calculate_timeouts(false, false, true, true);
+        let (timeout, max_idle) = calculate_timeouts(false, false, false, true, true);
         assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
         assert_eq!(max_idle, MAX_IDLE_TOOLS);
     }
@@ -523,7 +523,7 @@ mod tests {
     #[test]
     fn timeout_streaming_fourth_priority() {
         // Streaming mode when no tools or compaction
-        let (timeout, max_idle) = calculate_timeouts(false, false, false, true);
+        let (timeout, max_idle) = calculate_timeouts(false, false, false, false, true);
         assert_eq!(timeout, TIMEOUT_STREAMING_MS);
         assert_eq!(max_idle, MAX_IDLE_STREAMING);
     }
@@ -531,7 +531,7 @@ mod tests {
     #[test]
     fn timeout_waiting_lowest_priority() {
         // Waiting for first content - default state
-        let (timeout, max_idle) = calculate_timeouts(false, false, false, false);
+        let (timeout, max_idle) = calculate_timeouts(false, false, false, false, false);
         assert_eq!(timeout, TIMEOUT_WAITING_MS);
         assert_eq!(max_idle, MAX_IDLE_INITIAL);
     }
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn timeout_compaction_without_content() {
         // Compaction can happen before any content received
-        let (timeout, max_idle) = calculate_timeouts(true, false, false, false);
+        let (timeout, max_idle) = calculate_timeouts(true, false, false, false, false);
         assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
         assert_eq!(max_idle, MAX_IDLE_COMPACTION);
     }
@@ -551,7 +551,7 @@ mod tests {
     #[test]
     fn timeout_subagent_without_content() {
         // Subagent can start before text content
-        let (timeout, max_idle) = calculate_timeouts(false, true, false, false);
+        let (timeout, max_idle) = calculate_timeouts(false, false, true, false, false);
         assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
         assert_eq!(max_idle, MAX_IDLE_SUBAGENT);
     }
@@ -559,7 +559,7 @@ mod tests {
     #[test]
     fn timeout_tools_without_content() {
         // Tools can start before text content (e.g., planning mode)
-        let (timeout, max_idle) = calculate_timeouts(false, false, true, false);
+        let (timeout, max_idle) = calculate_timeouts(false, false, false, true, false);
         assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
         assert_eq!(max_idle, MAX_IDLE_TOOLS);
     }
@@ -640,7 +640,7 @@ mod tests {
 
     #[test]
     fn timeout_all_flags_false() {
-        let (timeout, max_idle) = calculate_timeouts(false, false, false, false);
+        let (timeout, max_idle) = calculate_timeouts(false, false, false, false, false);
         assert_eq!(timeout, 500);
         assert_eq!(max_idle, 60);
     }
@@ -648,7 +648,7 @@ mod tests {
     #[test]
     fn timeout_all_flags_true() {
         // Compaction takes priority over everything
-        let (timeout, max_idle) = calculate_timeouts(true, true, true, true);
+        let (timeout, max_idle) = calculate_timeouts(true, true, true, true, true);
         assert_eq!(timeout, 10000);
         assert_eq!(max_idle, 30);
     }
