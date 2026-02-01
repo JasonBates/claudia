@@ -149,6 +149,13 @@ Be thorough but practical - every improvement should be implementable.
 
 **Files to review:**
 
+The files below are provided in structured XML format with metadata:
+- `<file_manifest>` lists all files with index, path, language, and line count
+- Each `<file>` contains `<metadata>` (path, language, component type, stats) and `<content>`
+- Component types: backend-command, backend-core, bridge, frontend-component, frontend-hook, frontend-store, frontend-core
+
+When referencing issues, use the file path from metadata.
+
 {content}
 """
 
@@ -179,21 +186,60 @@ def gather_files(root: Path) -> list[tuple[str, str]]:
 
 
 def format_files(files: list[tuple[str, str]], max_size: int) -> str:
-    """Format files with clear delimiters."""
+    """Format files with structured XML-like delimiters and rich metadata."""
     parts = []
     size = 0
+    total_files = len(files)
 
-    for path, content in files:
+    # File manifest header
+    manifest_lines = ["<file_manifest>"]
+    for idx, (path, content) in enumerate(files, 1):
         ext = Path(path).suffix.lstrip(".")
-        lang = {"ts": "typescript", "tsx": "tsx", "rs": "rust", "mjs": "javascript", "js": "javascript"}.get(ext, "")
+        lang = {"ts": "typescript", "tsx": "tsx", "rs": "rust", "mjs": "javascript", "js": "javascript"}.get(ext, ext)
         lines = len(content.splitlines())
+        manifest_lines.append(f'  <file index="{idx}" path="{path}" lang="{lang}" lines="{lines}" />')
+    manifest_lines.append("</file_manifest>\n")
+    manifest = "\n".join(manifest_lines)
+    parts.append(manifest)
+    size += len(manifest)
 
-        block = f"""
-════════════════════════════════════════════════════════════════
-FILE: {path} ({lang}, {lines} lines)
-════════════════════════════════════════════════════════════════
+    # Individual files with structured delimiters
+    for idx, (path, content) in enumerate(files, 1):
+        ext = Path(path).suffix.lstrip(".")
+        lang = {"ts": "typescript", "tsx": "tsx", "rs": "rust", "mjs": "javascript", "js": "javascript"}.get(ext, ext)
+        lines = len(content.splitlines())
+        chars = len(content)
+
+        # Determine component type from path
+        if "commands" in path:
+            component = "backend-command"
+        elif "src-tauri" in path and path.endswith(".rs"):
+            component = "backend-core"
+        elif "src-tauri" in path and (path.endswith(".mjs") or path.endswith(".js")):
+            component = "bridge"
+        elif "components" in path:
+            component = "frontend-component"
+        elif "hooks" in path:
+            component = "frontend-hook"
+        elif "stores" in path:
+            component = "frontend-store"
+        else:
+            component = "frontend-core"
+
+        block = f'''
+<file index="{idx}" total="{total_files}">
+  <metadata>
+    <path>{path}</path>
+    <language>{lang}</language>
+    <component>{component}</component>
+    <lines>{lines}</lines>
+    <characters>{chars}</characters>
+  </metadata>
+  <content>
 {content}
-"""
+  </content>
+</file>
+'''
         if size + len(block) > max_size:
             parts.append(f"\n... truncated ({len(files) - len(parts)} files remaining)")
             break
@@ -228,8 +274,12 @@ def review_code(client: OpenAI, content: str) -> dict:
             usage = response.usage
             print(f"  Tokens: {usage.prompt_tokens} in / {usage.completion_tokens} out")
 
-            # Extract JSON from response (may be wrapped in markdown code blocks)
-            content = response.choices[0].message.content
+            # Extract JSON from response (may have think blocks, markdown, etc.)
+            raw = response.choices[0].message.content
+
+            # Remove <think>...</think> blocks (reasoning tokens)
+            import re
+            content = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
 
             # Try to extract JSON from code blocks if present
             if "```json" in content:
@@ -242,6 +292,27 @@ def review_code(client: OpenAI, content: str) -> dict:
                 end = content.find("```", start)
                 if end > start:
                     content = content[start:end].strip()
+
+            # Find JSON object boundaries
+            if not content.startswith("{"):
+                json_start = content.find("{")
+                if json_start != -1:
+                    content = content[json_start:]
+
+            # Find matching closing brace
+            if content.startswith("{"):
+                depth = 0
+                end_pos = 0
+                for i, c in enumerate(content):
+                    if c == "{":
+                        depth += 1
+                    elif c == "}":
+                        depth -= 1
+                        if depth == 0:
+                            end_pos = i + 1
+                            break
+                if end_pos > 0:
+                    content = content[:end_pos]
 
             return json.loads(content)
 
