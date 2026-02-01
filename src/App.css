@@ -2642,10 +2642,10 @@ del {
   gap: 6px;
   font-size: 14px;
   z-index: 1000;  /* Above drag region (which is z-index: 999) */
-  cursor: pointer;
+  cursor: grab;
   opacity: 0.85;
   transition: opacity 0.15s;
-  -webkit-app-region: no-drag;  /* Allow clicking */
+  -webkit-app-region: drag;  /* Allow window dragging through this area */
 }
 
 .context-warning:hover {
@@ -2663,11 +2663,14 @@ del {
 .warning-icon {
   font-size: 16px;
   opacity: 0.9;
+  -webkit-app-region: no-drag;  /* Allow clicking */
+  cursor: pointer;
 }
 
 .warning-text {
-  flex: 1;
   font-weight: 500;
+  -webkit-app-region: no-drag;  /* Allow clicking */
+  cursor: pointer;
 }
 
 .compact-btn {
