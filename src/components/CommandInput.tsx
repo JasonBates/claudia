@@ -24,6 +24,7 @@ const CommandInput: Component<CommandInputProps> = (props) => {
   const [value, setValue] = createSignal("");
   const [history, setHistory] = createSignal<string[]>([]);
   const [historyIndex, setHistoryIndex] = createSignal(-1);
+  const [draft, setDraft] = createSignal("");
   const [images, setImages] = createSignal<ImageAttachment[]>([]);
   const [imageError, setImageError] = createSignal<string | null>(null);
   let textareaRef: HTMLTextAreaElement | undefined;
@@ -190,11 +191,20 @@ const CommandInput: Component<CommandInputProps> = (props) => {
     const hist = history();
     if (hist.length === 0) return;
 
-    const newIndex = Math.max(-1, Math.min(hist.length - 1, historyIndex() + direction));
+    const currentIndex = historyIndex();
+    const newIndex = Math.max(-1, Math.min(hist.length - 1, currentIndex + direction));
+
+    if (newIndex === currentIndex) return;
+
+    // Save draft when first entering history mode (from -1 to 0+)
+    if (currentIndex === -1 && newIndex >= 0) {
+      setDraft(value());
+    }
+
     setHistoryIndex(newIndex);
 
     if (newIndex === -1) {
-      setValue("");
+      setValue(draft());
     } else {
       setValue(hist[hist.length - 1 - newIndex]);
     }
@@ -213,6 +223,7 @@ const CommandInput: Component<CommandInputProps> = (props) => {
       setHistory((prev) => [...prev.filter((h) => h !== text), text]);
     }
     setHistoryIndex(-1);
+    setDraft("");
 
     // Clear state
     setValue("");
