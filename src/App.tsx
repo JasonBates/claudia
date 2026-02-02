@@ -139,6 +139,20 @@ function App() {
     },
   };
 
+  // Handle opening a new window for the current project
+  const handleOpenNewWindow = async () => {
+    const dir = session.workingDir();
+    if (!dir) return;
+
+    console.log("[NEW_WINDOW] Opening new window for:", dir);
+    try {
+      await openInNewWindow(dir);
+    } catch (e) {
+      console.error("[NEW_WINDOW] Failed:", e);
+      store.dispatch(actions.setSessionError(`Failed to open new window: ${e}`));
+    }
+  };
+
   // Local commands (slash commands + keyboard shortcuts)
   const localCommands = useLocalCommands({
     streaming: streamingInterface,
@@ -147,6 +161,7 @@ function App() {
     owner,
     onOpenSettings: settings.openSettings,
     onFocusInput: () => commandInputRef?.focus(),
+    onOpenNewWindow: handleOpenNewWindow,
   });
 
   // ============================================================================
@@ -472,20 +487,6 @@ function App() {
         });
     }
   });
-
-  // Handle opening a new window for the current project
-  const handleOpenNewWindow = async () => {
-    const dir = session.workingDir();
-    if (!dir) return;
-
-    console.log("[NEW_WINDOW] Opening new window for:", dir);
-    try {
-      await openInNewWindow(dir);
-    } catch (e) {
-      console.error("[NEW_WINDOW] Failed:", e);
-      store.dispatch(actions.setSessionError(`Failed to open new window: ${e}`));
-    }
-  };
 
   // Reset all session-related state (used when switching/starting sessions)
   const resetSessionState = () => {
@@ -849,7 +850,7 @@ function App() {
         <button
           class="top-bar-btn"
           onClick={handleOpenNewWindow}
-          title="New Window (Alt+N)"
+          title="New Window (Cmd+N)"
           aria-label="Open new window"
         >
           +
