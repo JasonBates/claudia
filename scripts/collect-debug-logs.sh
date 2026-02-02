@@ -81,21 +81,25 @@ log_error() {
     echo "## 2. Backend Debug Logs"
     echo ""
 
-    DEBUG_LOG="$APP_SUPPORT_DIR/logs/claude-debug.log"
-    if [[ -f "$DEBUG_LOG" ]]; then
-        log_info "Found backend debug log"
-        echo "### claude-debug.log (last 200 lines)"
+    # macOS temp dir is in /var/folders, not /tmp
+    MACOS_TEMP="${TMPDIR:-$(dirname $(mktemp -u))}"
+
+    # Rust debug log
+    RUST_DEBUG_LOG="$MACOS_TEMP/claude-rust-debug.log"
+    if [[ -f "$RUST_DEBUG_LOG" ]]; then
+        log_info "Found Rust debug log"
+        echo "### claude-rust-debug.log (last 200 lines)"
         echo ""
-        echo "**File:** \`$DEBUG_LOG\`"
-        echo "**Size:** $(du -h "$DEBUG_LOG" | cut -f1)"
-        echo "**Modified:** $(stat -f '%Sm' "$DEBUG_LOG")"
+        echo "**File:** \`$RUST_DEBUG_LOG\`"
+        echo "**Size:** $(du -h "$RUST_DEBUG_LOG" | cut -f1)"
+        echo "**Modified:** $(stat -f '%Sm' "$RUST_DEBUG_LOG")"
         echo ""
         echo "\`\`\`"
-        tail -200 "$DEBUG_LOG"
+        tail -200 "$RUST_DEBUG_LOG"
         echo "\`\`\`"
     else
-        log_warn "No backend debug log found. Run Claudia with CLAUDIA_DEBUG=1 to enable."
-        echo "**No debug log found at:** \`$DEBUG_LOG\`"
+        log_warn "No Rust debug log found. Run Claudia with CLAUDIA_DEBUG=1 to enable."
+        echo "**No debug log found at:** \`$RUST_DEBUG_LOG\`"
         echo ""
         echo "> To enable debug logging, run Claudia with:"
         echo "> \`\`\`"
@@ -105,7 +109,7 @@ log_error() {
     echo ""
 
     # Command debug log
-    CMD_DEBUG_LOG="/tmp/claude-commands-debug.log"
+    CMD_DEBUG_LOG="$MACOS_TEMP/claude-commands-debug.log"
     if [[ -f "$CMD_DEBUG_LOG" ]]; then
         log_info "Found command debug log"
         echo "### claude-commands-debug.log (last 100 lines)"
@@ -121,6 +125,22 @@ log_error() {
         echo "### claude-commands-debug.log"
         echo ""
         echo "**Not found.** This log is created when CLAUDIA_DEBUG=1 is set."
+    fi
+    echo ""
+
+    # Bridge debug log
+    BRIDGE_DEBUG_LOG="$MACOS_TEMP/claude-bridge-debug.log"
+    if [[ -f "$BRIDGE_DEBUG_LOG" ]]; then
+        log_info "Found bridge debug log"
+        echo "### claude-bridge-debug.log (last 100 lines)"
+        echo ""
+        echo "**File:** \`$BRIDGE_DEBUG_LOG\`"
+        echo "**Size:** $(du -h "$BRIDGE_DEBUG_LOG" | cut -f1)"
+        echo "**Modified:** $(stat -f '%Sm' "$BRIDGE_DEBUG_LOG")"
+        echo ""
+        echo "\`\`\`"
+        tail -100 "$BRIDGE_DEBUG_LOG"
+        echo "\`\`\`"
     fi
     echo ""
 
