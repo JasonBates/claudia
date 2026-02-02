@@ -1,58 +1,66 @@
 //! Permission request handling commands
+//!
+//! Security: Uses secure IPC with:
+//! - App-private directory (0700 permissions)
+//! - Files with 0600 permissions
+//! - Atomic writes (temp file + rename)
+//! - HMAC authentication to prevent spoofing
+//! - Owner/permission verification before reads
 
 use tauri::State;
 
+use super::secure_ipc::{
+    get_permission_request_path, get_permission_response_path, read_signed_message,
+    write_signed_message,
+};
 use super::{cmd_debug_log, AppState};
 
-/// Permission file paths (hook-based permission system)
-/// Uses session_id to prevent collisions between multiple app instances
-fn get_permission_request_path(session_id: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("claudia-permission-request-{}.json", session_id))
-}
-
-fn get_permission_response_path(session_id: &str) -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("claudia-permission-response-{}.json", session_id))
+/// Truncate session_id safely for logging (handles non-ASCII)
+fn safe_session_prefix(session_id: &str) -> String {
+    session_id.chars().take(8).collect()
 }
 
 /// Check for pending permission request from hook
 /// This is an atomic "take" operation - it reads and deletes the file
+/// Uses secure IPC with HMAC verification
 #[tauri::command]
 pub async fn poll_permission_request(
     state: State<'_, AppState>,
 ) -> Result<Option<serde_json::Value>, String> {
-    let request_path = get_permission_request_path(&state.session_id);
+    let request_path = match get_permission_request_path(&state.session_id) {
+        Ok(path) => path,
+        Err(e) => {
+            cmd_debug_log("PERMISSION", &format!("Failed to get request path: {}", e));
+            return Ok(None);
+        }
+    };
 
     if request_path.exists() {
-        match std::fs::read_to_string(&request_path) {
-            Ok(content) => {
+        match read_signed_message(&request_path, &state.session_secret) {
+            Ok(json) => {
                 // Delete the file immediately to prevent duplicate processing
                 let _ = std::fs::remove_file(&request_path);
 
-                match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(json) => {
-                        cmd_debug_log(
-                            "PERMISSION",
-                            &format!(
-                                "Found and took permission request (session {}): {:?}",
-                                &state.session_id[..8],
-                                json
-                            ),
-                        );
-                        Ok(Some(json))
-                    }
-                    Err(e) => {
-                        cmd_debug_log(
-                            "PERMISSION",
-                            &format!("Failed to parse permission request: {}", e),
-                        );
-                        Ok(None)
-                    }
-                }
-            }
-            Err(e) => {
                 cmd_debug_log(
                     "PERMISSION",
-                    &format!("Failed to read permission request: {}", e),
+                    &format!(
+                        "Found and took permission request (session {}): {:?}",
+                        safe_session_prefix(&state.session_id),
+                        json
+                    ),
+                );
+                Ok(Some(json))
+            }
+            Err(e) => {
+                // Delete the file even on error to prevent repeated failures
+                let _ = std::fs::remove_file(&request_path);
+
+                cmd_debug_log(
+                    "PERMISSION",
+                    &format!(
+                        "Failed to read/verify permission request: {} (file deleted)",
+                        e
+                    ),
                 );
                 Ok(None)
             }
@@ -63,6 +71,7 @@ pub async fn poll_permission_request(
 }
 
 /// Respond to permission request (write response file for hook to read)
+/// Uses secure IPC with HMAC signing and atomic writes
 #[tauri::command]
 pub async fn respond_to_permission(
     allow: bool,
@@ -73,13 +82,13 @@ pub async fn respond_to_permission(
         "PERMISSION",
         &format!(
             "Writing permission response (session {}): allow={}, message={:?}",
-            &state.session_id[..8],
+            safe_session_prefix(&state.session_id),
             allow,
             message
         ),
     );
 
-    let response_path = get_permission_response_path(&state.session_id);
+    let response_path = get_permission_response_path(&state.session_id)?;
 
     let response = serde_json::json!({
         "allow": allow,
@@ -87,11 +96,7 @@ pub async fn respond_to_permission(
         "timestamp": chrono::Utc::now().to_rfc3339()
     });
 
-    std::fs::write(
-        &response_path,
-        serde_json::to_string_pretty(&response).unwrap(),
-    )
-    .map_err(|e| format!("Failed to write permission response: {}", e))?;
+    write_signed_message(&response_path, &response, &state.session_secret)?;
 
     Ok(())
 }
