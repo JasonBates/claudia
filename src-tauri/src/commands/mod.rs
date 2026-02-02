@@ -12,6 +12,7 @@ pub mod config_cmd;
 pub mod directory_cmd;
 pub mod messaging;
 pub mod permission;
+pub mod secure_ipc;
 pub mod session;
 pub mod session_list;
 pub mod streaming_cmd;
@@ -21,6 +22,7 @@ use tokio::sync::Mutex;
 
 use crate::claude_process::{ClaudeReceiver, ClaudeSender, ProcessHandle};
 use crate::config::Config;
+use secure_ipc::SessionSecret;
 
 // Note: Commands are accessed via their submodules directly (e.g., commands::session::start_session)
 // rather than being re-exported here, because Tauri's generate_handler! macro
@@ -46,6 +48,8 @@ pub struct AppState {
     pub launch_dir: String,
     /// Unique session ID for this app instance (used for multi-instance safety)
     pub session_id: String,
+    /// Per-session secret for HMAC authentication of IPC messages
+    pub session_secret: SessionSecret,
 }
 
 impl AppState {
@@ -70,6 +74,9 @@ impl AppState {
         // This ensures permission files don't collide between app windows
         let session_id = uuid::Uuid::new_v4().to_string();
 
+        // Generate per-session secret for HMAC authentication of IPC messages
+        let session_secret = SessionSecret::new();
+
         Self {
             sender: Arc::new(Mutex::new(None)),
             receiver: Arc::new(Mutex::new(None)),
@@ -77,6 +84,7 @@ impl AppState {
             config: Arc::new(Mutex::new(config)),
             launch_dir,
             session_id,
+            session_secret,
         }
     }
 }
