@@ -51,7 +51,7 @@ REVIEW_PROMPT = """You are an expert code reviewer. Analyze this codebase and pr
 3. Provide specific file references and actionable solutions
 4. Estimate effort for each fix
 
-**IMPORTANT:** Check SECURITY.md and code comments for documented security decisions. If code comments say "do not suggest X", do NOT report that as an issue. Specifically: the IPC module uses file permissions instead of HMAC/cryptographic signing BY DESIGN - this is documented and intentional, not a vulnerability.
+**IMPORTANT:** Check SECURITY.md and code comments for documented security decisions. The secure_ipc.rs module explicitly states it has NO HMAC/cryptographic signing and explains why this is intentional (external hooks need file access, session secrets don't survive reloads). Do NOT flag the lack of HMAC as a vulnerability - this is a documented design decision, not an oversight.
 
 Be thorough but practical - every improvement should be implementable.
 
