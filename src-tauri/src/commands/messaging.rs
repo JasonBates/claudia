@@ -273,6 +273,9 @@ pub async fn send_message(
                     current_gen, my_generation
                 ),
             );
+            // Notify frontend that this request was cancelled by a newer one
+            // This prevents the UI from hanging waiting for a response that won't come
+            let _ = channel.send(ClaudeEvent::Interrupted);
             break;
         }
 
@@ -320,7 +323,7 @@ pub async fn send_message(
 
                 // Track thinking state for extended timeout during Opus 4.5 thinking
                 // ThinkingStart/ThinkingDelta = thinking active (use longer timeout)
-                // TextDelta/ToolStart = thinking ended (return to normal timeout)
+                // TextDelta/ToolStart/BlockEnd = thinking ended (return to normal timeout)
                 if matches!(
                     event,
                     ClaudeEvent::ThinkingStart { .. } | ClaudeEvent::ThinkingDelta { .. }
@@ -332,7 +335,9 @@ pub async fn send_message(
                 }
                 if matches!(
                     event,
-                    ClaudeEvent::TextDelta { .. } | ClaudeEvent::ToolStart { .. }
+                    ClaudeEvent::TextDelta { .. }
+                        | ClaudeEvent::ToolStart { .. }
+                        | ClaudeEvent::BlockEnd
                 ) {
                     if thinking_in_progress {
                         thinking_in_progress = false;
