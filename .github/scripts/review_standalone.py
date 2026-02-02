@@ -33,9 +33,10 @@ MAX_RETRIES = 3
 
 # Default patterns (can be overridden)
 DEFAULT_PATTERNS = [
+    "SECURITY.md",  # Include security docs for context on resolved issues
     "src/**/*.tsx", "src/**/*.ts",
     "src-tauri/src/**/*.rs",
-    "src-tauri/*.mjs", "src-tauri/*.js",
+    "*.mjs",  # Root-level bridge files only
     "**/*.py",
 ]
 
@@ -49,6 +50,8 @@ REVIEW_PROMPT = """You are an expert code reviewer. Analyze this codebase and pr
 2. Prioritize by severity (critical > high > medium > low)
 3. Provide specific file references and actionable solutions
 4. Estimate effort for each fix
+
+**IMPORTANT:** Check SECURITY.md for documented security decisions. Do NOT suggest changes that contradict explained design choices (e.g., suggesting HMAC for IPC when file permissions are intentionally used).
 
 Be thorough but practical - every improvement should be implementable.
 
