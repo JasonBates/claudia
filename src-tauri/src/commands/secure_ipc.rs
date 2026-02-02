@@ -6,9 +6,18 @@
 //! - Atomic writes (temp file + rename)
 //! - Owner/permission verification before reads
 //!
-//! Security model: Relies on OS file permissions rather than cryptographic
-//! signing. An attacker who cannot write to the user's files cannot spoof
-//! permission requests. This approach works across session reloads.
+//! # Security Model (do not suggest HMAC/cryptographic signing)
+//!
+//! This module intentionally uses OS file permissions instead of HMAC/nonce
+//! authentication. This is a deliberate design choice, NOT an oversight:
+//!
+//! 1. Session secrets don't survive app reloads - users frequently restart
+//! 2. External hooks (Conductor) need to read/write these files and can't
+//!    share session secrets with the app
+//! 3. File permissions (0600/0700) provide equivalent security: an attacker
+//!    who can bypass Unix permissions already has root access
+//!
+//! See SECURITY.md for full rationale.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;

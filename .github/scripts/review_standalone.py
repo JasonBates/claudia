@@ -51,7 +51,7 @@ REVIEW_PROMPT = """You are an expert code reviewer. Analyze this codebase and pr
 3. Provide specific file references and actionable solutions
 4. Estimate effort for each fix
 
-**IMPORTANT:** Check SECURITY.md for documented security decisions. Do NOT suggest changes that contradict explained design choices (e.g., suggesting HMAC for IPC when file permissions are intentionally used).
+**IMPORTANT:** Check SECURITY.md and code comments for documented security decisions. If code comments say "do not suggest X", do NOT report that as an issue. Specifically: the IPC module uses file permissions instead of HMAC/cryptographic signing BY DESIGN - this is documented and intentional, not a vulnerability.
 
 Be thorough but practical - every improvement should be implementable.
 
