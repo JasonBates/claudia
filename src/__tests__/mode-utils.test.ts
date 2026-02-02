@@ -10,8 +10,8 @@ import {
 
 describe('mode-utils', () => {
   describe('MODES constant', () => {
-    it('contains all three modes in correct order', () => {
-      expect(MODES).toEqual(['auto', 'request', 'plan']);
+    it('contains all four modes in correct order', () => {
+      expect(MODES).toEqual(['auto', 'request', 'plan', 'bot']);
     });
 
     it('is readonly (frozen)', () => {
@@ -28,8 +28,12 @@ describe('mode-utils', () => {
       expect(getNextMode('request')).toBe('plan');
     });
 
-    it('cycles from plan back to auto (wraps)', () => {
-      expect(getNextMode('plan')).toBe('auto');
+    it('cycles from plan to bot', () => {
+      expect(getNextMode('plan')).toBe('bot');
+    });
+
+    it('cycles from bot back to auto (wraps)', () => {
+      expect(getNextMode('bot')).toBe('auto');
     });
 
     it('returns first mode for invalid input', () => {
@@ -40,14 +44,15 @@ describe('mode-utils', () => {
       let mode: Mode = 'auto';
       mode = getNextMode(mode); // request
       mode = getNextMode(mode); // plan
+      mode = getNextMode(mode); // bot
       mode = getNextMode(mode); // auto
       expect(mode).toBe('auto');
     });
   });
 
   describe('getPreviousMode', () => {
-    it('cycles from auto back to plan (wraps)', () => {
-      expect(getPreviousMode('auto')).toBe('plan');
+    it('cycles from auto back to bot (wraps)', () => {
+      expect(getPreviousMode('auto')).toBe('bot');
     });
 
     it('cycles from request to auto', () => {
@@ -56,6 +61,10 @@ describe('mode-utils', () => {
 
     it('cycles from plan to request', () => {
       expect(getPreviousMode('plan')).toBe('request');
+    });
+
+    it('cycles from bot to plan', () => {
+      expect(getPreviousMode('bot')).toBe('plan');
     });
 
     it('returns first mode for invalid input', () => {
@@ -75,6 +84,7 @@ describe('mode-utils', () => {
       expect(isValidMode('auto')).toBe(true);
       expect(isValidMode('request')).toBe(true);
       expect(isValidMode('plan')).toBe(true);
+      expect(isValidMode('bot')).toBe(true);
     });
 
     it('returns false for invalid modes', () => {
@@ -99,6 +109,10 @@ describe('mode-utils', () => {
 
     it('returns correct label for plan mode', () => {
       expect(getModeLabel('plan')).toBe('Plan');
+    });
+
+    it('returns correct label for bot mode', () => {
+      expect(getModeLabel('bot')).toBe('BotGuard');
     });
   });
 });

@@ -718,6 +718,8 @@ describe("conversationReducer", () => {
             toolName: "Bash",
             description: "Run command",
           },
+          isReviewing: false,
+          reviewResult: null,
         },
       };
 

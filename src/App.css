@@ -2102,6 +2102,16 @@ del {
   color: var(--warning);
 }
 
+.mode-bot {
+  border-color: var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 15%, transparent);
+}
+
+.mode-bot .mode-icon,
+.mode-bot .mode-label {
+  color: var(--cyan);
+}
+
 .mode-planning {
   border-color: var(--accent-secondary);
   background: color-mix(in srgb, var(--accent-secondary) 25%, transparent);
@@ -2475,6 +2485,46 @@ del {
 
 .permission-deny:hover {
   border-color: var(--error);
+}
+
+/* Bot mode reviewing state */
+.permission-reviewing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-muted);
+  font-size: 14px;
+  padding: 6px 12px;
+}
+
+.reviewing-spinner {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+  font-size: 16px;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Bot mode flag reason */
+.permission-flag-reason {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: rgba(220, 50, 47, 0.1);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--error);
+  line-height: 1.4;
+}
+
+.permission-flag-reason .flag-icon {
+  flex-shrink: 0;
+  font-size: 12px;
 }
 
 /* Thinking Block Styles - Ultra compact */
@@ -3595,5 +3645,209 @@ del {
   object-fit: contain;
   border-radius: 4px;
   cursor: default;
+}
+
+/* =============================================================================
+   Bot Settings Panel
+   ============================================================================= */
+
+.bot-settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.bot-settings-panel {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 480px;
+  max-height: 80vh;
+  overflow: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.bot-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.bot-settings-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.bot-settings-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.bot-settings-header .close-btn:hover {
+  color: var(--fg);
+}
+
+.bot-settings-content {
+  padding: 20px;
+}
+
+.bot-settings-error-banner {
+  background: color-mix(in srgb, var(--error) 15%, var(--bg));
+  border: 1px solid var(--error);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  color: var(--error);
+  font-size: 14px;
+}
+
+.bot-settings-field {
+  margin-bottom: 20px;
+}
+
+.bot-settings-field.highlighted {
+  background: color-mix(in srgb, var(--cyan) 10%, var(--bg));
+  border: 1px solid var(--cyan);
+  border-radius: 8px;
+  padding: 12px;
+  margin: -12px -12px 20px -12px;
+}
+
+.bot-settings-field label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg);
+  margin-bottom: 8px;
+}
+
+.masked-key {
+  font-size: 13px;
+  color: var(--fg-muted);
+  margin-bottom: 8px;
+}
+
+.masked-key code {
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+.api-key-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.api-key-input-row input {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font-size: 14px;
+  font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+.api-key-input-row input:focus {
+  outline: none;
+  border-color: var(--cyan);
+}
+
+.api-key-input-row .save-btn {
+  padding: 10px 16px;
+  background: var(--cyan);
+  border: none;
+  border-radius: 6px;
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.api-key-input-row .save-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.api-key-input-row .save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.field-error {
+  color: var(--error);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.field-hint {
+  color: var(--fg-muted);
+  font-size: 12px;
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.bot-settings-info {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.bot-settings-info h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.bot-settings-info p {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+
+.bot-settings-info ul {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--fg-muted);
+}
+
+.bot-settings-info li {
+  margin-bottom: 4px;
+}
+
+/* Settings Cog in Input Bar */
+.settings-cog-btn {
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 32px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.settings-cog-btn:hover {
+  color: var(--fg);
+  background: var(--bg-secondary);
 }
 

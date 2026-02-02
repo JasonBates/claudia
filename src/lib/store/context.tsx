@@ -15,7 +15,7 @@ import {
   type ParentComponent,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import type { ConversationState, StreamingRefs } from "./types";
+import type { ConversationState, StreamingRefs, ReviewResult } from "./types";
 import { createInitialState } from "./types";
 import { createStreamingRefs } from "./refs";
 import type { Action } from "./actions";
@@ -89,6 +89,10 @@ export interface StoreContextValue {
   planPermissionRequestId: () => string | null;
   /** Pending permission request */
   pendingPermission: () => PermissionRequest | null;
+  /** Whether Bot mode is reviewing a permission */
+  permissionIsReviewing: () => boolean;
+  /** Result from LLM review (Bot mode) */
+  permissionReviewResult: () => ReviewResult | null;
   /** Pre-compaction token count */
   lastCompactionPreTokens: () => number | null;
   /** Compaction message ID */
@@ -373,6 +377,8 @@ export const StoreProvider: ParentComponent = (props) => {
     planNeedsRefresh: () => state.planning.needsRefresh,
     planPermissionRequestId: () => state.planning.permissionRequestId,
     pendingPermission: () => state.permission.pending,
+    permissionIsReviewing: () => state.permission.isReviewing,
+    permissionReviewResult: () => state.permission.reviewResult,
     lastCompactionPreTokens: () => state.compaction.preTokens,
     compactionMessageId: () => state.compaction.messageId,
     warningDismissed: () => state.compaction.warningDismissed,

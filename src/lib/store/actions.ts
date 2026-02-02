@@ -17,6 +17,7 @@ import type {
   SubagentInfo,
 } from "../types";
 import type { SessionInfo, PermissionRequest } from "../event-handlers";
+import type { ReviewResult } from "./types";
 
 /**
  * Discriminated union of all possible actions.
@@ -81,6 +82,9 @@ export type Action =
 
   // === Permission Actions ===
   | { type: "SET_PENDING_PERMISSION"; payload: PermissionRequest | null }
+  | { type: "SET_PERMISSION_REVIEWING"; payload: boolean }
+  | { type: "SET_REVIEW_RESULT"; payload: ReviewResult | null }
+  | { type: "CLEAR_PERMISSION_STATE" }
 
   // === Session Actions ===
   | { type: "SET_SESSION_ACTIVE"; payload: boolean }
@@ -258,6 +262,15 @@ export const actions = {
     type: "SET_PENDING_PERMISSION",
     payload: permission,
   }),
+  setPermissionReviewing: (reviewing: boolean): Action => ({
+    type: "SET_PERMISSION_REVIEWING",
+    payload: reviewing,
+  }),
+  setReviewResult: (result: ReviewResult | null): Action => ({
+    type: "SET_REVIEW_RESULT",
+    payload: result,
+  }),
+  clearPermissionState: (): Action => ({ type: "CLEAR_PERMISSION_STATE" }),
 
   // === Session Actions ===
   setSessionActive: (active: boolean): Action => ({

@@ -22,6 +22,18 @@ pub struct Config {
     pub window_width: Option<u32>,
     #[serde(default)]
     pub window_height: Option<u32>,
+    // Bot mode settings
+    #[serde(default = "default_bot_timeout_ms")]
+    pub bot_timeout_ms: u64,
+    #[serde(default = "default_bot_safety_threshold")]
+    pub bot_safety_threshold: f64,
+    // Permission mode (persisted across sessions)
+    #[serde(default = "default_permission_mode")]
+    pub permission_mode: String,
+}
+
+fn default_permission_mode() -> String {
+    "auto".to_string()
 }
 
 fn default_theme() -> String {
@@ -38,6 +50,14 @@ fn default_font_family() -> String {
 
 fn default_font_size() -> u32 {
     16
+}
+
+fn default_bot_timeout_ms() -> u64 {
+    3000 // 3 seconds
+}
+
+fn default_bot_safety_threshold() -> f64 {
+    0.8 // 80% confidence required
 }
 
 impl Config {

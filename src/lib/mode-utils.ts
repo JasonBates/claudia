@@ -3,7 +3,7 @@
  * (similar to Claude Code's Shift+Tab functionality)
  */
 
-export type Mode = 'auto' | 'request' | 'plan';
+export type Mode = 'auto' | 'request' | 'plan' | 'bot';
 
 /**
  * Available modes in cycling order
@@ -13,7 +13,7 @@ export type Mode = 'auto' | 'request' | 'plan';
  * - request: Show permission dialog for each tool use
  * - plan: Prepend planning instruction to prompt (also shows permission dialogs)
  */
-export const MODES: readonly Mode[] = Object.freeze(['auto', 'request', 'plan'] as const);
+export const MODES: readonly Mode[] = Object.freeze(['auto', 'request', 'plan', 'bot'] as const);
 
 /**
  * Gets the next mode in the cycle
@@ -65,6 +65,8 @@ export function getModeLabel(mode: Mode): string {
       return 'Request';
     case 'plan':
       return 'Plan';
+    case 'bot':
+      return 'BotGuard';
     default:
       return mode;
   }

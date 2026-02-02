@@ -11,10 +11,10 @@ import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel"
 import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig } from "./lib/tauri";
 import type { ThemeSettings } from "./lib/theme-utils";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
-import { Mode, getNextMode } from "./lib/mode-utils";
+import { Mode, getNextMode, isValidMode } from "./lib/mode-utils";
 import { useStore, createEventDispatcher, actions, resetStreamingRefs } from "./lib/store";
 import { normalizeClaudeEvent } from "./lib/claude-event-normalizer";
 import type { ClaudeEvent } from "./lib/tauri";
@@ -27,6 +27,8 @@ import {
   useSettings,
 } from "./hooks";
 import SettingsModal from "./components/SettingsModal";
+import BotSettings from "./components/BotSettings";
+import { hasBotApiKey } from "./lib/tauri";
 import "./App.css";
 
 function App() {
@@ -59,7 +61,23 @@ function App() {
   const session = useSession();
 
   // Permission mode state (local, not in store)
-  const [currentMode, setCurrentMode] = createSignal<Mode>("auto");
+  // Use localStorage for instant access on load, with Tauri config as source of truth
+  const getInitialMode = (): Mode => {
+    try {
+      const stored = localStorage.getItem("claudia_permission_mode");
+      if (stored && isValidMode(stored)) {
+        return stored;
+      }
+    } catch {
+      // localStorage may be unavailable
+    }
+    return "auto";
+  };
+  const [currentMode, setCurrentMode] = createSignal<Mode>(getInitialMode());
+
+  // Bot settings panel state
+  const [botSettingsOpen, setBotSettingsOpen] = createSignal(false);
+  const [botSettingsError, setBotSettingsError] = createSignal<string | null>(null);
 
   // Permissions hook (polling logic + handlers)
   const permissions = usePermissions({
@@ -67,6 +85,11 @@ function App() {
     getCurrentMode: currentMode,
     pendingPermission: store.pendingPermission,
     clearPendingPermission: () => store.dispatch(actions.setPendingPermission(null)),
+    // Bot mode review state
+    isReviewing: store.permissionIsReviewing,
+    setIsReviewing: (value: boolean) => store.dispatch(actions.setPermissionReviewing(value)),
+    reviewResult: store.permissionReviewResult,
+    setReviewResult: (value) => store.dispatch(actions.setReviewResult(value)),
   });
 
   // Sidebar (session history)
@@ -270,8 +293,76 @@ function App() {
   // Actions
   // ============================================================================
 
-  const cycleMode = () => {
-    setCurrentMode(getNextMode(currentMode()));
+  const cycleMode = async () => {
+    const prevMode = currentMode();
+    const nextMode = getNextMode(prevMode);
+    console.log("[CYCLE_MODE] Current:", prevMode, "-> Next:", nextMode);
+
+    // If switching away from bot mode while a review is in progress, cancel it
+    if (prevMode === "bot") {
+      console.log("[CYCLE_MODE] Leaving bot mode, clearing review state");
+      store.dispatch(actions.setPermissionReviewing(false));
+      store.dispatch(actions.setReviewResult(null));
+    }
+
+    // Helper to set mode and persist to config + localStorage
+    const setAndSaveMode = async (mode: Mode) => {
+      setCurrentMode(mode);
+      // Save to localStorage for instant access on next load
+      try {
+        localStorage.setItem("claudia_permission_mode", mode);
+      } catch {
+        // localStorage may be unavailable
+      }
+      // Save to Tauri config (source of truth)
+      try {
+        const config = await getConfig();
+        config.permission_mode = mode;
+        await saveConfig(config);
+        console.log("[CYCLE_MODE] Saved mode to config:", mode);
+      } catch (e) {
+        console.error("[CYCLE_MODE] Failed to save mode:", e);
+      }
+    };
+
+    // When switching to bot mode, check if API key is configured
+    if (nextMode === "bot") {
+      console.log("[CYCLE_MODE] Switching to bot mode, checking API key...");
+      try {
+        const hasKey = await hasBotApiKey();
+        console.log("[CYCLE_MODE] hasBotApiKey result:", hasKey);
+        if (!hasKey) {
+          // Open settings with error message
+          console.log("[CYCLE_MODE] No API key, opening settings panel");
+          setBotSettingsError("API key required for BotGuard");
+          setBotSettingsOpen(true);
+          // Still switch to bot mode so user sees the correct mode
+          await setAndSaveMode(nextMode);
+          return;
+        }
+        console.log("[CYCLE_MODE] API key exists, proceeding to bot mode");
+      } catch (e) {
+        console.error("[BOT_MODE] Failed to check API key:", e);
+        setBotSettingsError(`Failed to check API key: ${e}`);
+        setBotSettingsOpen(true);
+        await setAndSaveMode(nextMode);
+        return;
+      }
+    }
+
+    await setAndSaveMode(nextMode);
+  };
+
+  // Open bot settings panel
+  const openBotSettings = () => {
+    setBotSettingsError(null);
+    setBotSettingsOpen(true);
+  };
+
+  // Close bot settings panel
+  const closeBotSettings = () => {
+    setBotSettingsOpen(false);
+    setBotSettingsError(null);
   };
 
   // Handle question panel answer
@@ -761,6 +852,25 @@ function App() {
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
 
+    // Load saved permission mode from config (source of truth)
+    // and sync to localStorage for instant access on next load
+    try {
+      const config = await getConfig();
+      if (config.permission_mode) {
+        const savedMode = config.permission_mode as Mode;
+        console.log("[MOUNT] Loaded saved permission mode:", savedMode);
+        setCurrentMode(savedMode);
+        // Sync to localStorage
+        try {
+          localStorage.setItem("claudia_permission_mode", savedMode);
+        } catch {
+          // localStorage may be unavailable
+        }
+      }
+    } catch (e) {
+      console.error("[MOUNT] Failed to load config:", e);
+    }
+
     window.addEventListener("keydown", handleKeyDown, true);
     document.addEventListener("click", handleRefocusClick, true);
 
@@ -957,6 +1067,7 @@ function App() {
             mode={currentMode()}
             onModeChange={cycleMode}
             isPlanning={store.isPlanning()}
+            onSettingsClick={currentMode() === "bot" ? openBotSettings : undefined}
           />
         </footer>
       </div>
@@ -982,6 +1093,14 @@ function App() {
       </Show>
 
       {/* Plan approval is now inline in PlanningTool component */}
+
+      {/* Bot Settings Panel */}
+      <BotSettings
+        isOpen={botSettingsOpen()}
+        onClose={closeBotSettings}
+        error={botSettingsError()}
+        highlightApiKey={!!botSettingsError()}
+      />
 
       {/* Settings Modal */}
       <Show when={settings.isOpen()}>
@@ -1012,6 +1131,8 @@ function App() {
             description={store.pendingPermission()!.description}
             onAllow={permissions.handlePermissionAllow}
             onDeny={permissions.handlePermissionDeny}
+            isReviewing={store.permissionIsReviewing()}
+            reviewResult={store.permissionReviewResult()}
           />
         </div>
       </Show>

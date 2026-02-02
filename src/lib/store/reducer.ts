@@ -558,7 +558,36 @@ export function conversationReducer(
       return {
         ...state,
         permission: {
+          ...state.permission,
           pending: action.payload,
+        },
+      };
+
+    case "SET_PERMISSION_REVIEWING":
+      return {
+        ...state,
+        permission: {
+          ...state.permission,
+          isReviewing: action.payload,
+        },
+      };
+
+    case "SET_REVIEW_RESULT":
+      return {
+        ...state,
+        permission: {
+          ...state.permission,
+          reviewResult: action.payload,
+        },
+      };
+
+    case "CLEAR_PERMISSION_STATE":
+      return {
+        ...state,
+        permission: {
+          pending: null,
+          isReviewing: false,
+          reviewResult: null,
         },
       };
 

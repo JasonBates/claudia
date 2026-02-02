@@ -1,4 +1,5 @@
 import { Component, Show } from "solid-js";
+import type { ReviewResult } from "../lib/store/types";
 
 interface PermissionDialogProps {
   toolName: string;
@@ -6,6 +7,10 @@ interface PermissionDialogProps {
   description: string;
   onAllow: (remember: boolean) => void;
   onDeny: () => void;
+  /** Whether Bot mode is currently reviewing this permission */
+  isReviewing?: boolean;
+  /** Result from Bot mode LLM review (shows flag reason if not safe) */
+  reviewResult?: ReviewResult | null;
 }
 
 const PermissionDialog: Component<PermissionDialogProps> = (props) => {
@@ -42,18 +47,33 @@ const PermissionDialog: Component<PermissionDialogProps> = (props) => {
         <Show when={formatInput()}>
           <div class="permission-input">{formatInput()}</div>
         </Show>
+        {/* Show flag reason from Bot mode review */}
+        <Show when={props.reviewResult && !props.reviewResult.safe}>
+          <div class="permission-flag-reason">
+            <span class="flag-icon">⚠</span>
+            {props.reviewResult!.reason}
+          </div>
+        </Show>
       </div>
-      <div class="permission-actions">
-        <button class="permission-btn permission-allow" onClick={() => props.onAllow(false)}>
-          Allow
-        </button>
-        <button class="permission-btn permission-always" onClick={() => props.onAllow(true)}>
-          Always
-        </button>
-        <button class="permission-btn permission-deny" onClick={props.onDeny}>
-          Deny
-        </button>
-      </div>
+      {/* Show reviewing spinner or action buttons */}
+      <Show when={props.isReviewing} fallback={
+        <div class="permission-actions">
+          <button class="permission-btn permission-allow" onClick={() => props.onAllow(false)}>
+            Allow
+          </button>
+          <button class="permission-btn permission-always" onClick={() => props.onAllow(true)}>
+            Always
+          </button>
+          <button class="permission-btn permission-deny" onClick={props.onDeny}>
+            Deny
+          </button>
+        </div>
+      }>
+        <div class="permission-reviewing">
+          <span class="reviewing-spinner">◌</span>
+          Reviewing...
+        </div>
+      </Show>
     </div>
   );
 };

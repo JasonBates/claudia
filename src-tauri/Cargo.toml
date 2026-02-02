@@ -35,4 +35,6 @@ plist = "1"
 tauri-plugin-window-state = "2"
 tauri-plugin-dialog = "2"
 libc = "0.2"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+regex = "1"
 
