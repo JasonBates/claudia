@@ -56,6 +56,5 @@ if pgrep -f "Claudia.app" > /dev/null 2>&1; then
     fi
 fi
 
-# Launch with debug enabled
-export CLAUDIA_DEBUG=1
-exec "$APP_PATH"
+# Launch with debug enabled - use env to explicitly pass the variable
+exec env CLAUDIA_DEBUG=1 "$APP_PATH"
