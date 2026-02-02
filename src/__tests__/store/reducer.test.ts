@@ -402,11 +402,13 @@ describe("conversationReducer", () => {
       });
 
       expect(newState.tools.current).toHaveLength(1);
-      expect(newState.tools.current[0]).toEqual(tool);
+      // Tool should have original properties plus startedAt timestamp
+      expect(newState.tools.current[0]).toMatchObject(tool);
+      expect(newState.tools.current[0].startedAt).toEqual(expect.any(Number));
       expect(newState.streaming.blocks).toHaveLength(1);
-      expect(newState.streaming.blocks[0]).toEqual({
+      expect(newState.streaming.blocks[0]).toMatchObject({
         type: "tool_use",
-        tool,
+        tool: expect.objectContaining(tool),
       });
     });
 
