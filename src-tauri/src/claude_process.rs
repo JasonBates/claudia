@@ -21,13 +21,55 @@ fn rust_debug_log(prefix: &str, msg: &str) {
     }
 
     use std::io::Write as IoWrite;
-    let log_path = std::env::temp_dir().join("claude-rust-debug.log");
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_path) {
-        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-        let _ = writeln!(file, "[{}] [{}] {}", timestamp, prefix, msg);
+
+    // Use app-private directory for secure logging (SEC-001)
+    let log_path = get_secure_log_path();
+    if let Some(path) = log_path {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            if let Ok(mut file) = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .mode(0o600)
+                .open(&path)
+            {
+                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                let _ = writeln!(file, "[{}] [{}] {}", timestamp, prefix, msg);
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&path) {
+                let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+                let _ = writeln!(file, "[{}] [{}] {}", timestamp, prefix, msg);
+            }
+        }
     }
     #[cfg(debug_assertions)]
     eprintln!("[{}] {}", prefix, msg);
+}
+
+/// Get secure log file path in app-private directory
+fn get_secure_log_path() -> Option<PathBuf> {
+    let base_dir = dirs::data_local_dir().or_else(dirs::data_dir)?;
+    let log_dir = base_dir.join("com.jasonbates.claudia").join("logs");
+
+    // Ensure directory exists with secure permissions
+    if !log_dir.exists() {
+        if std::fs::create_dir_all(&log_dir).is_err() {
+            return None;
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o700);
+        let _ = std::fs::set_permissions(&log_dir, perms);
+    }
+
+    Some(log_dir.join("claude-debug.log"))
 }
 
 // ============================================================================
