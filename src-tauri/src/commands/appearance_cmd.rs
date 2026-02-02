@@ -91,9 +91,34 @@ pub async fn list_color_schemes() -> Result<Vec<ColorSchemeInfo>, String> {
     Ok(schemes)
 }
 
+/// Validate scheme name to prevent path traversal attacks
+fn is_valid_scheme_name(name: &str) -> bool {
+    // Reject empty names
+    if name.is_empty() {
+        return false;
+    }
+
+    // Reject path traversal sequences and path separators
+    if name.contains("..") || name.contains('/') || name.contains('\\') {
+        return false;
+    }
+
+    // Reject names that start with a dot (hidden files)
+    if name.starts_with('.') {
+        return false;
+    }
+
+    true
+}
+
 /// Get color values for a specific scheme
 #[tauri::command]
 pub async fn get_scheme_colors(name: String) -> Result<ColorSchemeColors, String> {
+    // Validate scheme name to prevent path traversal
+    if !is_valid_scheme_name(&name) {
+        return Err("Invalid scheme name".to_string());
+    }
+
     // Check bundled schemes first
     if let Some(colors) = get_bundled_scheme(&name) {
         return Ok(colors);
@@ -108,6 +133,16 @@ pub async fn get_scheme_colors(name: String) -> Result<ColorSchemeColors, String
 
         for dir in search_paths {
             let file_path = dir.join(format!("{}.itermcolors", name));
+
+            // Extra safety: verify the resolved path is within the expected directory
+            if let (Ok(canonical_dir), Ok(canonical_file)) =
+                (dir.canonicalize(), file_path.canonicalize())
+            {
+                if !canonical_file.starts_with(&canonical_dir) {
+                    continue; // Path escaped the directory, skip it
+                }
+            }
+
             if file_path.exists() {
                 return parse_itermcolors(&file_path);
             }
@@ -316,4 +351,37 @@ fn parse_itermcolors(path: &PathBuf) -> Result<ColorSchemeColors, String> {
         code_bg: darken_color(&bg, 0.15),
         quote: fg_muted, // Use muted foreground for quotes in custom schemes
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_scheme_names() {
+        assert!(is_valid_scheme_name("Solarized Dark"));
+        assert!(is_valid_scheme_name("My Theme"));
+        assert!(is_valid_scheme_name("theme-name"));
+        assert!(is_valid_scheme_name("theme_name"));
+    }
+
+    #[test]
+    fn rejects_path_traversal() {
+        assert!(!is_valid_scheme_name("../etc/passwd"));
+        assert!(!is_valid_scheme_name(".."));
+        assert!(!is_valid_scheme_name("foo/../bar"));
+        assert!(!is_valid_scheme_name("foo/bar"));
+        assert!(!is_valid_scheme_name("foo\\bar"));
+    }
+
+    #[test]
+    fn rejects_hidden_files() {
+        assert!(!is_valid_scheme_name(".hidden"));
+        assert!(!is_valid_scheme_name("."));
+    }
+
+    #[test]
+    fn rejects_empty_name() {
+        assert!(!is_valid_scheme_name(""));
+    }
 }
