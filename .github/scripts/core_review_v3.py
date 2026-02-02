@@ -62,7 +62,7 @@ REVIEW_SCHEMA = {
                     },
                     "category": {
                         "type": "string",
-                        "enum": ["security", "performance", "quality", "architecture", "maintainability"]
+                        "enum": ["performance", "architecture", "maintainability", "quality", "security"]
                     },
                     "title": {
                         "type": "string",
@@ -114,13 +114,33 @@ REVIEW_PROMPT = """You are an expert code reviewer. Analyze this codebase and pr
 - Backend: Rust/Tauri (src-tauri/src/)
 - Bridge: Node.js SDK (src-tauri/*.mjs)
 
+**Review Priorities (in order of importance):**
+
+1. **Performance & Stability** (HIGHEST PRIORITY)
+   - Memory leaks, resource exhaustion, blocking operations
+   - Race conditions, deadlocks, error handling gaps
+   - Inefficient algorithms, unnecessary allocations
+   - UI responsiveness and smooth user experience
+
+2. **Maintainability & Expandability**
+   - Best practice architectural patterns (separation of concerns, SOLID principles)
+   - Code organization and module boundaries
+   - Clear abstractions that support future extension
+   - Consistent patterns and conventions across the codebase
+   - Technical debt that will slow future development
+
+3. **Security** (important, but balanced with above priorities)
+   - Input validation and sanitization
+   - Secure IPC and process isolation
+   - Credential and sensitive data handling
+   - Only flag security issues proportionate to the desktop app context
+
 **Your task:**
-1. Identify concrete improvements (security, performance, quality, architecture)
-2. Prioritize by severity (critical > high > medium > low)
+1. Identify concrete improvements aligned with the priorities above
+2. Assign severity based on impact to stability/maintainability/security
 3. Provide specific file references and actionable solutions
 4. Estimate effort for each fix
 
-Focus on issues that matter for a desktop app handling sensitive CLI interactions.
 Be thorough but practical - every improvement should be implementable.
 
 **IMPORTANT: Respond with valid JSON only, no markdown, no explanation. Use this exact structure:**
@@ -128,19 +148,19 @@ Be thorough but practical - every improvement should be implementable.
 {{
   "improvements": [
     {{
-      "id": "SEC-001",
+      "id": "PERF-001",
       "file": "path/to/file.rs",
       "line_hint": "function_name or ~line 42",
       "severity": "critical|high|medium|low",
-      "category": "security|performance|quality|architecture|maintainability",
+      "category": "performance|architecture|maintainability|quality|security",
       "title": "Short title under 80 chars",
       "problem": "What's wrong and why it matters",
       "solution": "How to fix it",
       "effort": "trivial|small|medium|large"
     }}
   ],
-  "architecture_notes": "Brief assessment of overall architecture",
-  "security_posture": "Overall security assessment",
+  "architecture_notes": "Brief assessment of overall architecture (focus on maintainability)",
+  "security_posture": "Overall security assessment (proportionate to desktop app context)",
   "top_priority": "The single most important thing to fix first and why",
   "risk_score": 65
 }}
