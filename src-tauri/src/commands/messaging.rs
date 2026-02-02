@@ -72,7 +72,9 @@ pub fn calculate_timeouts(
         TIMEOUT_SUBAGENT_MS
     } else if tools_pending {
         TIMEOUT_TOOL_EXEC_MS
-    } else if got_first_content {
+    } else if thinking_in_progress || got_first_content {
+        // Use streaming timeout for thinking even before first text content
+        // Extended thinking can pause 10-20s between bursts
         TIMEOUT_STREAMING_MS
     } else {
         TIMEOUT_WAITING_MS
@@ -655,9 +657,10 @@ mod tests {
 
     #[test]
     fn timeout_thinking_without_content() {
-        // Thinking can start before text content
+        // Thinking can start before text content - should still use streaming timeout
+        // to handle 10-20s pauses during extended thinking (15 * 2000ms = 30s)
         let (timeout, max_idle) = calculate_timeouts(false, false, false, false, true, false);
-        assert_eq!(timeout, TIMEOUT_WAITING_MS);
+        assert_eq!(timeout, TIMEOUT_STREAMING_MS);
         assert_eq!(max_idle, MAX_IDLE_THINKING);
     }
 
