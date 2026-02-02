@@ -17,6 +17,7 @@ pub mod session;
 pub mod session_list;
 pub mod streaming_cmd;
 
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -47,6 +48,8 @@ pub struct AppState {
     pub launch_dir: String,
     /// Unique session ID for this app instance (used for multi-instance safety)
     pub session_id: String,
+    /// Monotonic counter to detect superseded requests (prevents concurrent event loop hangs)
+    pub request_generation: AtomicU64,
 }
 
 impl AppState {
@@ -78,6 +81,7 @@ impl AppState {
             config: Arc::new(Mutex::new(config)),
             launch_dir,
             session_id,
+            request_generation: AtomicU64::new(0),
         }
     }
 }
