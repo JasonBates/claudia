@@ -63,9 +63,54 @@ pub fn get_permission_response_path(session_id: &str) -> Result<PathBuf, String>
     Ok(dir.join(format!("permission-response-{}.json", session_id)))
 }
 
-/// Verify file permissions and ownership before reading
-/// Returns error if file doesn't have expected secure permissions
+/// Verify file permissions and ownership from an open file handle
+/// This avoids TOCTOU vulnerabilities by using fstat instead of stat
 #[cfg(unix)]
+pub fn verify_file_security_from_handle(file: &std::fs::File) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+
+    let metadata = file
+        .metadata()
+        .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+
+    // Verify it's a regular file
+    if !metadata.is_file() {
+        return Err("Path is not a regular file".to_string());
+    }
+
+    // Verify owner is current user
+    let file_uid = metadata.uid();
+    let current_uid = unsafe { libc::getuid() };
+    if file_uid != current_uid {
+        return Err(format!(
+            "File owner mismatch: expected {}, got {}",
+            current_uid, file_uid
+        ));
+    }
+
+    // Verify permissions are 0600 (no group/other access)
+    let mode = metadata.permissions().mode() & 0o777;
+    if mode & 0o077 != 0 {
+        return Err(format!(
+            "Insecure file permissions: {:o} (expected 0600)",
+            mode
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn verify_file_security_from_handle(_file: &std::fs::File) -> Result<(), String> {
+    // On non-Unix platforms, skip permission verification
+    // Windows has different ACL-based security model
+    Ok(())
+}
+
+/// Legacy path-based verification - prefer verify_file_security_from_handle
+/// to avoid TOCTOU vulnerabilities
+#[cfg(unix)]
+#[allow(dead_code)]
 pub fn verify_file_security(path: &PathBuf) -> Result<(), String> {
     use std::os::unix::fs::MetadataExt;
 
@@ -99,6 +144,7 @@ pub fn verify_file_security(path: &PathBuf) -> Result<(), String> {
 }
 
 #[cfg(not(unix))]
+#[allow(dead_code)]
 pub fn verify_file_security(_path: &PathBuf) -> Result<(), String> {
     // On non-Unix platforms, skip permission verification
     // Windows has different ACL-based security model
@@ -162,11 +208,44 @@ pub fn secure_write(path: &PathBuf, content: &str) -> Result<(), String> {
 }
 
 /// Securely read a file with permission verification
+/// Opens the file once with O_NOFOLLOW and verifies metadata from the handle
+/// to prevent TOCTOU/symlink attacks
 pub fn secure_read(path: &PathBuf) -> Result<String, String> {
-    // Verify file security before reading
-    verify_file_security(path)?;
+    use std::io::Read;
 
-    fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))
+    // Open file with O_NOFOLLOW to prevent symlink attacks
+    #[cfg(unix)]
+    let file = {
+        use std::os::unix::fs::OpenOptionsExt;
+        OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+            .map_err(|e| {
+                if e.raw_os_error() == Some(libc::ELOOP) {
+                    "Refusing to follow symlink".to_string()
+                } else {
+                    format!("Failed to open file: {}", e)
+                }
+            })?
+    };
+
+    #[cfg(not(unix))]
+    let file = OpenOptions::new()
+        .read(true)
+        .open(path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
+
+    // Verify security from the open file handle (fstat, not stat)
+    verify_file_security_from_handle(&file)?;
+
+    // Read from the already-verified handle
+    let mut content = String::new();
+    let mut file = file;
+    file.read_to_string(&mut content)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    Ok(content)
 }
 
 /// Write a JSON IPC message with secure file permissions
