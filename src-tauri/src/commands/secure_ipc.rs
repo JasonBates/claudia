@@ -2,14 +2,14 @@
 //!
 //! This module provides secure file-based IPC with:
 //! - App-private directory with 0700 permissions
-//! - Files with 0600 permissions
+//! - Files with 0600 permissions (owner read/write only)
 //! - Atomic writes (temp file + rename)
-//! - HMAC authentication to prevent spoofing
 //! - Owner/permission verification before reads
+//!
+//! Security model: Relies on OS file permissions rather than cryptographic
+//! signing. An attacker who cannot write to the user's files cannot spoof
+//! permission requests. This approach works across session reloads.
 
-use hmac::{Hmac, Mac};
-use rand::RngCore;
-use sha2::Sha256;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
@@ -17,54 +17,8 @@ use std::path::PathBuf;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-type HmacSha256 = Hmac<Sha256>;
-
-/// Per-session secret for HMAC authentication
-/// Generated once per session and used to sign/verify IPC messages
-pub struct SessionSecret {
-    secret: [u8; 32],
-}
-
-impl SessionSecret {
-    /// Generate a new cryptographically secure session secret
-    pub fn new() -> Self {
-        let mut secret = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut secret);
-        Self { secret }
-    }
-
-    /// Generate HMAC for a message
-    pub fn sign(&self, message: &str) -> String {
-        let mut mac =
-            HmacSha256::new_from_slice(&self.secret).expect("HMAC can take key of any size");
-        mac.update(message.as_bytes());
-        hex::encode(mac.finalize().into_bytes())
-    }
-
-    /// Verify HMAC for a message
-    pub fn verify(&self, message: &str, signature: &str) -> bool {
-        let expected = self.sign(message);
-        // Constant-time comparison to prevent timing attacks
-        constant_time_eq(expected.as_bytes(), signature.as_bytes())
-    }
-}
-
-impl Default for SessionSecret {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Constant-time byte comparison to prevent timing attacks
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
+#[cfg(not(unix))]
+use std::fs::File;
 
 /// Get the secure IPC directory path
 /// Uses app data directory instead of temp to prevent access by other processes
@@ -159,10 +113,14 @@ pub fn secure_write(path: &PathBuf, content: &str) -> Result<(), String> {
         .ok_or("Invalid path: no parent directory")?;
 
     // Create temp file in same directory (required for atomic rename)
+    // Use timestamp + process ID for uniqueness
     let temp_path = dir.join(format!(
         ".tmp-{}-{}",
         std::process::id(),
-        rand::random::<u32>()
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
     ));
 
     // Write to temp file
@@ -211,59 +169,23 @@ pub fn secure_read(path: &PathBuf) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))
 }
 
-/// Write a signed IPC message (includes HMAC for authentication)
-pub fn write_signed_message(
-    path: &PathBuf,
-    content: &serde_json::Value,
-    secret: &SessionSecret,
-) -> Result<(), String> {
-    let content_str = serde_json::to_string(content)
+/// Write a JSON IPC message with secure file permissions
+pub fn write_ipc_message(path: &PathBuf, content: &serde_json::Value) -> Result<(), String> {
+    let content_str = serde_json::to_string_pretty(content)
         .map_err(|e| format!("Failed to serialize content: {}", e))?;
 
-    let signature = secret.sign(&content_str);
-
-    let signed_message = serde_json::json!({
-        "content": content,
-        "signature": signature
-    });
-
-    let signed_str = serde_json::to_string_pretty(&signed_message)
-        .map_err(|e| format!("Failed to serialize signed message: {}", e))?;
-
-    secure_write(path, &signed_str)
+    secure_write(path, &content_str)
 }
 
-/// Read and verify a signed IPC message
-pub fn read_signed_message(
-    path: &PathBuf,
-    secret: &SessionSecret,
-) -> Result<serde_json::Value, String> {
+/// Read a JSON IPC message with file permission verification
+pub fn read_ipc_message(path: &PathBuf) -> Result<serde_json::Value, String> {
     let content = secure_read(path)?;
 
-    let signed_message: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse signed message: {}", e))?;
-
-    let inner_content = signed_message
-        .get("content")
-        .ok_or("Missing content in signed message")?;
-
-    let signature = signed_message
-        .get("signature")
-        .and_then(|s| s.as_str())
-        .ok_or("Missing or invalid signature in signed message")?;
-
-    // Verify HMAC
-    let content_str = serde_json::to_string(inner_content)
-        .map_err(|e| format!("Failed to serialize content for verification: {}", e))?;
-
-    if !secret.verify(&content_str, signature) {
-        return Err("Invalid signature - message may have been tampered with".to_string());
-    }
-
-    Ok(inner_content.clone())
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse message: {}", e))
 }
 
 /// Clean up IPC files for a session
+#[allow(dead_code)]
 pub fn cleanup_session_files(session_id: &str) -> Result<(), String> {
     if let Ok(request_path) = get_permission_request_path(session_id) {
         let _ = fs::remove_file(request_path);
@@ -279,18 +201,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_session_secret_sign_verify() {
-        let secret = SessionSecret::new();
-        let message = "test message";
-        let signature = secret.sign(message);
-        assert!(secret.verify(message, &signature));
-        assert!(!secret.verify("different message", &signature));
+    fn test_get_secure_ipc_dir() {
+        let dir = get_secure_ipc_dir();
+        assert!(dir.is_ok());
+        let path = dir.unwrap();
+        assert!(path.to_string_lossy().contains("com.jasonbates.claudia"));
     }
 
     #[test]
-    fn test_constant_time_eq() {
-        assert!(constant_time_eq(b"hello", b"hello"));
-        assert!(!constant_time_eq(b"hello", b"world"));
-        assert!(!constant_time_eq(b"hello", b"hell"));
+    fn test_permission_paths() {
+        let session_id = "test-session-123";
+        let request_path = get_permission_request_path(session_id);
+        let response_path = get_permission_response_path(session_id);
+
+        assert!(request_path.is_ok());
+        assert!(response_path.is_ok());
+
+        let req = request_path.unwrap();
+        let res = response_path.unwrap();
+
+        assert!(req.to_string_lossy().contains("permission-request-test-session-123"));
+        assert!(res.to_string_lossy().contains("permission-response-test-session-123"));
     }
 }
