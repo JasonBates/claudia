@@ -10,8 +10,8 @@
 use tauri::State;
 
 use super::secure_ipc::{
-    get_permission_request_path, get_permission_response_path, read_signed_message,
-    write_signed_message,
+    get_permission_request_path, get_permission_response_path, read_ipc_message,
+    write_ipc_message,
 };
 use super::{cmd_debug_log, AppState};
 
@@ -36,7 +36,7 @@ pub async fn poll_permission_request(
     };
 
     if request_path.exists() {
-        match read_signed_message(&request_path, &state.session_secret) {
+        match read_ipc_message(&request_path) {
             Ok(json) => {
                 // Delete the file immediately to prevent duplicate processing
                 let _ = std::fs::remove_file(&request_path);
@@ -96,7 +96,7 @@ pub async fn respond_to_permission(
         "timestamp": chrono::Utc::now().to_rfc3339()
     });
 
-    write_signed_message(&response_path, &response, &state.session_secret)?;
+    write_ipc_message(&response_path, &response)?;
 
     Ok(())
 }
