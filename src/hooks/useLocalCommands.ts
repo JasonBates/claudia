@@ -66,6 +66,10 @@ export interface UseLocalCommandsOptions {
    * Callback to focus the command input.
    */
   onFocusInput?: () => void;
+  /**
+   * Callback to open a new window.
+   */
+  onOpenNewWindow?: () => void;
 }
 
 export interface UseLocalCommandsReturn {
@@ -164,7 +168,7 @@ function matchesKeybinding(e: KeyboardEvent, binding: ParsedKeybinding): boolean
  * - Unified system: commands can have both slash and keybinding
  */
 export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalCommandsReturn {
-  const { streaming, session, owner, sidebar, onCliEvent, onOpenSettings, onFocusInput } = options;
+  const { streaming, session, owner, sidebar, onCliEvent, onOpenSettings, onFocusInput, onOpenNewWindow } = options;
 
   // ==========================================================================
   // Command Handlers
@@ -413,6 +417,14 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
   const handleFocusInput = async () => {
     console.log("[COMMANDS] Focusing input");
     onFocusInput?.();
+  };
+
+  /**
+   * Open a new window (Cmd+N)
+   */
+  const handleOpenNewWindow = async () => {
+    console.log("[COMMANDS] Opening new window");
+    onOpenNewWindow?.();
   };
 
   /**
@@ -728,6 +740,12 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       description: "Focus the message input",
       keybinding: "alt+l",
       handler: handleFocusInput,
+    },
+    {
+      name: "newwindow",
+      description: "Open a new window",
+      keybinding: "cmd+n",
+      handler: handleOpenNewWindow,
     },
     {
       name: "help",
