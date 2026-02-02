@@ -138,6 +138,31 @@ This opens Claudia with that directory as the working directory, picking up proj
 2. **Via CLI**: Launch with `claudia --resume <session-id>`
 3. **Browse history**: The sidebar shows recent sessions with timestamps and previews
 
+### Custom Color Schemes
+
+Claudia includes 6 bundled color schemes (Solarized Dark/Light, Dracula, Nord, One Dark, Gruvbox Dark). You can add more by installing iTerm2 color scheme files.
+
+**To install new color schemes:**
+
+1. Create the colors directory if it doesn't exist:
+   ```bash
+   mkdir -p ~/.config/iterm2/colors
+   ```
+
+2. Copy `.itermcolors` files into the directory:
+   ```bash
+   cp "My Theme.itermcolors" ~/.config/iterm2/colors/
+   ```
+
+3. Open Settings (`⌘ ,`) — your new schemes appear under "From iTerm2"
+
+**Where to find color schemes:**
+
+- [iTerm2-Color-Schemes](https://github.com/mbadolato/iTerm2-Color-Schemes) — 250+ schemes in the `schemes/` directory
+- Any `.itermcolors` file from the web will work
+
+Note: iTerm2 does not need to be installed. Claudia reads the `.itermcolors` plist format directly.
+
 ## Architecture
 
 Claudia wraps the Claude Code CLI to leverage its built-in features (MCPs, skills, hooks, session management, prompt caching) while providing a custom native UI.
