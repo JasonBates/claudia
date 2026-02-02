@@ -222,7 +222,11 @@ mod tests {
 
     #[test]
     fn test_is_meaningful_assistant_message() {
-        assert!(is_meaningful_message("assistant", "Here's the answer", false));
+        assert!(is_meaningful_message(
+            "assistant",
+            "Here's the answer",
+            false
+        ));
         assert!(is_meaningful_message("assistant", "I can help", false));
     }
 
@@ -296,7 +300,10 @@ mod tests {
             "type": "user",
             "message": {"content": "Hello world"}
         });
-        assert_eq!(get_user_string_content(&entry), Some("Hello world".to_string()));
+        assert_eq!(
+            get_user_string_content(&entry),
+            Some("Hello world".to_string())
+        );
     }
 
     #[test]

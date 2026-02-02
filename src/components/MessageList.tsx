@@ -123,10 +123,21 @@ const MessageList: Component<MessageListProps> = (props) => {
     // Use MutationObserver to scroll when DOM content changes
     // This automatically handles all content changes (messages, tools, subagent progress, etc.)
     // without needing to track specific state paths
+    // Debounced via requestAnimationFrame to avoid excessive scroll updates
+    // during rapid streaming (100+ mutations/second → 1 scroll/frame)
     if (containerRef) {
-      const mutationObserver = new MutationObserver(() => {
-        scrollToBottom();
-      });
+      let scrollPending = false;
+      const debouncedScroll = () => {
+        if (!scrollPending) {
+          scrollPending = true;
+          requestAnimationFrame(() => {
+            scrollToBottom();
+            scrollPending = false;
+          });
+        }
+      };
+
+      const mutationObserver = new MutationObserver(debouncedScroll);
       mutationObserver.observe(containerRef, {
         childList: true,    // Watch for added/removed child nodes
         subtree: true,      // Watch all descendants, not just direct children
@@ -196,6 +207,8 @@ const MessageList: Component<MessageListProps> = (props) => {
                               isLoading={tool.isLoading}
                               autoExpanded={tool.autoExpanded}
                               subagent={tool.subagent}
+                              startedAt={tool.startedAt}
+                              completedAt={tool.completedAt}
                             />
                           )}
                         </For>
@@ -216,6 +229,8 @@ const MessageList: Component<MessageListProps> = (props) => {
                               isLoading={(block as { type: "tool_use"; tool: ToolUse }).tool.isLoading}
                               autoExpanded={(block as { type: "tool_use"; tool: ToolUse }).tool.autoExpanded}
                               subagent={(block as { type: "tool_use"; tool: ToolUse }).tool.subagent}
+                              startedAt={(block as { type: "tool_use"; tool: ToolUse }).tool.startedAt}
+                              completedAt={(block as { type: "tool_use"; tool: ToolUse }).tool.completedAt}
                               planning={(block as { type: "tool_use"; tool: ToolUse }).tool.name === "Planning" ? props.planning : undefined}
                             />
                           </div>
@@ -258,6 +273,8 @@ const MessageList: Component<MessageListProps> = (props) => {
                           isLoading={tool.isLoading}
                           autoExpanded={tool.autoExpanded}
                           subagent={tool.subagent}
+                          startedAt={tool.startedAt}
+                          completedAt={tool.completedAt}
                         />
                       )}
                     </For>
@@ -304,6 +321,8 @@ const MessageList: Component<MessageListProps> = (props) => {
                                       isLoading={toolBlock.tool.isLoading}
                                       autoExpanded={toolBlock.tool.autoExpanded}
                                       subagent={toolBlock.tool.subagent}
+                                      startedAt={toolBlock.tool.startedAt}
+                                      completedAt={toolBlock.tool.completedAt}
                                       grouped={true}
                                     />
                                   )}
@@ -349,6 +368,8 @@ const MessageList: Component<MessageListProps> = (props) => {
                             isLoading={toolBlock.tool.isLoading}
                             autoExpanded={toolBlock.tool.autoExpanded}
                             subagent={toolBlock.tool.subagent}
+                            startedAt={toolBlock.tool.startedAt}
+                            completedAt={toolBlock.tool.completedAt}
                             grouped={true}
                           />
                         );
@@ -364,6 +385,8 @@ const MessageList: Component<MessageListProps> = (props) => {
                             isLoading={toolBlock.tool.isLoading}
                             autoExpanded={toolBlock.tool.autoExpanded}
                             subagent={toolBlock.tool.subagent}
+                            startedAt={toolBlock.tool.startedAt}
+                            completedAt={toolBlock.tool.completedAt}
                             planning={toolBlock.tool.name === "Planning" ? props.planning : undefined}
                           />
                         </div>

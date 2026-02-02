@@ -24,6 +24,7 @@ export function createStreamingRefs(): StreamingRefs {
     isCollectingQuestionRef: { current: false },
     pendingResultsRef: { current: new Map() },
     lastToolBlockIndexRef: { current: null },
+    toolIdToBlockIndexRef: { current: new Map() },
   };
 }
 
@@ -39,4 +40,5 @@ export function resetStreamingRefs(refs: StreamingRefs): void {
   refs.isCollectingQuestionRef.current = false;
   refs.pendingResultsRef.current.clear();
   refs.lastToolBlockIndexRef.current = null;
+  refs.toolIdToBlockIndexRef.current.clear();
 }

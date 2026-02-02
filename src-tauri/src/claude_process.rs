@@ -2,7 +2,6 @@ use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::sync::{Arc, Mutex};
 use std::thread;
 use tokio::sync::mpsc;
 
@@ -12,7 +11,9 @@ fn rust_debug_log(prefix: &str, msg: &str) {
     // Gate debug logging behind CLAUDIA_DEBUG=1 environment variable
     static DEBUG_ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     let enabled = *DEBUG_ENABLED.get_or_init(|| {
-        std::env::var("CLAUDIA_DEBUG").map(|v| v == "1").unwrap_or(false)
+        std::env::var("CLAUDIA_DEBUG")
+            .map(|v| v == "1")
+            .unwrap_or(false)
     });
 
     if !enabled {
@@ -29,13 +30,212 @@ fn rust_debug_log(prefix: &str, msg: &str) {
     eprintln!("[{}] {}", prefix, msg);
 }
 
-pub struct ClaudeProcess {
-    stdin: Arc<Mutex<ChildStdin>>,
+// ============================================================================
+// Split process types for independent locking (sender/receiver decoupling)
+// ============================================================================
+
+/// Sender half of the Claude process - handles writing to stdin.
+/// Can be locked independently of the receiver, allowing control commands
+/// (interrupt, permission response) to execute during streaming.
+pub struct ClaudeSender {
+    stdin: ChildStdin,
+}
+
+impl ClaudeSender {
+    /// Send a message to Claude
+    pub fn send_message(&mut self, message: &str) -> Result<(), String> {
+        rust_debug_log(
+            "SENDER",
+            &format!("Sending: {}", message.chars().take(100).collect::<String>()),
+        );
+
+        // JSON-encode the message to preserve newlines
+        let encoded = serde_json::json!({ "text": message });
+        let prefixed = format!("__MSG__{}\n", encoded);
+
+        self.stdin.write_all(prefixed.as_bytes()).map_err(|e| {
+            rust_debug_log("SENDER", &format!("Write error: {}", e));
+            format!("Write error: {}", e)
+        })?;
+        self.stdin
+            .flush()
+            .map_err(|e| format!("Flush error: {}", e))?;
+
+        rust_debug_log("SENDER", "Message sent and flushed");
+        Ok(())
+    }
+
+    /// Send an interrupt signal to Claude
+    pub fn send_interrupt(&mut self) -> Result<(), String> {
+        rust_debug_log("SENDER", "Sending interrupt signal");
+
+        let interrupt_msg = r#"{"type":"interrupt"}"#;
+        self.stdin
+            .write_all(interrupt_msg.as_bytes())
+            .map_err(|e| {
+                rust_debug_log("SENDER", &format!("Write error: {}", e));
+                format!("Write error: {}", e)
+            })?;
+        self.stdin
+            .write_all(b"\n")
+            .map_err(|e| format!("Write error: {}", e))?;
+        self.stdin
+            .flush()
+            .map_err(|e| format!("Flush error: {}", e))?;
+
+        rust_debug_log("SENDER", "Interrupt sent");
+        Ok(())
+    }
+}
+
+/// Receiver half of the Claude process - handles reading events from channel.
+/// Can be locked independently of the sender for streaming.
+pub struct ClaudeReceiver {
     event_rx: mpsc::Receiver<ClaudeEvent>,
-    /// The child process - kept for cleanup on drop
+}
+
+impl ClaudeReceiver {
+    /// Receive the next event from Claude (async)
+    pub async fn recv_event(&mut self) -> Option<ClaudeEvent> {
+        self.event_rx.recv().await
+    }
+}
+
+/// Process lifecycle handle - manages the child process and reader thread.
+/// Used for spawn/shutdown operations.
+pub struct ProcessHandle {
     child: Child,
-    /// Reader thread handle - joined on drop to ensure clean shutdown
     reader_handle: Option<thread::JoinHandle<()>>,
+}
+
+impl ProcessHandle {
+    /// Gracefully shutdown the process
+    pub fn shutdown(&mut self) {
+        rust_debug_log("HANDLE", "Beginning process shutdown");
+
+        // Kill the child process - this closes stdout which causes reader to exit
+        if let Err(e) = self.child.kill() {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                rust_debug_log("HANDLE", &format!("Kill error (may be ok): {}", e));
+            }
+        } else {
+            rust_debug_log("HANDLE", "Child process killed");
+        }
+
+        // Wait for child to fully terminate
+        match self.child.wait() {
+            Ok(status) => rust_debug_log("HANDLE", &format!("Child exited: {:?}", status)),
+            Err(e) => rust_debug_log("HANDLE", &format!("Wait error: {}", e)),
+        }
+
+        // Join the reader thread
+        if let Some(handle) = self.reader_handle.take() {
+            rust_debug_log("HANDLE", "Joining reader thread...");
+            match handle.join() {
+                Ok(_) => rust_debug_log("HANDLE", "Reader thread joined"),
+                Err(_) => rust_debug_log("HANDLE", "Reader thread panicked"),
+            }
+        }
+
+        rust_debug_log("HANDLE", "Shutdown complete");
+    }
+}
+
+impl Drop for ProcessHandle {
+    fn drop(&mut self) {
+        rust_debug_log("DROP", "ProcessHandle being dropped");
+        self.shutdown();
+    }
+}
+
+/// Spawn a new Claude process and return split sender/receiver/handle.
+/// This is the new factory function that enables independent locking.
+pub fn spawn_claude_process(
+    working_dir: &Path,
+    app_session_id: &str,
+) -> Result<(ClaudeSender, ClaudeReceiver, ProcessHandle), String> {
+    spawn_claude_process_with_resume(working_dir, None, app_session_id)
+}
+
+/// Spawn a Claude process with optional resume, returning split components.
+pub fn spawn_claude_process_with_resume(
+    working_dir: &Path,
+    resume_session_id: Option<&str>,
+    app_session_id: &str,
+) -> Result<(ClaudeSender, ClaudeReceiver, ProcessHandle), String> {
+    rust_debug_log(
+        "SPAWN",
+        &format!("Starting spawn in dir: {:?}", working_dir),
+    );
+    rust_debug_log(
+        "SPAWN",
+        &format!(
+            "App session ID: {}",
+            &app_session_id[..8.min(app_session_id.len())]
+        ),
+    );
+    if let Some(session_id) = resume_session_id {
+        rust_debug_log("SPAWN", &format!("Resuming session: {}", session_id));
+    }
+
+    let node_path = find_node_binary().map_err(|e| {
+        rust_debug_log("SPAWN_ERROR", &format!("Node binary not found: {}", e));
+        e
+    })?;
+
+    let bridge_path = get_bridge_script_path().map_err(|e| {
+        rust_debug_log("SPAWN_ERROR", &format!("Bridge script not found: {}", e));
+        e
+    })?;
+
+    // Build command
+    let mut cmd = Command::new(&node_path);
+    cmd.arg("--no-warnings")
+        .arg(&bridge_path)
+        .current_dir(working_dir)
+        .env("NODE_OPTIONS", "--no-warnings")
+        .env("FORCE_COLOR", "0")
+        .env("CLAUDIA_SESSION_ID", app_session_id)
+        .env(
+            "CLAUDIA_DEBUG",
+            std::env::var("CLAUDIA_DEBUG").unwrap_or_default(),
+        )
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+
+    if let Some(session_id) = resume_session_id {
+        cmd.env("CLAUDE_RESUME_SESSION", session_id);
+    }
+
+    let mut child = cmd.spawn().map_err(|e| {
+        rust_debug_log("SPAWN_ERROR", &format!("Failed: {}", e));
+        format!("Failed to spawn bridge: {}", e)
+    })?;
+
+    rust_debug_log("SPAWN", "Bridge process spawned successfully");
+
+    let stdin = child.stdin.take().ok_or("Failed to get stdin")?;
+    let stdout = child.stdout.take().ok_or("Failed to get stdout")?;
+
+    // Bounded channel for events - prevents unbounded memory growth if receiver stalls.
+    // 10000 capacity is large enough for normal streaming but prevents OOM.
+    // If full, reader blocks which back-pressures stdout (correct behavior).
+    let (tx, rx) = mpsc::channel::<ClaudeEvent>(10000);
+
+    // Spawn reader thread
+    let reader_handle = thread::spawn(move || {
+        read_output_bounded(stdout, tx);
+    });
+
+    let sender = ClaudeSender { stdin };
+    let receiver = ClaudeReceiver { event_rx: rx };
+    let handle = ProcessHandle {
+        child,
+        reader_handle: Some(reader_handle),
+    };
+
+    Ok((sender, receiver, handle))
 }
 
 fn find_node_binary() -> Result<PathBuf, String> {
@@ -167,606 +367,421 @@ fn get_bridge_script_path() -> Result<PathBuf, String> {
     Err("Could not find sdk-bridge-v2.mjs script".to_string())
 }
 
-impl ClaudeProcess {
-    /// Spawn a new Claude process
-    pub fn spawn(working_dir: &Path, app_session_id: &str) -> Result<Self, String> {
-        Self::spawn_with_resume(working_dir, None, app_session_id)
-    }
+/// Read output using bounded channel - blocks if channel is full.
+/// Used by the split sender/receiver architecture.
+/// If receiver stalls, this will back-pressure to stdout (correct behavior).
+fn read_output_bounded(stdout: ChildStdout, tx: mpsc::Sender<ClaudeEvent>) {
+    rust_debug_log("READER", "Starting read_output_bounded loop");
 
-    /// Spawn a Claude process, optionally resuming a previous session
-    pub fn spawn_with_resume(
-        working_dir: &Path,
-        resume_session_id: Option<&str>,
-        app_session_id: &str,
-    ) -> Result<Self, String> {
-        rust_debug_log(
-            "SPAWN",
-            &format!("Starting spawn in dir: {:?}", working_dir),
-        );
-        rust_debug_log(
-            "SPAWN",
-            &format!("App session ID: {}", &app_session_id[..8]),
-        );
-        if let Some(session_id) = resume_session_id {
-            rust_debug_log("SPAWN", &format!("Resuming session: {}", session_id));
-        }
+    let reader = BufReader::with_capacity(1024, stdout);
 
-        let node_path = find_node_binary().map_err(|e| {
-            rust_debug_log("SPAWN_ERROR", &format!("Node binary not found: {}", e));
-            e
-        })?;
-        rust_debug_log("SPAWN", &format!("Node path: {:?}", node_path));
-
-        let bridge_path = get_bridge_script_path().map_err(|e| {
-            rust_debug_log("SPAWN_ERROR", &format!("Bridge script not found: {}", e));
-            e
-        })?;
-        rust_debug_log("SPAWN", &format!("Bridge path: {:?}", bridge_path));
-
-        // Build command with optional resume session
-        let mut cmd = Command::new(&node_path);
-        cmd.arg("--no-warnings")
-            .arg(&bridge_path)
-            .current_dir(working_dir)
-            .env("NODE_OPTIONS", "--no-warnings")
-            .env("FORCE_COLOR", "0")
-            // Pass app session ID for multi-instance permission file safety
-            .env("CLAUDIA_SESSION_ID", app_session_id)
-            // Pass debug flag to bridge if set
-            .env("CLAUDIA_DEBUG", std::env::var("CLAUDIA_DEBUG").unwrap_or_default())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());  // Inherit stderr to avoid deadlock if bridge writes to it
-
-        // Pass resume session ID via environment variable
-        if let Some(session_id) = resume_session_id {
-            cmd.env("CLAUDE_RESUME_SESSION", session_id);
-        }
-
-        // Spawn the Node.js bridge script
-        let mut child = cmd.spawn().map_err(|e| {
-            rust_debug_log("SPAWN_ERROR", &format!("Failed: {}", e));
-            format!("Failed to spawn bridge: {}", e)
-        })?;
-
-        rust_debug_log("SPAWN", "Bridge process spawned successfully");
-
-        let stdin = child.stdin.take().ok_or("Failed to get stdin")?;
-        let stdout = child.stdout.take().ok_or("Failed to get stdout")?;
-
-        let stdin = Arc::new(Mutex::new(stdin));
-
-        // Channel for events
-        let (tx, rx) = mpsc::channel::<ClaudeEvent>(100);
-
-        // Spawn reader thread for stdout
-        let reader_handle = thread::spawn(move || {
-            Self::read_output(stdout, tx);
-        });
-
-        Ok(Self {
-            stdin,
-            event_rx: rx,
-            child,
-            reader_handle: Some(reader_handle),
-        })
-    }
-
-    fn read_output(stdout: ChildStdout, tx: mpsc::Sender<ClaudeEvent>) {
-        rust_debug_log("READER", "Starting read_output loop");
-
-        // Use 1KB buffer - balance between latency and syscall overhead
-        let reader = BufReader::with_capacity(1024, stdout);
-
-        for line in reader.lines() {
-            let line = match line {
-                Ok(l) => l,
-                Err(e) => {
-                    rust_debug_log("ERROR", &format!("Read error: {}", e));
-                    break;
-                }
-            };
-
-            if line.trim().is_empty() {
-                rust_debug_log("SKIP", "Empty line");
-                continue;
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(e) => {
+                rust_debug_log("ERROR", &format!("Read error: {}", e));
+                break;
             }
+        };
 
-            // Truncate safely at char boundary for logging
-            let truncated: String = line.chars().take(200).collect();
-            rust_debug_log("RAW_LINE", &truncated);
+        if line.trim().is_empty() {
+            continue;
+        }
 
-            // Parse JSON output from the bridge
-            match serde_json::from_str::<serde_json::Value>(&line) {
-                Ok(json) => {
-                    let msg_type = json
-                        .get("type")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("unknown");
-                    rust_debug_log("JSON_PARSED", &format!("type={}", msg_type));
+        // Truncate safely at char boundary for logging
+        let truncated: String = line.chars().take(200).collect();
+        rust_debug_log("RAW_LINE", &truncated);
 
-                    if let Some(event) = Self::parse_bridge_message(&json) {
-                        rust_debug_log("EVENT_CREATED", &format!("{:?}", event));
-                        match tx.blocking_send(event) {
-                            Ok(_) => rust_debug_log("CHANNEL_SEND", "OK"),
-                            Err(e) => {
-                                rust_debug_log("CHANNEL_ERROR", &format!("Send failed: {}", e));
-                                break;
-                            }
-                        }
-                    } else {
-                        rust_debug_log(
-                            "PARSE_FAIL",
-                            &format!("Could not parse type: {}", msg_type),
-                        );
+        // Parse JSON output from the bridge
+        match serde_json::from_str::<serde_json::Value>(&line) {
+            Ok(json) => {
+                let msg_type = json
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+                rust_debug_log("JSON_PARSED", &format!("type={}", msg_type));
+
+                if let Some(event) = parse_bridge_message(&json) {
+                    rust_debug_log("EVENT_CREATED", &format!("{:?}", event));
+                    // blocking_send blocks if channel is full (back-pressure)
+                    if tx.blocking_send(event).is_err() {
+                        rust_debug_log("CHANNEL_ERROR", "Receiver dropped");
+                        break;
                     }
-                }
-                Err(e) => {
-                    rust_debug_log(
-                        "JSON_ERROR",
-                        &format!(
-                            "Parse error: {} - line: {}",
-                            e,
-                            &line[..line.len().min(100)]
-                        ),
-                    );
+                    rust_debug_log("CHANNEL_SEND", "OK");
                 }
             }
-        }
-        rust_debug_log("READER", "Loop ended");
-    }
-
-    fn parse_bridge_message(json: &serde_json::Value) -> Option<ClaudeEvent> {
-        let msg_type = json.get("type")?.as_str()?;
-
-        match msg_type {
-            "status" => {
-                let message = json
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let is_compaction = json.get("isCompaction").and_then(|v| v.as_bool());
-                let pre_tokens = json.get("preTokens").and_then(|v| v.as_u64());
-                let post_tokens = json.get("postTokens").and_then(|v| v.as_u64());
-                Some(ClaudeEvent::Status {
-                    message,
-                    is_compaction,
-                    pre_tokens,
-                    post_tokens,
-                })
-            }
-
-            "ready" => {
-                let session_id = json
-                    .get("sessionId")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let model = json
-                    .get("model")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let tools = json.get("tools").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                Some(ClaudeEvent::Ready {
-                    session_id,
-                    model,
-                    tools,
-                })
-            }
-
-            "processing" => {
-                let prompt = json
-                    .get("prompt")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                Some(ClaudeEvent::Processing { prompt })
-            }
-
-            "text_delta" => {
-                let text = json
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                if !text.is_empty() {
-                    Some(ClaudeEvent::TextDelta { text })
-                } else {
-                    None
-                }
-            }
-
-            "thinking_start" => {
-                let index = json.get("index").and_then(|v| v.as_u64()).map(|v| v as u32);
-                Some(ClaudeEvent::ThinkingStart { index })
-            }
-
-            "thinking_delta" => {
-                let thinking = json
-                    .get("thinking")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                Some(ClaudeEvent::ThinkingDelta { thinking })
-            }
-
-            "tool_start" => {
-                let id = json
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let name = json
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let parent_tool_use_id = json
-                    .get("parent_tool_use_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                Some(ClaudeEvent::ToolStart {
-                    id,
-                    name,
-                    parent_tool_use_id,
-                })
-            }
-
-            "tool_input" => {
-                let json_str = json
-                    .get("json")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                Some(ClaudeEvent::ToolInput { json: json_str })
-            }
-
-            "tool_pending" => Some(ClaudeEvent::ToolPending),
-
-            "permission_request" => {
-                let request_id = json
-                    .get("requestId")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let tool_name = json
-                    .get("toolName")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                let tool_input = json.get("toolInput").cloned();
-                let description = json
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                Some(ClaudeEvent::PermissionRequest {
-                    request_id,
-                    tool_name,
-                    tool_input,
-                    description,
-                })
-            }
-
-            "ask_user_question" => {
-                let request_id = json
-                    .get("requestId")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let questions = json
-                    .get("questions")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Array(vec![]));
-                rust_debug_log("ASK_USER_QUESTION", &format!("request_id={}", request_id));
-                Some(ClaudeEvent::AskUserQuestion {
-                    request_id,
-                    questions,
-                })
-            }
-
-            "tool_result" => {
-                let tool_use_id = json
-                    .get("tool_use_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let stdout = json
-                    .get("stdout")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let stderr = json
-                    .get("stderr")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let is_error = json
-                    .get("isError")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                Some(ClaudeEvent::ToolResult {
-                    tool_use_id,
-                    stdout,
-                    stderr,
-                    is_error,
-                })
-            }
-
-            "block_end" => Some(ClaudeEvent::BlockEnd),
-
-            "result" => {
-                let content = json
-                    .get("content")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let cost = json.get("cost").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let duration = json.get("duration").and_then(|v| v.as_u64()).unwrap_or(0);
-                let turns = json.get("turns").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                let is_error = json
-                    .get("isError")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let input_tokens = json
-                    .get("inputTokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let output_tokens = json
-                    .get("outputTokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let cache_read = json.get("cacheRead").and_then(|v| v.as_u64()).unwrap_or(0);
-                let cache_write = json.get("cacheWrite").and_then(|v| v.as_u64()).unwrap_or(0);
-                Some(ClaudeEvent::Result {
-                    content,
-                    cost,
-                    duration,
-                    turns,
-                    is_error,
-                    input_tokens,
-                    output_tokens,
-                    cache_read,
-                    cache_write,
-                })
-            }
-
-            "done" => Some(ClaudeEvent::Done),
-
-            "interrupted" => Some(ClaudeEvent::Interrupted),
-
-            "closed" => {
-                let code = json.get("code").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
-                Some(ClaudeEvent::Closed { code })
-            }
-
-            "error" => {
-                let message = json
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("Unknown error")
-                    .to_string();
-                Some(ClaudeEvent::Error { message })
-            }
-
-            "context_update" => {
-                // Real-time context size from message_start event
-                let input_tokens = json
-                    .get("inputTokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let raw_input_tokens = json
-                    .get("rawInputTokens")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                let cache_read = json.get("cacheRead").and_then(|v| v.as_u64()).unwrap_or(0);
-                let cache_write = json.get("cacheWrite").and_then(|v| v.as_u64()).unwrap_or(0);
+            Err(e) => {
                 rust_debug_log(
-                    "CONTEXT_UPDATE",
+                    "JSON_ERROR",
                     &format!(
-                        "total={}, raw={}, cache_read={}, cache_write={}",
-                        input_tokens, raw_input_tokens, cache_read, cache_write
+                        "Parse error: {} - line: {}",
+                        e,
+                        &line[..line.len().min(100)]
                     ),
                 );
-                Some(ClaudeEvent::ContextUpdate {
-                    input_tokens,
-                    raw_input_tokens,
-                    cache_read,
-                    cache_write,
-                })
-            }
-
-            "subagent_start" => {
-                let id = json
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let agent_type = json
-                    .get("agentType")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let description = json
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let prompt = json
-                    .get("prompt")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                rust_debug_log("SUBAGENT_START", &format!("id={}, type={}", id, agent_type));
-                Some(ClaudeEvent::SubagentStart {
-                    id,
-                    agent_type,
-                    description,
-                    prompt,
-                })
-            }
-
-            "subagent_progress" => {
-                let subagent_id = json
-                    .get("subagentId")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let tool_name = json
-                    .get("toolName")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let tool_detail = json
-                    .get("toolDetail")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let tool_count = json.get("toolCount").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                rust_debug_log(
-                    "SUBAGENT_PROGRESS",
-                    &format!(
-                        "id={}, tool={}, detail={}, count={}",
-                        subagent_id, tool_name, tool_detail, tool_count
-                    ),
-                );
-                Some(ClaudeEvent::SubagentProgress {
-                    subagent_id,
-                    tool_name,
-                    tool_detail,
-                    tool_count,
-                })
-            }
-
-            "subagent_end" => {
-                let id = json
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let agent_type = json
-                    .get("agentType")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let duration = json.get("duration").and_then(|v| v.as_u64()).unwrap_or(0);
-                let tool_count = json.get("toolCount").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                let result = json
-                    .get("result")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                rust_debug_log(
-                    "SUBAGENT_END",
-                    &format!(
-                        "id={}, type={}, duration={}ms, tools={}",
-                        id, agent_type, duration, tool_count
-                    ),
-                );
-                Some(ClaudeEvent::SubagentEnd {
-                    id,
-                    agent_type,
-                    duration,
-                    tool_count,
-                    result,
-                })
-            }
-
-            _ => None,
-        }
-    }
-
-    pub fn send_message(&mut self, message: &str) -> Result<(), String> {
-        rust_debug_log(
-            "SEND_MSG",
-            &format!("Sending message: {}", &message[..message.len().min(100)]),
-        );
-
-        let mut stdin = self.stdin.lock().map_err(|e| {
-            rust_debug_log("SEND_MSG", &format!("Lock error: {}", e));
-            format!("Lock error: {}", e)
-        })?;
-
-        // JSON-encode the message to preserve newlines
-        // The bridge uses readline which splits on newlines, so we must encode
-        // Format: __MSG__<json> where json is {"text":"..."} with escaped newlines
-        let encoded = serde_json::json!({ "text": message });
-        let prefixed = format!("__MSG__{}\n", encoded);
-
-        stdin.write_all(prefixed.as_bytes()).map_err(|e| {
-            rust_debug_log("SEND_MSG", &format!("Write error: {}", e));
-            format!("Write error: {}", e)
-        })?;
-        stdin.flush().map_err(|e| format!("Flush error: {}", e))?;
-
-        rust_debug_log("SEND_MSG", "Message sent and flushed");
-        Ok(())
-    }
-
-    pub async fn recv_event(&mut self) -> Option<ClaudeEvent> {
-        self.event_rx.recv().await
-    }
-
-    pub fn send_interrupt(&mut self) -> Result<(), String> {
-        rust_debug_log("INTERRUPT", "Sending interrupt signal to bridge");
-
-        let mut stdin = self.stdin.lock().map_err(|e| {
-            rust_debug_log("INTERRUPT", &format!("Lock error: {}", e));
-            format!("Lock error: {}", e)
-        })?;
-
-        // Send interrupt JSON message to the bridge
-        let interrupt_msg = r#"{"type":"interrupt"}"#;
-        stdin.write_all(interrupt_msg.as_bytes()).map_err(|e| {
-            rust_debug_log("INTERRUPT", &format!("Write error: {}", e));
-            format!("Write error: {}", e)
-        })?;
-        stdin
-            .write_all(b"\n")
-            .map_err(|e| format!("Write error: {}", e))?;
-        stdin.flush().map_err(|e| format!("Flush error: {}", e))?;
-
-        rust_debug_log("INTERRUPT", "Interrupt sent successfully");
-        Ok(())
-    }
-
-    /// Gracefully shutdown the process
-    /// Called by Drop, but can also be called manually
-    pub fn shutdown(&mut self) {
-        rust_debug_log("SHUTDOWN", "Beginning process shutdown");
-
-        // Kill the child process - this closes stdout which causes reader to exit
-        if let Err(e) = self.child.kill() {
-            // ESRCH (No such process) is fine - process already exited
-            if e.kind() != std::io::ErrorKind::NotFound {
-                rust_debug_log("SHUTDOWN", &format!("Kill error (may be ok): {}", e));
-            }
-        } else {
-            rust_debug_log("SHUTDOWN", "Child process killed");
-        }
-
-        // Wait for child to fully terminate
-        match self.child.wait() {
-            Ok(status) => rust_debug_log("SHUTDOWN", &format!("Child exited with: {:?}", status)),
-            Err(e) => rust_debug_log("SHUTDOWN", &format!("Wait error: {}", e)),
-        }
-
-        // Join the reader thread (should exit quickly now that stdout is closed)
-        if let Some(handle) = self.reader_handle.take() {
-            rust_debug_log("SHUTDOWN", "Joining reader thread...");
-            match handle.join() {
-                Ok(_) => rust_debug_log("SHUTDOWN", "Reader thread joined"),
-                Err(_) => rust_debug_log("SHUTDOWN", "Reader thread panicked"),
             }
         }
-
-        rust_debug_log("SHUTDOWN", "Process shutdown complete");
     }
+    rust_debug_log("READER", "Loop ended");
 }
 
-impl Drop for ClaudeProcess {
-    fn drop(&mut self) {
-        rust_debug_log("DROP", "ClaudeProcess being dropped, initiating shutdown");
-        self.shutdown();
+fn parse_bridge_message(json: &serde_json::Value) -> Option<ClaudeEvent> {
+    let msg_type = json.get("type")?.as_str()?;
+
+    match msg_type {
+        "status" => {
+            let message = json
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let is_compaction = json.get("isCompaction").and_then(|v| v.as_bool());
+            let pre_tokens = json.get("preTokens").and_then(|v| v.as_u64());
+            let post_tokens = json.get("postTokens").and_then(|v| v.as_u64());
+            Some(ClaudeEvent::Status {
+                message,
+                is_compaction,
+                pre_tokens,
+                post_tokens,
+            })
+        }
+
+        "ready" => {
+            let session_id = json
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let model = json
+                .get("model")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tools = json.get("tools").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            Some(ClaudeEvent::Ready {
+                session_id,
+                model,
+                tools,
+            })
+        }
+
+        "processing" => {
+            let prompt = json
+                .get("prompt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            Some(ClaudeEvent::Processing { prompt })
+        }
+
+        "text_delta" => {
+            let text = json
+                .get("text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if !text.is_empty() {
+                Some(ClaudeEvent::TextDelta { text })
+            } else {
+                None
+            }
+        }
+
+        "thinking_start" => {
+            let index = json.get("index").and_then(|v| v.as_u64()).map(|v| v as u32);
+            Some(ClaudeEvent::ThinkingStart { index })
+        }
+
+        "thinking_delta" => {
+            let thinking = json
+                .get("thinking")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            Some(ClaudeEvent::ThinkingDelta { thinking })
+        }
+
+        "tool_start" => {
+            let id = json
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let name = json
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let parent_tool_use_id = json
+                .get("parent_tool_use_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            Some(ClaudeEvent::ToolStart {
+                id,
+                name,
+                parent_tool_use_id,
+            })
+        }
+
+        "tool_input" => {
+            let json_str = json
+                .get("json")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            Some(ClaudeEvent::ToolInput { json: json_str })
+        }
+
+        "tool_pending" => Some(ClaudeEvent::ToolPending),
+
+        "permission_request" => {
+            let request_id = json
+                .get("requestId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tool_name = json
+                .get("toolName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let tool_input = json.get("toolInput").cloned();
+            let description = json
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            Some(ClaudeEvent::PermissionRequest {
+                request_id,
+                tool_name,
+                tool_input,
+                description,
+            })
+        }
+
+        "ask_user_question" => {
+            let request_id = json
+                .get("requestId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let questions = json
+                .get("questions")
+                .cloned()
+                .unwrap_or(serde_json::Value::Array(vec![]));
+            rust_debug_log("ASK_USER_QUESTION", &format!("request_id={}", request_id));
+            Some(ClaudeEvent::AskUserQuestion {
+                request_id,
+                questions,
+            })
+        }
+
+        "tool_result" => {
+            let tool_use_id = json
+                .get("tool_use_id")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let stdout = json
+                .get("stdout")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let stderr = json
+                .get("stderr")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let is_error = json
+                .get("isError")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            Some(ClaudeEvent::ToolResult {
+                tool_use_id,
+                stdout,
+                stderr,
+                is_error,
+            })
+        }
+
+        "block_end" => Some(ClaudeEvent::BlockEnd),
+
+        "result" => {
+            let content = json
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let cost = json.get("cost").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let duration = json.get("duration").and_then(|v| v.as_u64()).unwrap_or(0);
+            let turns = json.get("turns").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let is_error = json
+                .get("isError")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let input_tokens = json
+                .get("inputTokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let output_tokens = json
+                .get("outputTokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let cache_read = json.get("cacheRead").and_then(|v| v.as_u64()).unwrap_or(0);
+            let cache_write = json.get("cacheWrite").and_then(|v| v.as_u64()).unwrap_or(0);
+            Some(ClaudeEvent::Result {
+                content,
+                cost,
+                duration,
+                turns,
+                is_error,
+                input_tokens,
+                output_tokens,
+                cache_read,
+                cache_write,
+            })
+        }
+
+        "done" => Some(ClaudeEvent::Done),
+
+        "interrupted" => Some(ClaudeEvent::Interrupted),
+
+        "closed" => {
+            let code = json.get("code").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            Some(ClaudeEvent::Closed { code })
+        }
+
+        "error" => {
+            let message = json
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown error")
+                .to_string();
+            Some(ClaudeEvent::Error { message })
+        }
+
+        "context_update" => {
+            // Real-time context size from message_start event
+            let input_tokens = json
+                .get("inputTokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let raw_input_tokens = json
+                .get("rawInputTokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
+            let cache_read = json.get("cacheRead").and_then(|v| v.as_u64()).unwrap_or(0);
+            let cache_write = json.get("cacheWrite").and_then(|v| v.as_u64()).unwrap_or(0);
+            rust_debug_log(
+                "CONTEXT_UPDATE",
+                &format!(
+                    "total={}, raw={}, cache_read={}, cache_write={}",
+                    input_tokens, raw_input_tokens, cache_read, cache_write
+                ),
+            );
+            Some(ClaudeEvent::ContextUpdate {
+                input_tokens,
+                raw_input_tokens,
+                cache_read,
+                cache_write,
+            })
+        }
+
+        "subagent_start" => {
+            let id = json
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let agent_type = json
+                .get("agentType")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let description = json
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let prompt = json
+                .get("prompt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            rust_debug_log("SUBAGENT_START", &format!("id={}, type={}", id, agent_type));
+            Some(ClaudeEvent::SubagentStart {
+                id,
+                agent_type,
+                description,
+                prompt,
+            })
+        }
+
+        "subagent_progress" => {
+            let subagent_id = json
+                .get("subagentId")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tool_name = json
+                .get("toolName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tool_detail = json
+                .get("toolDetail")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tool_count = json.get("toolCount").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            rust_debug_log(
+                "SUBAGENT_PROGRESS",
+                &format!(
+                    "id={}, tool={}, detail={}, count={}",
+                    subagent_id, tool_name, tool_detail, tool_count
+                ),
+            );
+            Some(ClaudeEvent::SubagentProgress {
+                subagent_id,
+                tool_name,
+                tool_detail,
+                tool_count,
+            })
+        }
+
+        "subagent_end" => {
+            let id = json
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let agent_type = json
+                .get("agentType")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let duration = json.get("duration").and_then(|v| v.as_u64()).unwrap_or(0);
+            let tool_count = json.get("toolCount").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let result = json
+                .get("result")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            rust_debug_log(
+                "SUBAGENT_END",
+                &format!(
+                    "id={}, type={}, duration={}ms, tools={}",
+                    id, agent_type, duration, tool_count
+                ),
+            );
+            Some(ClaudeEvent::SubagentEnd {
+                id,
+                agent_type,
+                duration,
+                tool_count,
+                result,
+            })
+        }
+
+        _ => None,
     }
 }
 
@@ -777,7 +792,7 @@ mod tests {
 
     // Helper to call parse_bridge_message
     fn parse(json: serde_json::Value) -> Option<ClaudeEvent> {
-        ClaudeProcess::parse_bridge_message(&json)
+        parse_bridge_message(&json)
     }
 
     // ==================== text_delta ====================

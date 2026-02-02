@@ -19,7 +19,7 @@ pub mod streaming_cmd;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::claude_process::ClaudeProcess;
+use crate::claude_process::{ClaudeReceiver, ClaudeSender, ProcessHandle};
 use crate::config::Config;
 
 // Note: Commands are accessed via their submodules directly (e.g., commands::session::start_session)
@@ -28,8 +28,18 @@ use crate::config::Config;
 
 /// Shared application state managed by Tauri
 pub struct AppState {
-    /// The active Claude process (if any)
-    pub process: Arc<Mutex<Option<ClaudeProcess>>>,
+    /// Sender for writing to Claude (messages, interrupts, permission responses)
+    /// Can be locked independently of receiver for responsive control commands
+    pub sender: Arc<Mutex<Option<ClaudeSender>>>,
+
+    /// Receiver for reading events from Claude (streaming responses)
+    /// Can be locked independently of sender to not block writes
+    pub receiver: Arc<Mutex<Option<ClaudeReceiver>>>,
+
+    /// Process lifecycle handle (spawn, shutdown)
+    /// Separate from sender/receiver for clean lifecycle management
+    pub process_handle: Arc<Mutex<Option<ProcessHandle>>>,
+
     /// Application configuration
     pub config: Arc<Mutex<Config>>,
     /// Directory from which the app was launched
@@ -61,7 +71,9 @@ impl AppState {
         let session_id = uuid::Uuid::new_v4().to_string();
 
         Self {
-            process: Arc::new(Mutex::new(None)),
+            sender: Arc::new(Mutex::new(None)),
+            receiver: Arc::new(Mutex::new(None)),
+            process_handle: Arc::new(Mutex::new(None)),
             config: Arc::new(Mutex::new(config)),
             launch_dir,
             session_id,
@@ -80,7 +92,9 @@ impl Default for AppState {
 pub(crate) fn cmd_debug_log(prefix: &str, msg: &str) {
     static DEBUG_ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     let enabled = *DEBUG_ENABLED.get_or_init(|| {
-        std::env::var("CLAUDIA_DEBUG").map(|v| v == "1").unwrap_or(false)
+        std::env::var("CLAUDIA_DEBUG")
+            .map(|v| v == "1")
+            .unwrap_or(false)
     });
 
     if !enabled {
