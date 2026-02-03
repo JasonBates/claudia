@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "npm run dev",
+      "npm run build",
+      "npm run test",
+      "npm run test:run",
+      "npm run test:rust",
+      "npm run test:all",
+      "npm run tauri *",
+      "./scripts/run.sh *",
+      "./scripts/setup.sh",
+      "./scripts/collect-debug-logs.sh *",
+      "./scripts/bugtime.sh",
+      "cargo test *",
+      "cargo build *",
+      "cargo check *",
+      "npx tauri *",
+      "npx vitest *"
+    ]
+  }
+}
