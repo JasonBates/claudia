@@ -169,12 +169,27 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
           return;
         }
 
-        console.error("[usePermissions] LLM review failed:", err);
+        const errorStr = String(err);
+        console.error("[usePermissions] LLM review failed:", errorStr);
+
+        // Check if this is an API key error (missing or invalid)
+        const isApiKeyError = errorStr.includes("No API key") ||
+                              errorStr.includes("401") ||
+                              errorStr.includes("Invalid API key") ||
+                              errorStr.includes("authentication");
+
+        if (isApiKeyError && options.onBotApiKeyRequired) {
+          console.log("[usePermissions] API key error detected, opening settings");
+          options.onBotApiKeyRequired();
+        }
+
         // On error, clear reviewing state and show dialog for manual decision
         options.setIsReviewing?.(false);
         options.setReviewResult?.({
           safe: false,
-          reason: `Review failed: ${err}. Please decide manually.`,
+          reason: isApiKeyError
+            ? "API key missing or invalid. Please configure in settings."
+            : `Review failed: ${err}. Please decide manually.`,
         });
       });
   });

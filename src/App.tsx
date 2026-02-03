@@ -90,6 +90,11 @@ function App() {
     setIsReviewing: (value: boolean) => store.dispatch(actions.setPermissionReviewing(value)),
     reviewResult: store.permissionReviewResult,
     setReviewResult: (value) => store.dispatch(actions.setReviewResult(value)),
+    // Open settings when API key is missing or invalid
+    onBotApiKeyRequired: () => {
+      setBotSettingsError("API key required for BotGuard");
+      setBotSettingsOpen(true);
+    },
   });
 
   // Sidebar (session history)
