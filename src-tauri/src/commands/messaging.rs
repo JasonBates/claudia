@@ -1,6 +1,7 @@
 //! Message sending and event streaming
 
 use std::sync::atomic::Ordering;
+
 use tauri::{ipc::Channel, State};
 use tokio::time::{timeout, Duration};
 
@@ -123,6 +124,14 @@ pub async fn send_message(
     let receiver_arc = state.receiver.clone();
     let sender_arc = state.sender.clone();
     let handle_arc = state.process_handle.clone();
+
+    // Increment loop generation - this causes any older event loops to exit
+    // when they next check the generation counter
+    let my_generation = state.loop_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    cmd_debug_log("LOOP_GEN", &format!("Starting loop generation {}", my_generation));
+
+    // Helper to check if this loop has been superseded by a newer one
+    let is_superseded = || state.loop_generation.load(Ordering::SeqCst) != my_generation;
 
     // Drain any stale events from previous response before sending new message
     // Forward Status events - they're important feedback (e.g., "Compacted")
@@ -538,8 +547,17 @@ pub async fn send_message(
                 }
             }
             Ok(None) => {
-                // Channel closed, process ended
-                cmd_debug_log("LOOP", "Channel returned None (closed)");
+                // Channel closed, process ended - clear state so next send_message triggers restart
+                cmd_debug_log("LOOP", "Channel returned None (closed) - clearing process state");
+                drop(receiver_guard); // Release lock before acquiring others
+                {
+                    let mut sender_guard = sender_arc.lock().await;
+                    let mut rg = receiver_arc.lock().await;
+                    let mut handle_guard = handle_arc.lock().await;
+                    *sender_guard = None;
+                    *rg = None;
+                    *handle_guard = None;
+                }
                 channel.send(ClaudeEvent::Done).map_err(|e| e.to_string())?;
                 break;
             }

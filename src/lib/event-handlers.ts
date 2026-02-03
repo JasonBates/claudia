@@ -56,6 +56,12 @@ export interface PermissionRequest {
   toolName: string;
   toolInput?: unknown;
   description: string;
+  /**
+   * Source of the permission request:
+   * - "control": from control_request via stream (use sendPermissionResponse)
+   * - "hook": from file-based hook polling (use respondToPermission)
+   */
+  source: "control" | "hook";
 }
 
 /**
@@ -486,6 +492,7 @@ export function handlePermissionRequestEvent(
     toolName,
     toolInput,
     description,
+    source: "control",
   });
 }
 
