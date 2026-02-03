@@ -325,30 +325,9 @@ function App() {
       }
     };
 
-    // When switching to bot mode, check if API key is configured
-    if (nextMode === "bot") {
-      console.log("[CYCLE_MODE] Switching to bot mode, checking API key...");
-      try {
-        const hasKey = await hasBotApiKey();
-        console.log("[CYCLE_MODE] hasBotApiKey result:", hasKey);
-        if (!hasKey) {
-          // Open settings with error message
-          console.log("[CYCLE_MODE] No API key, opening settings panel");
-          setBotSettingsError("API key required for BotGuard");
-          setBotSettingsOpen(true);
-          // Still switch to bot mode so user sees the correct mode
-          await setAndSaveMode(nextMode);
-          return;
-        }
-        console.log("[CYCLE_MODE] API key exists, proceeding to bot mode");
-      } catch (e) {
-        console.error("[BOT_MODE] Failed to check API key:", e);
-        setBotSettingsError(`Failed to check API key: ${e}`);
-        setBotSettingsOpen(true);
-        await setAndSaveMode(nextMode);
-        return;
-      }
-    }
+    // Note: We no longer auto-open settings when switching to bot mode without a key.
+    // Users can click the settings cog if they want to configure BotGuard.
+    // This avoids the annoying popup every time users cycle through modes.
 
     await setAndSaveMode(nextMode);
   };
