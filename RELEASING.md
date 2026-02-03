@@ -5,8 +5,31 @@ This guide covers how to create a new release of Claudia with the auto-update sy
 ## Prerequisites
 
 - GitHub secrets configured:
-  - `TAURI_SIGNING_PRIVATE_KEY` - The minisign private key
-  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - Password for the key (empty if none)
+  - `TAURI_SIGNING_PRIVATE_KEY` - The minisign private key (base64-encoded)
+  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - Password for the key (required if key is password-protected)
+
+## Signing Keys
+
+Signing keys are stored in `~/.tauri/claudia-release.key` (private) and `~/.tauri/claudia-release.key.pub` (public).
+
+### Generating New Keys
+
+If you need to regenerate signing keys:
+
+```bash
+# With password (recommended for security)
+npx tauri signer generate -w ~/.tauri/claudia-release.key
+
+# Without password (simpler for CI, key is still secret)
+npx tauri signer generate --ci -w ~/.tauri/claudia-release.key
+```
+
+After generating:
+1. Update `TAURI_SIGNING_PRIVATE_KEY` secret in GitHub with the private key content
+2. If password-protected, update `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secret
+3. Update `pubkey` in `src-tauri/tauri.conf.json` with the public key content
+
+**Important:** If using a password-protected key, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` MUST be set. If using `--ci` (unencrypted), do NOT set the password variable.
 
 ## Release Process
 
@@ -35,42 +58,40 @@ This updates:
 - `src-tauri/tauri.conf.json`
 - `src-tauri/Cargo.toml`
 
-### 3. Commit the Version Bump
+### 3. Commit and Push
 
 ```bash
 git add -A
 git commit -m "Bump version to <version>"
+git push origin main
 ```
 
 ### 4. Create and Push Tag
 
 ```bash
 git tag v<version>
-git push origin main v<version>
+git push origin v<version>
 ```
 
-Example:
+### 5. Trigger the Release Build
+
+The workflow should trigger automatically on tag push. If it doesn't, trigger manually:
+
 ```bash
-git tag v0.2.0
-git push origin main v0.2.0
+gh workflow run release.yml -f tag=v<version> --ref main
 ```
 
-### 5. Monitor the Release
+### 6. Monitor the Release
 
-The GitHub Actions workflow (`.github/workflows/release.yml`) triggers automatically on `v*` tags and:
-
-1. Builds a universal macOS binary (arm64 + x86_64)
-2. Signs the update artifacts with minisign
+The GitHub Actions workflow builds:
+1. Universal macOS binary (arm64 + x86_64)
+2. Signs update artifacts with minisign
 3. Generates `latest.json` manifest
-4. Creates a GitHub Release with:
-   - `Claudia_<version>_universal.dmg` - Installer for new users
-   - `Claudia.app.tar.gz` - Update payload for existing users
-   - `Claudia.app.tar.gz.sig` - Signature file
-   - `latest.json` - Update manifest
+4. Creates GitHub Release with all artifacts
 
 Monitor progress at: https://github.com/JasonBates/claudia/actions
 
-### 6. Verify the Release
+### 7. Verify the Release
 
 1. Check the release page: https://github.com/JasonBates/claudia/releases
 2. Download and test the DMG on a fresh machine
@@ -83,19 +104,47 @@ Monitor progress at: https://github.com/JasonBates/claudia/actions
 ./scripts/bump-version.sh 0.2.0
 git add -A
 git commit -m "Bump version to 0.2.0"
+git push origin main
 git tag v0.2.0
-git push origin main v0.2.0
+git push origin v0.2.0
+
+# If workflow doesn't trigger automatically:
+gh workflow run release.yml -f tag=v0.2.0 --ref main
 ```
 
 ## Troubleshooting
 
+### Build fails with "incorrect updater private key password"
+
+- If using password-protected key: Ensure `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is set correctly
+- If using `--ci` generated key: Ensure `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is NOT set (remove it from workflow)
+
 ### Build fails with signing error
-Verify `TAURI_SIGNING_PRIVATE_KEY` is correctly set in GitHub secrets.
+
+- Verify `TAURI_SIGNING_PRIVATE_KEY` contains the full key content (base64-encoded)
+- Ensure public key in `tauri.conf.json` matches the private key
+
+### Update check fails with "not allowed by ACL"
+
+The updater plugin needs permissions in `src-tauri/capabilities/default.json`:
+```json
+"updater:default",
+"process:allow-restart"
+```
 
 ### Update not detected by app
+
 - Check `latest.json` was uploaded to the release
 - Verify the version in `latest.json` is newer than the installed version
 - Check the endpoint URL matches: `https://github.com/JasonBates/claudia/releases/latest/download/latest.json`
 
+### Tag push doesn't trigger workflow
+
+Use manual trigger:
+```bash
+gh workflow run release.yml -f tag=v<version> --ref main
+```
+
 ### DMG won't open on user's machine
+
 Without Apple Developer signing, users need to right-click → Open the first time to bypass Gatekeeper.
