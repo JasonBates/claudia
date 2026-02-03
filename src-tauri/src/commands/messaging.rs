@@ -125,14 +125,6 @@ pub async fn send_message(
     let sender_arc = state.sender.clone();
     let handle_arc = state.process_handle.clone();
 
-    // Increment loop generation - this causes any older event loops to exit
-    // when they next check the generation counter
-    let my_generation = state.loop_generation.fetch_add(1, Ordering::SeqCst) + 1;
-    cmd_debug_log("LOOP_GEN", &format!("Starting loop generation {}", my_generation));
-
-    // Helper to check if this loop has been superseded by a newer one
-    let is_superseded = || state.loop_generation.load(Ordering::SeqCst) != my_generation;
-
     // Drain any stale events from previous response before sending new message
     // Forward Status events - they're important feedback (e.g., "Compacted")
     // If we find a Closed event, the bridge died after previous response - restart it
