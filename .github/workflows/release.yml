@@ -21,8 +21,19 @@ jobs:
       contents: write
 
     steps:
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -61,13 +72,10 @@ jobs:
       - name: Generate update manifest
         run: node scripts/generate-update-manifest.js
 
-      - name: Get version from tag
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
           draft: false
           generate_release_notes: true
           files: |
