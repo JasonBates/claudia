@@ -854,11 +854,13 @@ function App() {
       if (update) {
         console.log("[UPDATE] Update available:", update.version);
         store.dispatch(actions.setUpdateAvailable(update));
-        store.dispatch(actions.setUpdateStatus("idle"));
       } else {
         console.log("[UPDATE] No update available");
-        store.dispatch(actions.setUpdateStatus("idle"));
+        // Clear any stale update state
+        store.dispatch(actions.setUpdateAvailable(null));
+        store.dispatch(actions.setUpdateError(null));
       }
+      store.dispatch(actions.setUpdateStatus("idle"));
     } catch (e) {
       console.error("[UPDATE] Check failed:", e);
       // Don't show error to user for background check
@@ -879,6 +881,9 @@ function App() {
         store.dispatch(actions.setUpdateAvailable(update));
       } else {
         console.log("[UPDATE] No update available");
+        // Clear any stale update state
+        store.dispatch(actions.setUpdateAvailable(null));
+        store.dispatch(actions.setUpdateError(null));
       }
       store.dispatch(actions.setUpdateStatus("idle"));
     } catch (e) {

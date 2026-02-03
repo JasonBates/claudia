@@ -44,8 +44,15 @@ try {
     console.log(`Found signature: ${sigFiles[0]}`);
   }
 } catch (e) {
-  console.warn('Warning: Could not read signature file. Update verification will fail.');
-  console.warn(`  ${e.message}`);
+  console.error('Error: Could not read signature file.');
+  console.error(`  ${e.message}`);
+  process.exit(1);
+}
+
+if (!signature) {
+  console.error('Error: No signature file found. Cannot create valid update manifest.');
+  console.error('  Ensure TAURI_SIGNING_PRIVATE_KEY is set and the build completed successfully.');
+  process.exit(1);
 }
 
 // Generate the manifest
