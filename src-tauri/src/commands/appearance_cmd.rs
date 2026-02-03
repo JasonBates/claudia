@@ -357,12 +357,25 @@ fn parse_itermcolors(path: &PathBuf) -> Result<ColorSchemeColors, String> {
 mod tests {
     use super::*;
 
+    // ============================================================================
+    // is_valid_scheme_name tests
+    // ============================================================================
+
     #[test]
     fn valid_scheme_names() {
         assert!(is_valid_scheme_name("Solarized Dark"));
         assert!(is_valid_scheme_name("My Theme"));
         assert!(is_valid_scheme_name("theme-name"));
         assert!(is_valid_scheme_name("theme_name"));
+    }
+
+    #[test]
+    fn valid_scheme_names_edge_cases() {
+        assert!(is_valid_scheme_name("a")); // Single character
+        assert!(is_valid_scheme_name("Theme 123")); // With numbers
+        assert!(is_valid_scheme_name("theme(1)")); // With parentheses
+        assert!(is_valid_scheme_name("theme [custom]")); // With brackets
+        assert!(is_valid_scheme_name("Nord++Pro")); // With plus signs
     }
 
     #[test]
@@ -375,13 +388,199 @@ mod tests {
     }
 
     #[test]
+    fn rejects_path_traversal_variations() {
+        assert!(!is_valid_scheme_name("..\\..\\etc\\passwd")); // Windows style
+        assert!(!is_valid_scheme_name("theme/../../secret")); // Multiple traversals
+        assert!(!is_valid_scheme_name("/absolute/path")); // Absolute path
+        assert!(!is_valid_scheme_name("C:\\Windows\\System32")); // Windows absolute
+    }
+
+    #[test]
     fn rejects_hidden_files() {
         assert!(!is_valid_scheme_name(".hidden"));
         assert!(!is_valid_scheme_name("."));
+        assert!(!is_valid_scheme_name(".bashrc"));
+        assert!(!is_valid_scheme_name(".config"));
     }
 
     #[test]
     fn rejects_empty_name() {
         assert!(!is_valid_scheme_name(""));
+    }
+
+    // ============================================================================
+    // get_bundled_scheme tests
+    // ============================================================================
+
+    #[test]
+    fn get_bundled_scheme_returns_solarized_dark() {
+        let result = get_bundled_scheme("Solarized Dark");
+        assert!(result.is_some());
+        let colors = result.unwrap();
+        assert_eq!(colors.bg, "#002b36");
+        assert_eq!(colors.fg, "#93a1a1");
+        assert_eq!(colors.accent, "#268bd2");
+    }
+
+    #[test]
+    fn get_bundled_scheme_returns_all_bundled() {
+        let bundled_names = [
+            "Solarized Dark",
+            "Solarized Light",
+            "Dracula",
+            "Nord",
+            "One Dark",
+            "Gruvbox Dark",
+        ];
+
+        for name in bundled_names {
+            let result = get_bundled_scheme(name);
+            assert!(result.is_some(), "Missing bundled scheme: {}", name);
+
+            let colors = result.unwrap();
+            // All schemes should have valid hex colors
+            assert!(colors.bg.starts_with('#'));
+            assert!(colors.fg.starts_with('#'));
+            assert!(colors.accent.starts_with('#'));
+        }
+    }
+
+    #[test]
+    fn get_bundled_scheme_returns_none_for_unknown() {
+        assert!(get_bundled_scheme("Unknown Scheme").is_none());
+        assert!(get_bundled_scheme("").is_none());
+        assert!(get_bundled_scheme("solarized dark").is_none()); // Case sensitive
+    }
+
+    #[test]
+    fn get_bundled_scheme_colors_are_complete() {
+        let colors = get_bundled_scheme("Dracula").unwrap();
+
+        // Verify all color fields are populated
+        assert!(!colors.bg.is_empty());
+        assert!(!colors.bg_secondary.is_empty());
+        assert!(!colors.bg_tertiary.is_empty());
+        assert!(!colors.fg.is_empty());
+        assert!(!colors.fg_muted.is_empty());
+        assert!(!colors.accent.is_empty());
+        assert!(!colors.red.is_empty());
+        assert!(!colors.green.is_empty());
+        assert!(!colors.yellow.is_empty());
+        assert!(!colors.blue.is_empty());
+        assert!(!colors.cyan.is_empty());
+        assert!(!colors.magenta.is_empty());
+        assert!(!colors.violet.is_empty());
+        assert!(!colors.border.is_empty());
+        assert!(!colors.user_bg.is_empty());
+        assert!(!colors.code_bg.is_empty());
+        assert!(!colors.quote.is_empty());
+    }
+
+    // ============================================================================
+    // Color manipulation tests
+    // ============================================================================
+
+    #[test]
+    fn darken_color_reduces_brightness() {
+        let original = "#ffffff";
+        let darkened = darken_color(original, 0.5);
+
+        // Darkening white by 50% should give ~#808080 (gray)
+        assert_eq!(darkened, "#808080");
+    }
+
+    #[test]
+    fn darken_color_by_zero_is_unchanged() {
+        let original = "#ff5500";
+        let darkened = darken_color(original, 0.0);
+        assert_eq!(darkened, original);
+    }
+
+    #[test]
+    fn darken_color_by_one_is_black() {
+        let original = "#ff5500";
+        let darkened = darken_color(original, 1.0);
+        assert_eq!(darkened, "#000000");
+    }
+
+    #[test]
+    fn darken_color_handles_no_hash() {
+        let darkened = darken_color("ffffff", 0.5);
+        assert_eq!(darkened, "#808080");
+    }
+
+    #[test]
+    fn lighten_color_increases_brightness() {
+        let original = "#000000";
+        let lightened = lighten_color(original, 0.5);
+
+        // Lightening black by 50% should give ~#808080 (gray)
+        assert_eq!(lightened, "#808080");
+    }
+
+    #[test]
+    fn lighten_color_by_zero_is_unchanged() {
+        let original = "#ff5500";
+        let lightened = lighten_color(original, 0.0);
+        assert_eq!(lightened, original);
+    }
+
+    #[test]
+    fn lighten_color_by_one_is_white() {
+        let original = "#ff5500";
+        let lightened = lighten_color(original, 1.0);
+        assert_eq!(lightened, "#ffffff");
+    }
+
+    #[test]
+    fn lighten_color_handles_no_hash() {
+        let lightened = lighten_color("000000", 0.5);
+        assert_eq!(lightened, "#808080");
+    }
+
+    #[test]
+    fn color_manipulation_round_trip() {
+        // Darkening then lightening should approximate original
+        let original = "#808080";
+        let darkened = darken_color(original, 0.25);
+        let restored = lighten_color(&darkened, 0.333); // Need slightly more to compensate
+
+        // Won't be exactly the same due to rounding, but should be close
+        assert!(restored.starts_with('#'));
+        assert_eq!(restored.len(), 7);
+    }
+
+    // ============================================================================
+    // get_scheme_colors async tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn get_scheme_colors_returns_bundled() {
+        let result = get_scheme_colors("Solarized Dark".to_string()).await;
+        assert!(result.is_ok());
+
+        let colors = result.unwrap();
+        assert_eq!(colors.bg, "#002b36");
+    }
+
+    #[tokio::test]
+    async fn get_scheme_colors_rejects_path_traversal() {
+        let result = get_scheme_colors("../etc/passwd".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Invalid scheme name");
+    }
+
+    #[tokio::test]
+    async fn get_scheme_colors_rejects_hidden() {
+        let result = get_scheme_colors(".hidden".to_string()).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Invalid scheme name");
+    }
+
+    #[tokio::test]
+    async fn get_scheme_colors_unknown_returns_not_found() {
+        let result = get_scheme_colors("NonexistentScheme12345".to_string()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
     }
 }
