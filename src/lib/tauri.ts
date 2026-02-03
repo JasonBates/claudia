@@ -1,4 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { runWithOwner, batch, Owner } from "solid-js";
@@ -548,4 +549,11 @@ export async function downloadAndInstallUpdate(
 export async function restartApp(): Promise<void> {
   console.log("[UPDATE] Restarting app...");
   await relaunch();
+}
+
+/**
+ * Get the current app version from Tauri.
+ */
+export async function getAppVersion(): Promise<string> {
+  return await getVersion();
 }

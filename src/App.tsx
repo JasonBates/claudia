@@ -11,7 +11,7 @@ import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel"
 import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion } from "./lib/tauri";
 import type { ThemeSettings } from "./lib/theme-utils";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode, isValidMode } from "./lib/mode-utils";
@@ -78,6 +78,9 @@ function App() {
   // Bot settings panel state
   const [botSettingsOpen, setBotSettingsOpen] = createSignal(false);
   const [botSettingsError, setBotSettingsError] = createSignal<string | null>(null);
+
+  // App version (loaded from Tauri on mount)
+  const [appVersion, setAppVersion] = createSignal<string>("0.1.0");
 
   // Permissions hook (polling logic + handlers)
   const permissions = usePermissions({
@@ -863,6 +866,29 @@ function App() {
     }
   };
 
+  /**
+   * Check for updates interactively (from Settings).
+   * Throws errors so the UI can show failure state.
+   */
+  const checkForUpdatesInteractive = async () => {
+    store.dispatch(actions.setUpdateStatus("checking"));
+    try {
+      const update = await checkForUpdate();
+      if (update) {
+        console.log("[UPDATE] Update available:", update.version);
+        store.dispatch(actions.setUpdateAvailable(update));
+      } else {
+        console.log("[UPDATE] No update available");
+      }
+      store.dispatch(actions.setUpdateStatus("idle"));
+    } catch (e) {
+      console.error("[UPDATE] Check failed:", e);
+      store.dispatch(actions.setUpdateStatus("error"));
+      store.dispatch(actions.setUpdateError(`Check failed: ${e}`));
+      throw e; // Re-throw so Settings modal can show error state
+    }
+  };
+
   const handleDownloadUpdate = async () => {
     store.dispatch(actions.setUpdateStatus("downloading"));
     store.dispatch(actions.setUpdateProgress(0));
@@ -892,6 +918,15 @@ function App() {
 
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
+
+    // Load app version from Tauri
+    try {
+      const version = await getAppVersion();
+      setAppVersion(version);
+      console.log("[MOUNT] App version:", version);
+    } catch (e) {
+      console.error("[MOUNT] Failed to get app version:", e);
+    }
 
     // Load saved permission mode from config (source of truth)
     // and sync to localStorage for instant access on next load
@@ -1183,10 +1218,10 @@ function App() {
           onSaveLocallyChange={settings.setSaveLocally}
           onResetDefaults={settings.resetToDefaults}
           onClose={settings.closeSettings}
-          currentVersion={store.updateAvailable()?.currentVersion || "0.1.0"}
+          currentVersion={appVersion()}
           updateAvailable={store.updateAvailable()}
           updateStatus={store.updateStatus()}
-          onCheckForUpdates={checkForUpdatesQuietly}
+          onCheckForUpdates={checkForUpdatesInteractive}
         />
       </Show>
 
