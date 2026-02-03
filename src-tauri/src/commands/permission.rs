@@ -215,12 +215,10 @@ pub async fn review_permission_request(
     description: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<ReviewResult, String> {
+    // SECURITY: Don't log full tool_input as it may contain secrets (API keys, env vars, file contents)
     cmd_debug_log(
         "BOT_REVIEW",
-        &format!(
-            "Reviewing permission: tool={}, input={:?}",
-            tool_name, tool_input
-        ),
+        &format!("Reviewing permission: tool={}", tool_name),
     );
 
     // Get API key from .env file

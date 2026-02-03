@@ -280,11 +280,8 @@ impl LlmReviewer {
             .or_else(|| request.tool_input.get("script").and_then(|c| c.as_str()))
             .unwrap_or("");
 
-        // Log what we're checking
-        eprintln!(
-            "[HEURISTIC] tool_name={}, command={:?}",
-            request.tool_name, command
-        );
+        // SECURITY: Only log tool name, not command content (may contain secrets)
+        eprintln!("[HEURISTIC] Checking bash command for tool={}", request.tool_name);
 
         // Check against compiled regex rules
         for (regex, reason) in &COMPILED_RULES.bash_patterns {
@@ -310,9 +307,10 @@ impl LlmReviewer {
             return Ok(result);
         }
 
+        // SECURITY: Don't log tool_input as it may contain secrets
         eprintln!(
-            "[REVIEW] No heuristic match, calling LLM: tool={}, input={:?}",
-            request.tool_name, request.tool_input
+            "[REVIEW] No heuristic match, calling LLM: tool={}",
+            request.tool_name
         );
 
         // Build the prompt
@@ -342,7 +340,9 @@ impl LlmReviewer {
             r#"You are a security reviewer for a developer tool. FLAG operations that could cause data loss, security issues, or unauthorized access.
 
 APPROVE (safe operations):
-- Reading any files (including system files for debugging)
+- Reading most files (source code, configs, documentation, system files for debugging)
+  EXCEPT: credential files (.aws/credentials, .git-credentials, .netrc, id_rsa, .env with secrets)
+  EXCEPT: history files (.bash_history, .zsh_history, .psql_history)
 - Writing/editing files within the project directory
 - Build commands: npm, cargo, pip, make, etc.
 - Test commands: npm test, cargo test, pytest, etc.
@@ -458,13 +458,14 @@ Respond ONLY with valid JSON (no markdown):
             Ok(result) => Ok(result),
             Err(e) => {
                 eprintln!(
-                    "[REVIEW] Failed to parse LLM response: {}. Response: {}",
-                    e, response
+                    "[REVIEW] Failed to parse LLM response: {}",
+                    e
                 );
-                // Default to safe=true if we can't parse (approve by default)
+                // SECURITY: Default to safe=false (fail-closed) when parsing fails
+                // This ensures we don't auto-approve if the model responds unexpectedly
                 Ok(ReviewResult {
-                    safe: true,
-                    reason: "Unable to parse review response, defaulting to approve".to_string(),
+                    safe: false,
+                    reason: "Unable to parse review response. Please review manually.".to_string(),
                 })
             }
         }
@@ -875,10 +876,12 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_response_invalid_defaults_to_safe() {
+    fn test_parse_response_invalid_defaults_to_unsafe() {
+        // SECURITY: Fail-closed behavior - invalid responses should NOT auto-approve
         let reviewer = LlmReviewer::new("".into(), 3000);
         let response = "I couldn't understand the request";
         let result = reviewer.parse_response(response).unwrap();
-        assert!(result.safe); // Defaults to safe
+        assert!(!result.safe); // Defaults to unsafe (fail-closed)
+        assert!(result.reason.contains("Unable to parse"));
     }
 }
