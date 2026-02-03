@@ -455,10 +455,10 @@ function App() {
     console.log("[PLAN_WINDOW] Opening plan viewer for:", filePath);
 
     // Get current theme settings
-    const currentScheme = settings.colorScheme() || "Solarized Dark";
+    const currentScheme = settings.colorScheme() || "Gruvbox Dark";
 
     // Fetch the background color for the current scheme
-    let backgroundColor = "#002b36"; // Default fallback
+    let backgroundColor = "#282828"; // Default fallback (Gruvbox Dark)
     try {
       const colors = await getSchemeColors(currentScheme);
       backgroundColor = colors.bg;

@@ -3187,11 +3187,15 @@ del {
   color: var(--fg);
 }
 
-/* Settings About Section */
-.settings-about {
-  border-top: 1px solid var(--border);
-  padding-top: 24px;
-  margin-top: 24px;
+/* Settings Version Section (at top) */
+.settings-version-section {
+  padding-bottom: 16px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-version-section .settings-about-row {
+  margin-top: 0;
 }
 
 .settings-about-row {
