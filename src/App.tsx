@@ -11,7 +11,7 @@ import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel"
 import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion, hasBotApiKey } from "./lib/tauri";
 import type { ThemeSettings } from "./lib/theme-utils";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode, isValidMode } from "./lib/mode-utils";
@@ -670,6 +670,23 @@ function App() {
     // Only process local commands for text-only messages
     if (!images && await localCommands.dispatch(text)) {
       return;
+    }
+
+    // In bot mode, require API key before allowing any prompts
+    // This prevents partial functionality where heuristics work but LLM fallback fails
+    if (currentMode() === "bot") {
+      try {
+        const hasKey = await hasBotApiKey();
+        if (!hasKey) {
+          setBotSettingsError("API key required for BotGuard mode");
+          setBotSettingsOpen(true);
+          return;
+        }
+      } catch (e) {
+        setBotSettingsError(`Failed to check API key: ${e}`);
+        setBotSettingsOpen(true);
+        return;
+      }
     }
 
     if (store.isLoading()) return;

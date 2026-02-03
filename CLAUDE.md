@@ -50,6 +50,33 @@ Releases are triggered by pushing version tags (e.g., `v0.2.0`) to GitHub.
 ## Worktree Setup
 Uses shared Cargo target: `~/.cargo/target/claude-terminal`
 
+## Launch Directory
+Claudia uses a "launch directory" to find configuration files (`.claudia/config.json`), API keys (`.env`), and other per-project settings.
+
+**Resolution order (production):**
+1. `--directory` CLI argument
+2. `CLAUDIA_LAUNCH_DIR` environment variable
+3. User's home directory (`~`)
+4. Current working directory (last resort)
+
+**In dev mode**, the dev launcher sets `CLAUDIA_LAUNCH_DIR` to the current working directory by default (so you test from where you run). Override it to use a different directory:
+```bash
+# Default: uses current working directory
+./scripts/run.sh --dev
+
+# Test with a specific directory's hooks/config:
+CLAUDIA_LAUNCH_DIR=~/Obsidian/VAULTS/Trinity/000\ Daily\ Notes ./scripts/run.sh --dev
+
+# Or export it:
+export CLAUDIA_LAUNCH_DIR="/path/to/test/directory"
+./scripts/run.sh --dev
+```
+
+**When to override:**
+- Testing `.env` API keys in a specific project
+- Testing `.claudia/config.json` settings
+- Testing Claude Code hooks in a specific directory
+
 ## Common Mistakes to Avoid
 <!-- Add entries here when Claude makes mistakes -->
 
