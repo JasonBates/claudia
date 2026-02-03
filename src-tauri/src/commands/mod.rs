@@ -56,9 +56,11 @@ pub struct AppState {
 impl AppState {
     /// Create new AppState with optional CLI-provided directory
     pub fn new(cli_dir: Option<String>) -> Self {
-        // Use CLI directory if provided, otherwise default to home directory
+        // Use CLI directory if provided, then check CLAUDIA_LAUNCH_DIR env var,
+        // otherwise default to home directory.
         // This ensures a predictable experience when launched from desktop/Finder
         let launch_dir = cli_dir
+            .or_else(|| std::env::var("CLAUDIA_LAUNCH_DIR").ok())
             .or_else(|| dirs::home_dir().map(|p| p.to_string_lossy().to_string()))
             .unwrap_or_else(|| {
                 // Last resort fallback to current_dir

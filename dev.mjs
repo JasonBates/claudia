@@ -40,7 +40,9 @@ async function findAvailablePort() {
 async function main() {
   const port = await findAvailablePort();
   const worktree = basename(process.cwd());
-  console.log(`Starting CT on port ${port} (worktree: ${worktree})`);
+  // Use CLAUDIA_LAUNCH_DIR if already set (e.g., by Conductor), otherwise use cwd
+  const launchDir = process.env.CLAUDIA_LAUNCH_DIR || process.cwd();
+  console.log(`Starting CT on port ${port} (worktree: ${worktree}, launchDir: ${launchDir})`);
 
   const child = spawn(
     "npx",
@@ -52,7 +54,12 @@ async function main() {
     ],
     {
       stdio: "inherit",
-      env: { ...process.env, CT_PORT: String(port), CT_WORKTREE: worktree },
+      env: {
+        ...process.env,
+        CT_PORT: String(port),
+        CT_WORKTREE: worktree,
+        CLAUDIA_LAUNCH_DIR: launchDir,
+      },
     }
   );
 
