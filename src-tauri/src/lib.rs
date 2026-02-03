@@ -77,6 +77,8 @@ pub fn run() {
             commands::bot_config::has_bot_api_key,
             commands::bot_config::set_bot_api_key,
             commands::bot_config::validate_bot_api_key,
+            // Window commands
+            commands::window_cmd::activate_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
