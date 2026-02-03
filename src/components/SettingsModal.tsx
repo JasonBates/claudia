@@ -70,7 +70,7 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
         onClick={(e) => e.stopPropagation()}
       >
         <div class="settings-modal-header">
-          <h2>Appearance</h2>
+          <h2>Settings</h2>
           <button
             class="settings-close-btn"
             onClick={props.onClose}
@@ -81,6 +81,39 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
         </div>
 
         <div class="settings-modal-content">
+          {/* Version & Update Section */}
+          <div class="settings-section settings-version-section">
+            <div class="settings-about-row">
+              <span class="settings-version">Claudia v{props.currentVersion}</span>
+              <button
+                class="settings-update-btn"
+                onClick={handleCheckForUpdates}
+                disabled={checkStatus() === "checking" || props.updateStatus === "downloading"}
+              >
+                <Show when={checkStatus() === "checking"} fallback="Check for Updates">
+                  Checking...
+                </Show>
+              </button>
+            </div>
+            <Show when={checkStatus() === "done"}>
+              <p class="settings-hint settings-update-result">
+                <Show
+                  when={props.updateAvailable}
+                  fallback={<span class="update-current">You're up to date</span>}
+                >
+                  <span class="update-available">
+                    v{props.updateAvailable?.version} available — see banner above
+                  </span>
+                </Show>
+              </p>
+            </Show>
+            <Show when={checkStatus() === "error"}>
+              <p class="settings-hint settings-update-result">
+                <span class="update-error">Check failed — try again later</span>
+              </p>
+            </Show>
+          </div>
+
           {/* Content Margins Section */}
           <div class="settings-section">
             <label class="settings-label">Content Margins</label>
@@ -187,39 +220,6 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
             )}
           </div>
 
-          {/* About Section */}
-          <div class="settings-section settings-about">
-            <label class="settings-label">About</label>
-            <div class="settings-about-row">
-              <span class="settings-version">Claudia v{props.currentVersion}</span>
-              <button
-                class="settings-update-btn"
-                onClick={handleCheckForUpdates}
-                disabled={checkStatus() === "checking" || props.updateStatus === "downloading"}
-              >
-                <Show when={checkStatus() === "checking"} fallback="Check for Updates">
-                  Checking...
-                </Show>
-              </button>
-            </div>
-            <Show when={checkStatus() === "done"}>
-              <p class="settings-hint settings-update-result">
-                <Show
-                  when={props.updateAvailable}
-                  fallback={<span class="update-current">You're up to date</span>}
-                >
-                  <span class="update-available">
-                    v{props.updateAvailable?.version} available — see banner above
-                  </span>
-                </Show>
-              </p>
-            </Show>
-            <Show when={checkStatus() === "error"}>
-              <p class="settings-hint settings-update-result">
-                <span class="update-error">Check failed — try again later</span>
-              </p>
-            </Show>
-          </div>
         </div>
 
         <div class="settings-modal-footer">

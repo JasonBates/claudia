@@ -54,7 +54,7 @@ const CURATED_FONTS: FontOption[] = [
 const DEFAULT_MARGIN = 16;
 const DEFAULT_FONT = "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif";
 const DEFAULT_FONT_SIZE = 16;
-const DEFAULT_SCHEME = "Solarized Dark";
+const DEFAULT_SCHEME = "Gruvbox Dark";
 
 /**
  * Hook for managing appearance settings with live preview and persistence.
