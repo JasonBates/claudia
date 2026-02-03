@@ -43,6 +43,10 @@ Enable with `CLAUDIA_DEBUG=1` environment variable.
 - `sdk-bridge-v2.mjs` - Claude SDK bridge (handles CLAUDIA_DEBUG)
 - `scripts/` - Build and debug scripts
 
+## Releasing
+See [RELEASING.md](RELEASING.md) for instructions on creating new releases.
+Releases are triggered by pushing version tags (e.g., `v0.2.0`) to GitHub.
+
 ## Worktree Setup
 Uses shared Cargo target: `~/.cargo/target/claude-terminal`
 

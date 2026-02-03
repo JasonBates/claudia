@@ -11,7 +11,7 @@ import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel"
 import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion } from "./lib/tauri";
 import type { ThemeSettings } from "./lib/theme-utils";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode, isValidMode } from "./lib/mode-utils";
@@ -28,6 +28,7 @@ import {
 } from "./hooks";
 import SettingsModal from "./components/SettingsModal";
 import BotSettings from "./components/BotSettings";
+import UpdateBanner from "./components/UpdateBanner";
 import "./App.css";
 
 function App() {
@@ -77,6 +78,9 @@ function App() {
   // Bot settings panel state
   const [botSettingsOpen, setBotSettingsOpen] = createSignal(false);
   const [botSettingsError, setBotSettingsError] = createSignal<string | null>(null);
+
+  // App version (loaded from Tauri on mount)
+  const [appVersion, setAppVersion] = createSignal<string>("0.1.0");
 
   // Permissions hook (polling logic + handlers)
   const permissions = usePermissions({
@@ -832,8 +836,109 @@ function App() {
     commandInputRef.focus();
   };
 
+  // ============================================================================
+  // Auto-Update
+  // ============================================================================
+
+  // Ref to hold update check interval ID
+  let updateCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Silently check for updates in the background.
+   * Doesn't show errors to user unless there's an update available.
+   */
+  const checkForUpdatesQuietly = async () => {
+    // Don't interrupt an active download/install
+    const currentStatus = store.updateStatus();
+    if (currentStatus === "downloading" || currentStatus === "ready") {
+      console.log("[UPDATE] Skipping background check - update in progress");
+      return;
+    }
+
+    try {
+      store.dispatch(actions.setUpdateStatus("checking"));
+      const update = await checkForUpdate();
+      if (update) {
+        console.log("[UPDATE] Update available:", update.version);
+        store.dispatch(actions.setUpdateAvailable(update));
+      } else {
+        console.log("[UPDATE] No update available");
+        // Clear any stale update state
+        store.dispatch(actions.setUpdateAvailable(null));
+        store.dispatch(actions.setUpdateError(null));
+      }
+      store.dispatch(actions.setUpdateStatus("idle"));
+    } catch (e) {
+      console.error("[UPDATE] Check failed:", e);
+      // Don't show error to user for background check
+      store.dispatch(actions.setUpdateStatus("idle"));
+    }
+  };
+
+  /**
+   * Check for updates interactively (from Settings).
+   * Throws errors so the UI can show failure state.
+   */
+  const checkForUpdatesInteractive = async () => {
+    store.dispatch(actions.setUpdateStatus("checking"));
+    try {
+      const update = await checkForUpdate();
+      if (update) {
+        console.log("[UPDATE] Update available:", update.version);
+        store.dispatch(actions.setUpdateAvailable(update));
+      } else {
+        console.log("[UPDATE] No update available");
+        // Clear any stale update state
+        store.dispatch(actions.setUpdateAvailable(null));
+        store.dispatch(actions.setUpdateError(null));
+      }
+      store.dispatch(actions.setUpdateStatus("idle"));
+    } catch (e) {
+      console.error("[UPDATE] Check failed:", e);
+      store.dispatch(actions.setUpdateStatus("error"));
+      store.dispatch(actions.setUpdateError(`Check failed: ${e}`));
+      throw e; // Re-throw so Settings modal can show error state
+    }
+  };
+
+  const handleDownloadUpdate = async () => {
+    store.dispatch(actions.setUpdateStatus("downloading"));
+    store.dispatch(actions.setUpdateProgress(0));
+
+    try {
+      await downloadAndInstallUpdate((progress) => {
+        store.dispatch(actions.setUpdateProgress(progress));
+      });
+      store.dispatch(actions.setUpdateStatus("ready"));
+    } catch (e) {
+      console.error("[UPDATE] Download failed:", e);
+      store.dispatch(actions.setUpdateError(`Download failed: ${e}`));
+      store.dispatch(actions.setUpdateStatus("error"));
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    await restartApp();
+  };
+
+  const handleDismissUpdate = () => {
+    const version = store.updateAvailable()?.version;
+    if (version) {
+      store.dispatch(actions.dismissUpdate(version));
+    }
+  };
+
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
+
+    // Load app version from Tauri
+    try {
+      const version = await getAppVersion();
+      setAppVersion(version);
+      console.log("[MOUNT] App version:", version);
+    } catch (e) {
+      console.error("[MOUNT] Failed to get app version:", e);
+    }
 
     // Load saved permission mode from config (source of truth)
     // and sync to localStorage for instant access on next load
@@ -895,6 +1000,12 @@ function App() {
     } catch (e) {
       store.dispatch(actions.setSessionError(`Failed to start session: ${e}`));
     }
+
+    // Check for updates in the background (non-blocking)
+    checkForUpdatesQuietly();
+
+    // Set up periodic update check (every 4 hours)
+    updateCheckInterval = setInterval(checkForUpdatesQuietly, 4 * 60 * 60 * 1000);
   });
 
   onCleanup(() => {
@@ -902,6 +1013,9 @@ function App() {
     window.removeEventListener("keydown", handleKeyDown, true);
     document.removeEventListener("click", handleRefocusClick, true);
     unlistenDragDrop?.();
+    if (updateCheckInterval) {
+      clearInterval(updateCheckInterval);
+    }
   });
 
   // ============================================================================
@@ -990,6 +1104,20 @@ function App() {
             {store.error()}
             <button onClick={() => store.dispatch(actions.setSessionError(null))}>Dismiss</button>
           </div>
+        </Show>
+
+        <Show when={store.updateAvailable() && store.updateDismissedVersion() !== store.updateAvailable()?.version}>
+          <UpdateBanner
+            version={store.updateAvailable()!.version}
+            currentVersion={store.updateAvailable()!.currentVersion}
+            releaseNotes={store.updateAvailable()!.body}
+            downloadProgress={store.updateProgress()}
+            status={store.updateStatus()}
+            error={store.updateError()}
+            onDownload={handleDownloadUpdate}
+            onInstall={handleInstallUpdate}
+            onDismiss={handleDismissUpdate}
+          />
         </Show>
 
         <Show when={contextThreshold() !== "ok" && !store.warningDismissed()}>
@@ -1102,6 +1230,10 @@ function App() {
           onSaveLocallyChange={settings.setSaveLocally}
           onResetDefaults={settings.resetToDefaults}
           onClose={settings.closeSettings}
+          currentVersion={appVersion()}
+          updateAvailable={store.updateAvailable()}
+          updateStatus={store.updateStatus()}
+          onCheckForUpdates={checkForUpdatesInteractive}
         />
       </Show>
 

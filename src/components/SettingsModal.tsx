@@ -1,6 +1,7 @@
-import { Component, For, onMount, onCleanup } from "solid-js";
+import { Component, For, Show, createSignal, onMount, onCleanup } from "solid-js";
 import type { ColorSchemeInfo } from "../lib/tauri";
 import type { FontOption } from "../hooks/useSettings";
+import type { UpdateStatus } from "../lib/store/types";
 
 interface SettingsModalProps {
   contentMargin: number;
@@ -17,10 +18,26 @@ interface SettingsModalProps {
   onSaveLocallyChange: (locally: boolean) => void;
   onResetDefaults: () => void;
   onClose: () => void;
+  // Update props
+  currentVersion: string;
+  updateAvailable: { version: string } | null;
+  updateStatus: UpdateStatus;
+  onCheckForUpdates: () => Promise<void>;
 }
 
 const SettingsModal: Component<SettingsModalProps> = (props) => {
   let modalRef: HTMLDivElement | undefined;
+  const [checkStatus, setCheckStatus] = createSignal<"idle" | "checking" | "done" | "error">("idle");
+
+  const handleCheckForUpdates = async () => {
+    setCheckStatus("checking");
+    try {
+      await props.onCheckForUpdates();
+      setCheckStatus("done");
+    } catch {
+      setCheckStatus("error");
+    }
+  };
 
   // Handle Escape key to close
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -168,6 +185,40 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
                 </div>
               </>
             )}
+          </div>
+
+          {/* About Section */}
+          <div class="settings-section settings-about">
+            <label class="settings-label">About</label>
+            <div class="settings-about-row">
+              <span class="settings-version">Claudia v{props.currentVersion}</span>
+              <button
+                class="settings-update-btn"
+                onClick={handleCheckForUpdates}
+                disabled={checkStatus() === "checking" || props.updateStatus === "downloading"}
+              >
+                <Show when={checkStatus() === "checking"} fallback="Check for Updates">
+                  Checking...
+                </Show>
+              </button>
+            </div>
+            <Show when={checkStatus() === "done"}>
+              <p class="settings-hint settings-update-result">
+                <Show
+                  when={props.updateAvailable}
+                  fallback={<span class="update-current">You're up to date</span>}
+                >
+                  <span class="update-available">
+                    v{props.updateAvailable?.version} available — see banner above
+                  </span>
+                </Show>
+              </p>
+            </Show>
+            <Show when={checkStatus() === "error"}>
+              <p class="settings-hint settings-update-result">
+                <span class="update-error">Check failed — try again later</span>
+              </p>
+            </Show>
           </div>
         </div>
 

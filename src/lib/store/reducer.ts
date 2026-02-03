@@ -773,6 +773,54 @@ export function conversationReducer(
       };
     }
 
+    // =========================================================================
+    // Update Actions
+    // =========================================================================
+    case "SET_UPDATE_AVAILABLE":
+      return {
+        ...state,
+        update: {
+          ...state.update,
+          available: action.payload,
+        },
+      };
+
+    case "SET_UPDATE_PROGRESS":
+      return {
+        ...state,
+        update: {
+          ...state.update,
+          downloadProgress: action.payload,
+        },
+      };
+
+    case "SET_UPDATE_STATUS":
+      return {
+        ...state,
+        update: {
+          ...state.update,
+          status: action.payload,
+        },
+      };
+
+    case "SET_UPDATE_ERROR":
+      return {
+        ...state,
+        update: {
+          ...state.update,
+          error: action.payload,
+        },
+      };
+
+    case "DISMISS_UPDATE":
+      return {
+        ...state,
+        update: {
+          ...state.update,
+          dismissedVersion: action.payload,
+        },
+      };
+
     default:
       return state;
   }
