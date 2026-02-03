@@ -28,7 +28,6 @@ import {
 } from "./hooks";
 import SettingsModal from "./components/SettingsModal";
 import BotSettings from "./components/BotSettings";
-import { hasBotApiKey } from "./lib/tauri";
 import "./App.css";
 
 function App() {
