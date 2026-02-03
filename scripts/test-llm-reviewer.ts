@@ -29,9 +29,11 @@ if (fs.existsSync(envPath)) {
 
 // Check for API key
 const apiKey = process.env.ANTHROPIC_API_KEY;
-const heuristicsOnly = !apiKey || process.argv.includes("--heuristics-only");
+const heuristicsOnlyFlag = process.argv.includes("--heuristics-only");
 
-if (!apiKey && !heuristicsOnly) {
+// If --heuristics-only flag is passed, run in that mode
+// Otherwise, require an API key and error if missing
+if (!heuristicsOnlyFlag && !apiKey) {
   console.error("Error: ANTHROPIC_API_KEY not found in environment or .env file");
   console.error("\nTo run this test:");
   console.error("  1. Create a .env file in the project root with: ANTHROPIC_API_KEY=sk-ant-...");
@@ -40,8 +42,10 @@ if (!apiKey && !heuristicsOnly) {
   process.exit(1);
 }
 
+const heuristicsOnly = heuristicsOnlyFlag;
+
 if (heuristicsOnly) {
-  console.log("⚠ Running in heuristics-only mode (no API key)\n");
+  console.log("⚠ Running in heuristics-only mode (--heuristics-only flag)\n");
 }
 
 const client = apiKey ? new Anthropic({ apiKey }) : null;

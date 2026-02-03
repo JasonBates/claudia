@@ -592,6 +592,7 @@ export function handlePermissionRequest(
           toolName,
           toolInput,
           description,
+          source: "control",
         };
         ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });
       });
@@ -607,6 +608,7 @@ export function handlePermissionRequest(
       toolName,
       toolInput,
       description,
+      source: "control",
     };
     ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });
     return;
@@ -618,6 +620,7 @@ export function handlePermissionRequest(
     toolName,
     toolInput,
     description,
+    source: "control",
   };
 
   ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });

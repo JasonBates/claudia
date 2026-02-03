@@ -130,15 +130,21 @@ pub async fn set_bot_api_key(
 
     #[cfg(unix)]
     {
+        use std::os::unix::fs::PermissionsExt;
+
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
-            .mode(0o600) // Owner read/write only
+            .mode(0o600) // Owner read/write only (for new files)
             .open(&env_path)
             .map_err(|e| format!("Failed to create .env file: {}", e))?;
         file.write_all(contents.as_bytes())
             .map_err(|e| format!("Failed to write .env file: {}", e))?;
+
+        // Explicitly set permissions for existing files (mode() only affects new files)
+        fs::set_permissions(&env_path, fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("Failed to set .env file permissions: {}", e))?;
     }
 
     #[cfg(not(unix))]

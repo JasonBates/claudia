@@ -302,9 +302,10 @@ impl LlmReviewer {
     pub async fn review_permission(&self, request: &ReviewRequest) -> Result<ReviewResult, String> {
         // First check for instant decisions (heuristics)
         if let Some(result) = self.instant_decision(request) {
+            // Heuristic reasons are safe to log (static strings from our rules)
             eprintln!(
-                "[REVIEW] Heuristic flagged: tool={}, safe={}, reason={}",
-                request.tool_name, result.safe, result.reason
+                "[REVIEW] Heuristic flagged: tool={}, safe={}",
+                request.tool_name, result.safe
             );
             return Ok(result);
         }
@@ -323,10 +324,8 @@ impl LlmReviewer {
 
         // Parse the response
         let result = self.parse_response(&response)?;
-        eprintln!(
-            "[REVIEW] LLM result: safe={}, reason={}",
-            result.safe, result.reason
-        );
+        // SECURITY: Don't log result.reason - LLM may echo secrets from tool_input
+        eprintln!("[REVIEW] LLM result: safe={}", result.safe);
         Ok(result)
     }
 
