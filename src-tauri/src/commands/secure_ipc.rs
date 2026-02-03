@@ -278,6 +278,12 @@ pub fn cleanup_session_files(session_id: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    // ============================================================================
+    // Path generation tests
+    // ============================================================================
 
     #[test]
     fn test_get_secure_ipc_dir() {
@@ -301,5 +307,332 @@ mod tests {
 
         assert!(req.to_string_lossy().contains("permission-request-test-session-123"));
         assert!(res.to_string_lossy().contains("permission-response-test-session-123"));
+    }
+
+    #[test]
+    fn test_permission_paths_with_special_characters() {
+        let session_id = "abc-123_def";
+        let request_path = get_permission_request_path(session_id);
+        assert!(request_path.is_ok());
+        assert!(request_path
+            .unwrap()
+            .to_string_lossy()
+            .contains("permission-request-abc-123_def"));
+    }
+
+    // ============================================================================
+    // secure_write tests
+    // ============================================================================
+
+    #[test]
+    fn test_secure_write_creates_file_with_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test-file.json");
+
+        let result = secure_write(&file_path, "test content");
+        assert!(result.is_ok());
+        assert!(file_path.exists());
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "test content");
+    }
+
+    #[test]
+    fn test_secure_write_overwrites_existing_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test-file.json");
+
+        secure_write(&file_path, "original content").unwrap();
+        secure_write(&file_path, "new content").unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "new content");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_secure_write_sets_0600_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test-file.json");
+
+        secure_write(&file_path, "test content").unwrap();
+
+        let metadata = fs::metadata(&file_path).unwrap();
+        let mode = metadata.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "File should have 0600 permissions");
+    }
+
+    #[test]
+    fn test_secure_write_no_parent_dir_fails() {
+        let path = PathBuf::from("");
+        let result = secure_write(&path, "content");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_secure_write_nonexistent_parent_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("nonexistent/subdir/test.json");
+
+        let result = secure_write(&file_path, "content");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_secure_write_atomic_behavior() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test-file.json");
+
+        secure_write(&file_path, "original").unwrap();
+        secure_write(&file_path, "new content that is much longer").unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "new content that is much longer");
+    }
+
+    #[test]
+    fn test_secure_write_with_unicode_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test-unicode.json");
+
+        let unicode_content = r#"{"message": "Hello 世界 🌍 émoji"}"#;
+        secure_write(&file_path, unicode_content).unwrap();
+
+        let content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, unicode_content);
+    }
+
+    // ============================================================================
+    // secure_read tests
+    // ============================================================================
+
+    #[cfg(unix)]
+    #[test]
+    fn test_secure_read_with_valid_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test-read.json");
+
+        // Use secure_write to create a properly permissioned file
+        secure_write(&file_path, "test content").unwrap();
+
+        let result = secure_read(&file_path);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "test content");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_secure_read_rejects_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = TempDir::new().unwrap();
+        let real_file = temp_dir.path().join("real-file.json");
+        let symlink_path = temp_dir.path().join("symlink.json");
+
+        // Create a real file with secure permissions
+        secure_write(&real_file, "secret content").unwrap();
+
+        // Create a symlink to it
+        symlink(&real_file, &symlink_path).unwrap();
+
+        // secure_read should refuse to follow the symlink (O_NOFOLLOW)
+        let result = secure_read(&symlink_path);
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().contains("symlink"),
+            "Error should mention symlink"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_secure_read_rejects_insecure_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("insecure.json");
+
+        // Create file with insecure permissions (world-readable)
+        {
+            let mut file = fs::File::create(&file_path).unwrap();
+            file.write_all(b"content").unwrap();
+        }
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let result = secure_read(&file_path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Insecure file permissions"));
+    }
+
+    #[test]
+    fn test_secure_read_nonexistent_file_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("nonexistent.json");
+
+        let result = secure_read(&file_path);
+        assert!(result.is_err());
+    }
+
+    // ============================================================================
+    // verify_file_security_from_handle tests (TOCTOU-safe verification)
+    // ============================================================================
+
+    #[cfg(unix)]
+    #[test]
+    fn test_verify_file_security_from_handle_accepts_0600() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("secure-file.txt");
+
+        {
+            let mut file = fs::File::create(&file_path).unwrap();
+            file.write_all(b"test content").unwrap();
+        }
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        let file = fs::File::open(&file_path).unwrap();
+        let result = verify_file_security_from_handle(&file);
+        assert!(result.is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_verify_file_security_from_handle_rejects_group_readable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("group-readable.txt");
+
+        {
+            let mut file = fs::File::create(&file_path).unwrap();
+            file.write_all(b"test content").unwrap();
+        }
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o640)).unwrap();
+
+        let file = fs::File::open(&file_path).unwrap();
+        let result = verify_file_security_from_handle(&file);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Insecure file permissions"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_verify_file_security_from_handle_rejects_world_readable() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("world-readable.txt");
+
+        {
+            let mut file = fs::File::create(&file_path).unwrap();
+            file.write_all(b"test content").unwrap();
+        }
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let file = fs::File::open(&file_path).unwrap();
+        let result = verify_file_security_from_handle(&file);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Insecure file permissions"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_verify_file_security_from_handle_accepts_0400_readonly() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("readonly.txt");
+
+        {
+            let mut file = fs::File::create(&file_path).unwrap();
+            file.write_all(b"test content").unwrap();
+        }
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o400)).unwrap();
+
+        let file = fs::File::open(&file_path).unwrap();
+        let result = verify_file_security_from_handle(&file);
+        assert!(result.is_ok());
+    }
+
+    // ============================================================================
+    // IPC message tests (JSON serialization)
+    // ============================================================================
+
+    #[test]
+    fn test_write_and_read_ipc_message() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("ipc-message.json");
+
+        let message = serde_json::json!({
+            "type": "permission_request",
+            "tool": "Bash",
+            "command": "ls -la"
+        });
+
+        write_ipc_message(&file_path, &message).unwrap();
+
+        // On Unix, use secure_read which verifies permissions
+        #[cfg(unix)]
+        {
+            let read_result = read_ipc_message(&file_path);
+            assert!(read_result.is_ok());
+            let read_message = read_result.unwrap();
+            assert_eq!(read_message["type"], "permission_request");
+            assert_eq!(read_message["tool"], "Bash");
+        }
+
+        // On non-Unix, just verify the file was written correctly
+        #[cfg(not(unix))]
+        {
+            let content = fs::read_to_string(&file_path).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+            assert_eq!(parsed["type"], "permission_request");
+        }
+    }
+
+    #[test]
+    fn test_read_ipc_message_invalid_json_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("invalid.json");
+
+        secure_write(&file_path, "not valid json {{{").unwrap();
+
+        #[cfg(unix)]
+        {
+            let result = read_ipc_message(&file_path);
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("Failed to parse"));
+        }
+    }
+
+    // ============================================================================
+    // ensure_secure_dir tests
+    // Note: These tests use real app directories (~/.../com.jasonbates.claudia/ipc)
+    // rather than temp directories. They verify actual production behavior but may
+    // fail in CI environments with restricted permissions or pre-existing directories.
+    // ============================================================================
+
+    #[test]
+    fn test_ensure_secure_dir_creates_directory() {
+        let result = ensure_secure_dir();
+        assert!(result.is_ok());
+
+        let dir = result.unwrap();
+        assert!(dir.exists());
+        assert!(dir.is_dir());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_ensure_secure_dir_has_0700_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = ensure_secure_dir().unwrap();
+        let metadata = fs::metadata(&dir).unwrap();
+        let mode = metadata.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700, "Directory should have 0700 permissions");
     }
 }

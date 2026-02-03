@@ -1356,4 +1356,155 @@ mod tests {
             panic!("Expected SubagentEnd event");
         }
     }
+
+    // ============================================================================
+    // Logging tests
+    // Note: These tests use real app directories (~/.../com.jasonbates.claudia/logs)
+    // rather than temp directories. They verify actual production behavior but may
+    // fail in CI environments with restricted permissions or pre-existing directories.
+    // ============================================================================
+
+    #[test]
+    fn test_get_secure_log_path_returns_valid_path() {
+        let path = super::get_secure_log_path();
+        assert!(path.is_some());
+
+        let log_path = path.unwrap();
+        assert!(log_path.to_string_lossy().contains("com.jasonbates.claudia"));
+        assert!(log_path.to_string_lossy().contains("logs"));
+        assert!(log_path.to_string_lossy().ends_with("claude-debug.log"));
+    }
+
+    #[test]
+    fn test_get_secure_log_path_creates_directory() {
+        let path = super::get_secure_log_path();
+        assert!(path.is_some());
+
+        let log_path = path.unwrap();
+        let log_dir = log_path.parent().unwrap();
+        assert!(log_dir.exists(), "Log directory should be created");
+        assert!(log_dir.is_dir(), "Log directory should be a directory");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_get_secure_log_path_directory_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = super::get_secure_log_path();
+        assert!(path.is_some());
+
+        let log_path = path.unwrap();
+        let log_dir = log_path.parent().unwrap();
+
+        let metadata = std::fs::metadata(log_dir).unwrap();
+        let mode = metadata.permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700, "Log directory should have 0700 permissions");
+    }
+
+    #[test]
+    fn test_rust_debug_log_respects_disabled_flag() {
+        // When CLAUDIA_DEBUG is not set (or set to something other than "1"),
+        // logging should be a no-op. We verify it doesn't panic.
+        super::rust_debug_log("TEST", "This should not appear when debug is disabled");
+    }
+
+    // ============================================================================
+    // Node binary and bridge path tests
+    // ============================================================================
+
+    #[test]
+    fn test_find_node_binary_returns_result() {
+        // This test verifies the function returns a proper Result
+        let result = super::find_node_binary();
+        match result {
+            Ok(path) => {
+                assert!(path.exists(), "Node binary path should exist if found");
+                assert!(
+                    path.to_string_lossy().contains("node"),
+                    "Path should contain 'node'"
+                );
+            }
+            Err(msg) => {
+                assert!(
+                    msg.contains("Could not find node binary"),
+                    "Error should indicate node not found"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_bridge_script_path_returns_result() {
+        // This test verifies the function returns a proper Result
+        let result = super::get_bridge_script_path();
+        match result {
+            Ok(path) => {
+                assert!(
+                    path.to_string_lossy().contains("sdk-bridge-v2.mjs"),
+                    "Path should point to bridge script"
+                );
+            }
+            Err(msg) => {
+                assert!(
+                    msg.contains("Could not find sdk-bridge-v2.mjs"),
+                    "Error should indicate bridge script not found"
+                );
+            }
+        }
+    }
+
+    // ============================================================================
+    // ask_user_question event tests
+    // ============================================================================
+
+    #[test]
+    fn parse_ask_user_question() {
+        let event = parse(json!({
+            "type": "ask_user_question",
+            "requestId": "ask_123",
+            "questions": [
+                {"text": "What color?", "options": ["Red", "Blue"]}
+            ]
+        }));
+        if let Some(ClaudeEvent::AskUserQuestion {
+            request_id,
+            questions,
+        }) = event
+        {
+            assert_eq!(request_id, "ask_123");
+            assert!(questions.is_array());
+        } else {
+            panic!("Expected AskUserQuestion event");
+        }
+    }
+
+    #[test]
+    fn parse_ask_user_question_empty_questions() {
+        let event = parse(json!({
+            "type": "ask_user_question",
+            "requestId": "ask_456"
+        }));
+        if let Some(ClaudeEvent::AskUserQuestion {
+            request_id,
+            questions,
+        }) = event
+        {
+            assert_eq!(request_id, "ask_456");
+            assert!(questions.is_array());
+            assert!(questions.as_array().unwrap().is_empty());
+        } else {
+            panic!("Expected AskUserQuestion event");
+        }
+    }
+
+    // ============================================================================
+    // interrupted event tests
+    // ============================================================================
+
+    #[test]
+    fn parse_interrupted() {
+        let event = parse(json!({ "type": "interrupted" }));
+        assert!(matches!(event, Some(ClaudeEvent::Interrupted)));
+    }
 }
