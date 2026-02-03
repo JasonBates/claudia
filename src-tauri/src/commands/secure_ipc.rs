@@ -610,6 +610,9 @@ mod tests {
 
     // ============================================================================
     // ensure_secure_dir tests
+    // Note: These tests use real app directories (~/.../com.jasonbates.claudia/ipc)
+    // rather than temp directories. They verify actual production behavior but may
+    // fail in CI environments with restricted permissions or pre-existing directories.
     // ============================================================================
 
     #[test]

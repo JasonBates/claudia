@@ -1359,6 +1359,9 @@ mod tests {
 
     // ============================================================================
     // Logging tests
+    // Note: These tests use real app directories (~/.../com.jasonbates.claudia/logs)
+    // rather than temp directories. They verify actual production behavior but may
+    // fail in CI environments with restricted permissions or pre-existing directories.
     // ============================================================================
 
     #[test]
