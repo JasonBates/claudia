@@ -848,6 +848,13 @@ function App() {
    * Doesn't show errors to user unless there's an update available.
    */
   const checkForUpdatesQuietly = async () => {
+    // Don't interrupt an active download/install
+    const currentStatus = store.updateStatus();
+    if (currentStatus === "downloading" || currentStatus === "ready") {
+      console.log("[UPDATE] Skipping background check - update in progress");
+      return;
+    }
+
     try {
       store.dispatch(actions.setUpdateStatus("checking"));
       const update = await checkForUpdate();
