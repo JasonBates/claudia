@@ -15,6 +15,8 @@
     "core:event:allow-emit",
     "core:event:allow-listen",
     "process:allow-exit",
+    "process:allow-restart",
+    "updater:default",
     "fs:allow-read",
     "fs:allow-watch",
     "dialog:default",
