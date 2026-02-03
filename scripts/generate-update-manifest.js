@@ -56,16 +56,16 @@ const manifest = {
   platforms: {
     'darwin-universal': {
       signature,
-      url: `https://github.com/JasonBates/claude-terminal/releases/download/v${version}/Claudia.app.tar.gz`
+      url: `https://github.com/JasonBates/claudia/releases/download/v${version}/Claudia.app.tar.gz`
     },
     // Also support specific architectures for backwards compatibility
     'darwin-aarch64': {
       signature,
-      url: `https://github.com/JasonBates/claude-terminal/releases/download/v${version}/Claudia.app.tar.gz`
+      url: `https://github.com/JasonBates/claudia/releases/download/v${version}/Claudia.app.tar.gz`
     },
     'darwin-x86_64': {
       signature,
-      url: `https://github.com/JasonBates/claude-terminal/releases/download/v${version}/Claudia.app.tar.gz`
+      url: `https://github.com/JasonBates/claudia/releases/download/v${version}/Claudia.app.tar.gz`
     }
   }
 };
