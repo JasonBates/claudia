@@ -23,6 +23,16 @@ import { fileURLToPath } from "url";
 // Debug logging control - set CLAUDIA_DEBUG=1 to enable
 const DEBUG_ENABLED = process.env.CLAUDIA_DEBUG === "1";
 
+// Handle EPIPE errors gracefully - parent may close the pipe
+process.stdout.on('error', (err) => {
+  if (err.code === 'EPIPE') {
+    // Parent closed stdout, exit gracefully
+    process.exit(0);
+  }
+  // Re-throw other errors
+  throw err;
+});
+
 // Find binary in common locations (PATH not available in bundled app)
 function findBinary(name) {
   const home = homedir();
@@ -92,11 +102,11 @@ if (DEBUG_ENABLED) {
   writeFileSync(LOG_FILE, `=== Bridge started at ${new Date().toISOString()} ===\n`);
 }
 
-// Non-blocking stdout write
+// Non-blocking stdout write (EPIPE handled globally)
 function sendEvent(type, data = {}) {
   const msg = JSON.stringify({ type, ...data }) + '\n';
   debugLog("SEND", { type, ...data });
-  process.stdout.write(msg);  // Non-blocking, with backpressure handling
+  process.stdout.write(msg);
 }
 
 async function main() {

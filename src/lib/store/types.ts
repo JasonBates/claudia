@@ -16,6 +16,14 @@ import type {
 import type { SessionInfo, PermissionRequest } from "../event-handlers";
 
 /**
+ * Result from LLM permission review (Bot mode)
+ */
+export interface ReviewResult {
+  safe: boolean;
+  reason: string;
+}
+
+/**
  * Mutable refs for streaming JSON accumulation.
  * These MUST remain outside the reactive store to avoid
  * triggering reactivity on every character append during streaming.
@@ -112,6 +120,10 @@ export interface ConversationState {
   permission: {
     /** Current permission dialog request */
     pending: PermissionRequest | null;
+    /** True when Bot mode is reviewing a permission */
+    isReviewing: boolean;
+    /** Result from LLM review (Bot mode) */
+    reviewResult: ReviewResult | null;
   };
 
   // === Session ===
@@ -179,6 +191,8 @@ export function createInitialState(): ConversationState {
     },
     permission: {
       pending: null,
+      isReviewing: false,
+      reviewResult: null,
     },
     session: {
       active: false,

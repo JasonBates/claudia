@@ -1,7 +1,8 @@
-import { createSignal, Accessor, Setter, runWithOwner, batch, Owner } from "solid-js";
-import { pollPermissionRequest, respondToPermission, sendPermissionResponse } from "../lib/tauri";
+import { createSignal, createEffect, Accessor, Setter, runWithOwner, batch, Owner } from "solid-js";
+import { pollPermissionRequest, respondToPermission, sendPermissionResponse, reviewPermissionRequest } from "../lib/tauri";
 import type { Mode } from "../lib/mode-utils";
 import type { PermissionRequest } from "../lib/event-handlers";
+import type { ReviewResult } from "../lib/store/types";
 
 export interface UsePermissionsReturn {
   // Signals
@@ -15,6 +16,10 @@ export interface UsePermissionsReturn {
   // Polling control
   startPolling: () => void;
   stopPolling: () => void;
+
+  // Bot mode review (optional, only available when external state is provided)
+  isReviewing?: Accessor<boolean>;
+  reviewResult?: Accessor<ReviewResult | null>;
 }
 
 export interface UsePermissionsOptions {
@@ -30,14 +35,6 @@ export interface UsePermissionsOptions {
   getCurrentMode: Accessor<Mode>;
 
   /**
-   * Whether to use stream-based permission responses (control_response via stdin).
-   * If true, uses sendPermissionResponse (stream-based).
-   * If false, uses respondToPermission (file-based for MCP hooks).
-   * Default: true (stream-based is the primary mechanism now)
-   */
-  useStreamBasedResponse?: boolean;
-
-  /**
    * External pending permission accessor (from store).
    * If provided, the hook will use this instead of its own internal signal.
    */
@@ -48,6 +45,35 @@ export interface UsePermissionsOptions {
    * Required if pendingPermission is provided.
    */
   clearPendingPermission?: () => void;
+
+  // === Bot Mode State (optional) ===
+
+  /**
+   * Accessor for isReviewing state (from store).
+   * True when Bot mode is reviewing a permission via LLM.
+   */
+  isReviewing?: Accessor<boolean>;
+
+  /**
+   * Dispatch function to update isReviewing state.
+   */
+  setIsReviewing?: (value: boolean) => void;
+
+  /**
+   * Accessor for reviewResult state (from store).
+   */
+  reviewResult?: Accessor<ReviewResult | null>;
+
+  /**
+   * Dispatch function to update reviewResult state.
+   */
+  setReviewResult?: (value: ReviewResult | null) => void;
+
+  /**
+   * Callback when Bot mode requires API key setup.
+   * Called when switching to Bot mode but API key is not configured.
+   */
+  onBotApiKeyRequired?: () => void;
 }
 
 /**
@@ -81,6 +107,85 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
     }
   };
 
+  // === Bot Mode LLM Review Effect ===
+  // When isReviewing is true and there's a pending permission, trigger LLM review
+  createEffect(() => {
+    const isReviewing = options.isReviewing?.();
+    const permission = pendingPermission();
+
+    // Only run review when in bot mode with a pending permission and reviewing flag set
+    if (!isReviewing || !permission) return;
+
+    // Capture the requestId to prevent race conditions
+    // If a new permission arrives while we're reviewing, we should ignore the old review result
+    const reviewingRequestId = permission.requestId;
+
+    console.log("[usePermissions] Bot mode - starting LLM review for:", permission.toolName, "requestId:", reviewingRequestId);
+
+    // Run the LLM review
+    reviewPermissionRequest(
+      permission.toolName,
+      permission.toolInput,
+      permission.description
+    )
+      .then((result) => {
+        // Check if this is still the permission we're reviewing
+        // A new permission may have arrived while we were reviewing
+        const currentPermission = pendingPermission();
+        if (!currentPermission || currentPermission.requestId !== reviewingRequestId) {
+          console.log("[usePermissions] Review completed but permission changed, ignoring result for:", reviewingRequestId);
+          return;
+        }
+
+        console.log("[usePermissions] LLM review result:", result);
+
+        // Update review state
+        options.setIsReviewing?.(false);
+        options.setReviewResult?.(result);
+
+        // If safe, auto-approve
+        if (result.safe) {
+          console.log("[usePermissions] Bot mode - auto-approving safe operation");
+          // Don't await here to avoid blocking the effect
+          handlePermissionAllow(false).catch((err) => {
+            console.error("[usePermissions] Bot mode auto-approve failed:", err);
+          });
+        }
+        // If not safe, the dialog will be shown with the review result
+      })
+      .catch((err) => {
+        // Check if this is still the permission we're reviewing
+        const currentPermission = pendingPermission();
+        if (!currentPermission || currentPermission.requestId !== reviewingRequestId) {
+          console.log("[usePermissions] Review failed but permission changed, ignoring error for:", reviewingRequestId);
+          return;
+        }
+
+        const errorStr = String(err);
+        console.error("[usePermissions] LLM review failed:", errorStr);
+
+        // Check if this is an API key error (missing or invalid)
+        const isApiKeyError = errorStr.includes("No API key") ||
+                              errorStr.includes("401") ||
+                              errorStr.includes("Invalid API key") ||
+                              errorStr.includes("authentication");
+
+        if (isApiKeyError && options.onBotApiKeyRequired) {
+          console.log("[usePermissions] API key error detected, opening settings");
+          options.onBotApiKeyRequired();
+        }
+
+        // On error, clear reviewing state and show dialog for manual decision
+        options.setIsReviewing?.(false);
+        options.setReviewResult?.({
+          safe: false,
+          reason: isApiKeyError
+            ? "API key missing or invalid. Please configure in settings."
+            : `Review failed: ${err}. Please decide manually.`,
+        });
+      });
+  });
+
   let permissionPollInterval: number | null = null;
 
   /**
@@ -98,15 +203,36 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
         const request = await pollPermissionRequest();
         if (request && !pendingPermission()) {
           console.log("[usePermissions] Hook request received:", request);
+          const mode = options.getCurrentMode();
 
           // In auto mode, immediately approve
-          if (options.getCurrentMode() === "auto") {
+          if (mode === "auto") {
             console.log("[usePermissions] Auto-accepting:", request.tool_name);
             await respondToPermission(true);
             return;
           }
 
-          // Restore SolidJS context for state updates from setInterval
+          // In bot mode, trigger LLM review before deciding
+          if (mode === "bot") {
+            console.log("[usePermissions] Bot mode (polling) - triggering LLM review:", request.tool_name);
+            runWithOwner(options.owner, () => {
+              batch(() => {
+                // Set reviewing flag FIRST (triggers the review effect)
+                options.setIsReviewing?.(true);
+                // Then set the pending permission
+                setPendingPermission({
+                  requestId: request.tool_use_id,
+                  toolName: request.tool_name,
+                  toolInput: request.tool_input,
+                  description: `Allow ${request.tool_name}?`,
+                  source: "hook",
+                });
+              });
+            });
+            return;
+          }
+
+          // For request/plan modes, show permission dialog directly
           runWithOwner(options.owner, () => {
             batch(() => {
               // Show permission dialog
@@ -115,6 +241,7 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
                 toolName: request.tool_name,
                 toolInput: request.tool_input,
                 description: `Allow ${request.tool_name}?`,
+                source: "hook",
               });
             });
           });
@@ -146,15 +273,15 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
 
     clearPendingPermission();
 
-    // Use stream-based response by default (control_response via stdin)
-    // Fall back to file-based response for MCP hook compatibility
-    const useStreamBased = options.useStreamBasedResponse !== false;
-    if (useStreamBased && permission.requestId) {
+    // Use the appropriate response mechanism based on the request source:
+    // - "control": stream-based response (control_response via stdin)
+    // - "hook": file-based response (for MCP hook compatibility)
+    if (permission.source === "control") {
       await sendPermissionResponse(permission.requestId, true, remember, permission.toolInput);
       console.log("[usePermissions] Allowed (stream):", permission.toolName);
     } else {
       await respondToPermission(true);
-      console.log("[usePermissions] Allowed (file):", permission.toolName);
+      console.log("[usePermissions] Allowed (file/hook):", permission.toolName);
     }
   };
 
@@ -167,15 +294,15 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
 
     clearPendingPermission();
 
-    // Use stream-based response by default (control_response via stdin)
-    // Fall back to file-based response for MCP hook compatibility
-    const useStreamBased = options.useStreamBasedResponse !== false;
-    if (useStreamBased && permission.requestId) {
+    // Use the appropriate response mechanism based on the request source:
+    // - "control": stream-based response (control_response via stdin)
+    // - "hook": file-based response (for MCP hook compatibility)
+    if (permission.source === "control") {
       await sendPermissionResponse(permission.requestId, false, false, permission.toolInput);
       console.log("[usePermissions] Denied (stream):", permission.toolName);
     } else {
       await respondToPermission(false, "User denied permission");
-      console.log("[usePermissions] Denied (file):", permission.toolName);
+      console.log("[usePermissions] Denied (file/hook):", permission.toolName);
     }
   };
 
@@ -191,5 +318,9 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
     // Polling control
     startPolling,
     stopPolling,
+
+    // Bot mode review (pass through from options if provided)
+    isReviewing: options.isReviewing,
+    reviewResult: options.reviewResult,
   };
 }

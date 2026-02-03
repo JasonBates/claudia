@@ -3,6 +3,7 @@ mod commands;
 mod config;
 pub mod error;
 mod events;
+pub mod llm_reviewer;
 pub mod response_state;
 mod streaming;
 pub mod timeouts;
@@ -58,6 +59,7 @@ pub fn run() {
             commands::permission::get_session_id,
             commands::permission::send_question_response,
             commands::permission::send_question_cancel,
+            commands::permission::review_permission_request,
             // Streaming command runner
             commands::streaming_cmd::run_streaming_command,
             // Session listing (for sidebar)
@@ -69,6 +71,11 @@ pub fn run() {
             commands::appearance_cmd::get_scheme_colors,
             // New window command
             commands::directory_cmd::open_new_window,
+            // Bot mode commands
+            commands::bot_config::get_bot_api_key,
+            commands::bot_config::has_bot_api_key,
+            commands::bot_config::set_bot_api_key,
+            commands::bot_config::validate_bot_api_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

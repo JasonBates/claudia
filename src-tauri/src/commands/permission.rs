@@ -9,11 +9,13 @@
 
 use tauri::State;
 
+use super::bot_config::get_raw_api_key;
 use super::secure_ipc::{
     get_permission_request_path, get_permission_response_path, read_ipc_message,
     write_ipc_message,
 };
 use super::{cmd_debug_log, AppState};
+use crate::llm_reviewer::{LlmReviewer, ReviewRequest, ReviewResult};
 
 /// Truncate session_id safely for logging (handles non-ASCII)
 fn safe_session_prefix(session_id: &str) -> String {
@@ -202,4 +204,47 @@ pub async fn send_question_cancel(
 
     sender.send_message(&msg.to_string())?;
     Ok(())
+}
+
+/// Review a permission request using the LLM reviewer
+/// Returns whether the operation is safe and a reason
+#[tauri::command]
+pub async fn review_permission_request(
+    tool_name: String,
+    tool_input: serde_json::Value,
+    description: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ReviewResult, String> {
+    // SECURITY: Don't log full tool_input as it may contain secrets (API keys, env vars, file contents)
+    cmd_debug_log(
+        "BOT_REVIEW",
+        &format!("Reviewing permission: tool={}", tool_name),
+    );
+
+    // Get API key from .env file
+    let api_key = get_raw_api_key(&state.launch_dir)
+        .ok_or("No API key configured for Bot mode")?;
+
+    // Get timeout from config
+    let config = state.config.lock().await;
+    let timeout_ms = config.bot_timeout_ms;
+    drop(config);
+
+    // Create reviewer and run review
+    let reviewer = LlmReviewer::new(api_key, timeout_ms);
+    let request = ReviewRequest {
+        tool_name,
+        tool_input,
+        description,
+    };
+
+    let result = reviewer.review_permission(&request).await?;
+
+    // SECURITY: Only log safe/unsafe status, not reason (may contain secrets echoed by LLM)
+    cmd_debug_log(
+        "BOT_REVIEW",
+        &format!("Review result: safe={}", result.safe),
+    );
+
+    Ok(result)
 }

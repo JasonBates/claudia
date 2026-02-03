@@ -2,6 +2,7 @@ import { invoke, Channel } from "@tauri-apps/api/core";
 import { exit } from "@tauri-apps/plugin-process";
 import { runWithOwner, batch, Owner } from "solid-js";
 import type { SessionEntry } from "./types";
+import type { ReviewResult } from "./store/types";
 
 export interface ClaudeEvent {
   type:
@@ -107,6 +108,7 @@ export interface Config {
   color_scheme?: string;
   window_width?: number;
   window_height?: number;
+  permission_mode?: string; // "auto" | "request" | "plan" | "bot"
 }
 
 export interface ColorSchemeInfo {
@@ -257,6 +259,37 @@ export async function pollPermissionRequest(): Promise<PermissionRequestFromHook
 
 export async function respondToPermission(allow: boolean, message?: string): Promise<void> {
   await invoke("respond_to_permission", { allow, message });
+}
+
+// ============================================================================
+// Bot Mode / LLM Review
+// ============================================================================
+
+// Re-export ReviewResult from store types (single source of truth)
+export type { ReviewResult };
+
+export async function reviewPermissionRequest(
+  toolName: string,
+  toolInput: unknown,
+  description?: string
+): Promise<ReviewResult> {
+  return await invoke("review_permission_request", { toolName, toolInput, description });
+}
+
+export async function getBotApiKey(): Promise<string | null> {
+  return await invoke("get_bot_api_key");
+}
+
+export async function hasBotApiKey(): Promise<boolean> {
+  return await invoke("has_bot_api_key");
+}
+
+export async function setBotApiKey(apiKey: string): Promise<void> {
+  await invoke("set_bot_api_key", { apiKey });
+}
+
+export async function validateBotApiKey(): Promise<boolean> {
+  return await invoke("validate_bot_api_key");
 }
 
 export async function getLaunchDir(): Promise<string> {

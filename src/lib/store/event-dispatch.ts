@@ -66,7 +66,7 @@ export interface EventContext {
   ) => Promise<void>;
 
   /** Get the current permission mode */
-  getCurrentMode: () => "auto" | "request" | "plan";
+  getCurrentMode: () => "auto" | "request" | "plan" | "bot";
 
   // === State accessors (for conditional logic) ===
   // These read current state when handlers need to make decisions
@@ -575,8 +575,10 @@ export function handlePermissionRequest(
     return;
   }
 
+  const mode = ctx.getCurrentMode();
+
   // In auto mode, immediately approve without showing dialog
-  if (ctx.getCurrentMode() === "auto") {
+  if (mode === "auto") {
     console.log("[PERMISSION] Auto-accepting:", toolName, "requestId:", requestId);
     ctx.sendPermissionResponse(requestId, true, false, toolInput)
       .then(() => {
@@ -590,18 +592,35 @@ export function handlePermissionRequest(
           toolName,
           toolInput,
           description,
+          source: "control",
         };
         ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });
       });
     return;
   }
 
-  // Otherwise show the permission dialog
+  // In bot mode, trigger LLM review before deciding
+  if (mode === "bot") {
+    console.log("[PERMISSION] Bot mode - triggering LLM review:", toolName, "requestId:", requestId);
+    ctx.dispatch({ type: "SET_PERMISSION_REVIEWING", payload: true });
+    const permission: PermissionRequest = {
+      requestId,
+      toolName,
+      toolInput,
+      description,
+      source: "control",
+    };
+    ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });
+    return;
+  }
+
+  // Otherwise show the permission dialog (request/plan modes)
   const permission: PermissionRequest = {
     requestId,
     toolName,
     toolInput,
     description,
+    source: "control",
   };
 
   ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });

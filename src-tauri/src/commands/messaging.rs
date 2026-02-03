@@ -1,6 +1,7 @@
 //! Message sending and event streaming
 
 use std::sync::atomic::Ordering;
+
 use tauri::{ipc::Channel, State};
 use tokio::time::{timeout, Duration};
 
@@ -538,8 +539,17 @@ pub async fn send_message(
                 }
             }
             Ok(None) => {
-                // Channel closed, process ended
-                cmd_debug_log("LOOP", "Channel returned None (closed)");
+                // Channel closed, process ended - clear state so next send_message triggers restart
+                cmd_debug_log("LOOP", "Channel returned None (closed) - clearing process state");
+                drop(receiver_guard); // Release lock before acquiring others
+                {
+                    let mut sender_guard = sender_arc.lock().await;
+                    let mut rg = receiver_arc.lock().await;
+                    let mut handle_guard = handle_arc.lock().await;
+                    *sender_guard = None;
+                    *rg = None;
+                    *handle_guard = None;
+                }
                 channel.send(ClaudeEvent::Done).map_err(|e| e.to_string())?;
                 break;
             }

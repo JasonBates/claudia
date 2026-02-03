@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ImageAttachment } from "../lib/types";
 import { SUPPORTED_IMAGE_TYPES, MAX_IMAGE_SIZE_BYTES } from "../lib/types";
 
-type Mode = "auto" | "request" | "plan";
+type Mode = "auto" | "request" | "plan" | "bot";
 
 export interface CommandInputHandle {
   focus: () => void;
@@ -18,6 +18,8 @@ interface CommandInputProps {
   onModeChange?: () => void;
   ref?: (handle: CommandInputHandle) => void;
   isPlanning?: boolean;
+  /** Callback when settings cog is clicked */
+  onSettingsClick?: () => void;
 }
 
 const CommandInput: Component<CommandInputProps> = (props) => {
@@ -169,6 +171,8 @@ const CommandInput: Component<CommandInputProps> = (props) => {
         return { label: "ask", icon: "?", class: "mode-request" };
       case "plan":
         return { label: "Plan", icon: "◇", class: "mode-plan" };
+      case "bot":
+        return { label: "BotGuard", icon: "🤖", class: "mode-bot" };
       case "auto":
       default:
         return { label: "VIBE", icon: "»", class: "mode-auto" };
@@ -296,6 +300,15 @@ const CommandInput: Component<CommandInputProps> = (props) => {
           placeholder={props.placeholder || "Type a message..."}
           rows={1}
         />
+        <Show when={props.onSettingsClick}>
+          <button
+            class="settings-cog-btn"
+            onClick={props.onSettingsClick}
+            title="BotGuard Settings"
+          >
+            &#x2699;
+          </button>
+        </Show>
       </div>
     </div>
   );

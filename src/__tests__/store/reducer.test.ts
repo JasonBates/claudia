@@ -699,6 +699,7 @@ describe("conversationReducer", () => {
         requestId: "req-1",
         toolName: "Bash",
         description: "Run command",
+        source: "control",
       };
 
       const newState = conversationReducer(state, {
@@ -717,7 +718,10 @@ describe("conversationReducer", () => {
             requestId: "req-1",
             toolName: "Bash",
             description: "Run command",
+            source: "control" as const,
           },
+          isReviewing: false,
+          reviewResult: null,
         },
       };
 

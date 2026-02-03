@@ -8,6 +8,7 @@
 //! - `streaming_cmd` - External command streaming
 
 pub mod appearance_cmd;
+pub mod bot_config;
 pub mod config_cmd;
 pub mod directory_cmd;
 pub mod messaging;
