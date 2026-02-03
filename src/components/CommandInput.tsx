@@ -1,5 +1,6 @@
 import { Component, createSignal, onMount, onCleanup, For, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import type { ImageAttachment } from "../lib/types";
 import { SUPPORTED_IMAGE_TYPES, MAX_IMAGE_SIZE_BYTES } from "../lib/types";
 
@@ -30,6 +31,15 @@ const CommandInput: Component<CommandInputProps> = (props) => {
   const [images, setImages] = createSignal<ImageAttachment[]>([]);
   const [imageError, setImageError] = createSignal<string | null>(null);
   let textareaRef: HTMLTextAreaElement | undefined;
+  let activateDebounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // Debounced app activation - helps voice transcription apps detect we received input
+  const activateAppDebounced = () => {
+    if (activateDebounceTimer) clearTimeout(activateDebounceTimer);
+    activateDebounceTimer = setTimeout(() => {
+      invoke("activate_app").catch(() => {});
+    }, 50);
+  };
 
   const focusInput = () => {
     // Always allow focus - disabled only prevents submission, not typing
@@ -48,6 +58,12 @@ const CommandInput: Component<CommandInputProps> = (props) => {
     appWindow.onFocusChanged(({ payload: focused }) => {
       if (focused) {
         focusInput();
+        // Explicitly activate the app at the macOS level.
+        // This sends a strong activation signal that voice transcription apps
+        // (like superwhisper) monitor to know when to hide their window.
+        invoke("activate_app").catch(() => {
+          // Ignore errors - this is a best-effort enhancement
+        });
       }
     }).then((unlisten) => {
       unlistenFocus = unlisten;
@@ -56,6 +72,7 @@ const CommandInput: Component<CommandInputProps> = (props) => {
 
   onCleanup(() => {
     unlistenFocus?.();
+    if (activateDebounceTimer) clearTimeout(activateDebounceTimer);
   });
 
   // ============================================================================
@@ -113,6 +130,11 @@ const CommandInput: Component<CommandInputProps> = (props) => {
   };
 
   const handlePaste = async (e: ClipboardEvent) => {
+    // Explicitly activate app when paste is detected.
+    // This helps voice transcription apps (like superwhisper) detect that
+    // we've received their input and they can hide their window.
+    invoke("activate_app").catch(() => {});
+
     const items = e.clipboardData?.items;
     if (!items) return;
 
@@ -249,6 +271,9 @@ const CommandInput: Component<CommandInputProps> = (props) => {
     // Auto-resize textarea
     target.style.height = "auto";
     target.style.height = Math.min(target.scrollHeight, 200) + "px";
+
+    // Activate app when input is detected (helps voice transcription apps)
+    activateAppDebounced();
   };
 
   const modeInfo = () => getModeInfo();

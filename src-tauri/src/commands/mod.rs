@@ -17,6 +17,7 @@ pub mod secure_ipc;
 pub mod session;
 pub mod session_list;
 pub mod streaming_cmd;
+pub mod window_cmd;
 
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
