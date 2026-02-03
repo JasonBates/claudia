@@ -17,45 +17,63 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
-// Read version from tauri.conf.json
+// Read config from tauri.conf.json
 const tauriConfig = JSON.parse(
   fs.readFileSync(path.join(projectRoot, 'src-tauri/tauri.conf.json'), 'utf8')
 );
 const version = tauriConfig.version;
+const productName = tauriConfig.productName;
 
 if (!version) {
   console.error('Error: Could not read version from tauri.conf.json');
   process.exit(1);
 }
 
-console.log(`Generating manifest for version ${version}`);
+if (!productName) {
+  console.error('Error: Could not read productName from tauri.conf.json');
+  process.exit(1);
+}
 
-// Find the signature file
+console.log(`Generating manifest for ${productName} v${version}`);
+
+// Find the tarball and signature files
 const bundleDir = path.join(
   projectRoot,
   'src-tauri/target/universal-apple-darwin/release/bundle/macos'
 );
 
-let signature = '';
-try {
-  const sigFiles = fs.readdirSync(bundleDir).filter(f => f.endsWith('.sig'));
-  if (sigFiles.length > 0) {
-    signature = fs.readFileSync(path.join(bundleDir, sigFiles[0]), 'utf8').trim();
-    console.log(`Found signature: ${sigFiles[0]}`);
-  }
-} catch (e) {
-  console.error('Error: Could not read signature file.');
-  console.error(`  ${e.message}`);
+// Tauri generates {productName}.app.tar.gz and {productName}.app.tar.gz.sig
+const tarballName = `${productName}.app.tar.gz`;
+const sigName = `${tarballName}.sig`;
+const tarballPath = path.join(bundleDir, tarballName);
+const sigPath = path.join(bundleDir, sigName);
+
+// Verify tarball exists
+if (!fs.existsSync(tarballPath)) {
+  console.error(`Error: Tarball not found: ${tarballPath}`);
+  console.error('  Build may have failed or produced a different filename.');
   process.exit(1);
 }
+console.log(`Found tarball: ${tarballName}`);
 
-if (!signature) {
-  console.error('Error: No signature file found. Cannot create valid update manifest.');
+// Read signature
+let signature = '';
+try {
+  signature = fs.readFileSync(sigPath, 'utf8').trim();
+  console.log(`Found signature: ${sigName}`);
+} catch (e) {
+  console.error(`Error: Signature file not found: ${sigPath}`);
   console.error('  Ensure TAURI_SIGNING_PRIVATE_KEY is set and the build completed successfully.');
   process.exit(1);
 }
 
+if (!signature) {
+  console.error('Error: Signature file is empty.');
+  process.exit(1);
+}
+
 // Generate the manifest
+const downloadUrl = `https://github.com/JasonBates/claudia/releases/download/v${version}/${tarballName}`;
 const manifest = {
   version,
   notes: `Release v${version}`,
@@ -63,16 +81,16 @@ const manifest = {
   platforms: {
     'darwin-universal': {
       signature,
-      url: `https://github.com/JasonBates/claudia/releases/download/v${version}/Claudia.app.tar.gz`
+      url: downloadUrl
     },
     // Also support specific architectures for backwards compatibility
     'darwin-aarch64': {
       signature,
-      url: `https://github.com/JasonBates/claudia/releases/download/v${version}/Claudia.app.tar.gz`
+      url: downloadUrl
     },
     'darwin-x86_64': {
       signature,
-      url: `https://github.com/JasonBates/claudia/releases/download/v${version}/Claudia.app.tar.gz`
+      url: downloadUrl
     }
   }
 };
