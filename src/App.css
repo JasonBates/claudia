@@ -3187,6 +3187,63 @@ del {
   color: var(--fg);
 }
 
+/* Settings About Section */
+.settings-about {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+  margin-top: 24px;
+}
+
+.settings-about-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.settings-version {
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+
+.settings-update-btn {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.settings-update-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.settings-update-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-update-result {
+  margin-top: 8px;
+}
+
+.settings-update-result .update-current {
+  color: var(--green);
+}
+
+.settings-update-result .update-available {
+  color: var(--cyan);
+}
+
+.settings-update-result .update-error {
+  color: var(--red);
+}
+
 /* ============================================================================
    Directory Picker Modal
    ============================================================================ */

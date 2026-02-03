@@ -15,7 +15,7 @@ import {
   type ParentComponent,
 } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
-import type { ConversationState, StreamingRefs, ReviewResult } from "./types";
+import type { ConversationState, StreamingRefs, ReviewResult, UpdateInfo, UpdateStatus } from "./types";
 import { createInitialState } from "./types";
 import { createStreamingRefs } from "./refs";
 import type { Action } from "./actions";
@@ -99,6 +99,18 @@ export interface StoreContextValue {
   compactionMessageId: () => string | null;
   /** Warning dismissed state */
   warningDismissed: () => boolean;
+
+  // === Update State ===
+  /** Available update info */
+  updateAvailable: () => UpdateInfo | null;
+  /** Update download progress (0-100) */
+  updateProgress: () => number | null;
+  /** Update status */
+  updateStatus: () => UpdateStatus;
+  /** Update error message */
+  updateError: () => string | null;
+  /** Version that was dismissed */
+  updateDismissedVersion: () => string | null;
 
   // === ID Generation ===
   /** Generate a unique message ID */
@@ -382,6 +394,13 @@ export const StoreProvider: ParentComponent = (props) => {
     lastCompactionPreTokens: () => state.compaction.preTokens,
     compactionMessageId: () => state.compaction.messageId,
     warningDismissed: () => state.compaction.warningDismissed,
+
+    // Update accessors
+    updateAvailable: () => state.update.available,
+    updateProgress: () => state.update.downloadProgress,
+    updateStatus: () => state.update.status,
+    updateError: () => state.update.error,
+    updateDismissedVersion: () => state.update.dismissedVersion,
 
     generateMessageId,
   };

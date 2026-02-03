@@ -17,7 +17,7 @@ import type {
   SubagentInfo,
 } from "../types";
 import type { SessionInfo, PermissionRequest } from "../event-handlers";
-import type { ReviewResult } from "./types";
+import type { ReviewResult, UpdateInfo, UpdateStatus } from "./types";
 
 /**
  * Discriminated union of all possible actions.
@@ -104,7 +104,14 @@ export type Action =
   | {
       type: "COMPLETE_COMPACTION";
       payload: { preTokens: number; postTokens: number; baseContext: number };
-    };
+    }
+
+  // === Update Actions ===
+  | { type: "SET_UPDATE_AVAILABLE"; payload: UpdateInfo | null }
+  | { type: "SET_UPDATE_PROGRESS"; payload: number | null }
+  | { type: "SET_UPDATE_STATUS"; payload: UpdateStatus }
+  | { type: "SET_UPDATE_ERROR"; payload: string | null }
+  | { type: "DISMISS_UPDATE"; payload: string };
 
 /**
  * Action creator functions for type-safe dispatch.
@@ -322,5 +329,27 @@ export const actions = {
   ): Action => ({
     type: "COMPLETE_COMPACTION",
     payload: { preTokens, postTokens, baseContext },
+  }),
+
+  // === Update Actions ===
+  setUpdateAvailable: (info: UpdateInfo | null): Action => ({
+    type: "SET_UPDATE_AVAILABLE",
+    payload: info,
+  }),
+  setUpdateProgress: (progress: number | null): Action => ({
+    type: "SET_UPDATE_PROGRESS",
+    payload: progress,
+  }),
+  setUpdateStatus: (status: UpdateStatus): Action => ({
+    type: "SET_UPDATE_STATUS",
+    payload: status,
+  }),
+  setUpdateError: (error: string | null): Action => ({
+    type: "SET_UPDATE_ERROR",
+    payload: error,
+  }),
+  dismissUpdate: (version: string): Action => ({
+    type: "DISMISS_UPDATE",
+    payload: version,
   }),
 } as const;

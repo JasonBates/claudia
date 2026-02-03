@@ -36,11 +36,18 @@
           "required": false
         }
       ]
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIxNDQzNEVBNDJDQkJBNEYKUldSUHVzdEM2alJFSVplc3A5RWhHalFNOVZUM0JCVUQ4ZWEwU2JLRmZiMUVXWjBqYWtudk9HaTUK",
+      "endpoints": [
+        "https://github.com/JasonBates/claude-terminal/releases/latest/download/latest.json"
+      ]
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -50,6 +57,9 @@
     ],
     "resources": [
       "../sdk-bridge-v2.mjs"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": "-"
+    }
   }
 }

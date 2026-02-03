@@ -1,5 +1,6 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import { exit } from "@tauri-apps/plugin-process";
+import { exit, relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { runWithOwner, batch, Owner } from "solid-js";
 import type { SessionEntry } from "./types";
 import type { ReviewResult } from "./store/types";
@@ -449,4 +450,102 @@ export async function openInNewWindow(directory: string): Promise<void> {
   console.log("[TAURI] Opening new window for directory:", directory);
   await invoke("open_new_window", { directory });
   console.log("[TAURI] New window opened");
+}
+
+// ============================================================================
+// Auto-Update
+// ============================================================================
+
+/**
+ * Information about an available update
+ */
+export interface UpdateInfo {
+  version: string;
+  currentVersion: string;
+  body: string | null;
+}
+
+// Store the Update object for download after check
+let pendingUpdate: Update | null = null;
+
+/**
+ * Check for available updates.
+ * Returns update info if an update is available, null otherwise.
+ */
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  try {
+    console.log("[UPDATE] Checking for updates...");
+    const update = await check();
+
+    if (update) {
+      console.log("[UPDATE] Update available:", update.version);
+      pendingUpdate = update;
+      return {
+        version: update.version,
+        currentVersion: update.currentVersion,
+        body: update.body ?? null,
+      };
+    }
+
+    console.log("[UPDATE] No update available");
+    pendingUpdate = null;
+    return null;
+  } catch (error) {
+    console.error("[UPDATE] Check failed:", error);
+    pendingUpdate = null;
+    throw error;
+  }
+}
+
+/**
+ * Download and install the pending update.
+ *
+ * @param onProgress - Callback with download progress (0-100)
+ */
+export async function downloadAndInstallUpdate(
+  onProgress: (progress: number) => void
+): Promise<void> {
+  if (!pendingUpdate) {
+    // Re-check for updates if no pending update
+    const update = await check();
+    if (!update) {
+      throw new Error("No update available");
+    }
+    pendingUpdate = update;
+  }
+
+  console.log("[UPDATE] Starting download...");
+  let downloaded = 0;
+  let contentLength = 0;
+
+  await pendingUpdate.downloadAndInstall((event) => {
+    switch (event.event) {
+      case "Started":
+        contentLength = event.data.contentLength || 0;
+        console.log("[UPDATE] Download started, size:", contentLength);
+        break;
+      case "Progress":
+        downloaded += event.data.chunkLength;
+        if (contentLength > 0) {
+          const progress = Math.round((downloaded / contentLength) * 100);
+          onProgress(progress);
+        }
+        break;
+      case "Finished":
+        console.log("[UPDATE] Download finished");
+        onProgress(100);
+        break;
+    }
+  });
+
+  console.log("[UPDATE] Update installed, ready to restart");
+  pendingUpdate = null;
+}
+
+/**
+ * Restart the app to apply the update.
+ */
+export async function restartApp(): Promise<void> {
+  console.log("[UPDATE] Restarting app...");
+  await relaunch();
 }

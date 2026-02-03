@@ -22,6 +22,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // Parse CLI arguments to get optional directory
             let cli_dir = app.cli().matches().ok().and_then(|matches| {

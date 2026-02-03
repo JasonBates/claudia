@@ -24,6 +24,20 @@ export interface ReviewResult {
 }
 
 /**
+ * Information about an available update.
+ */
+export interface UpdateInfo {
+  version: string;
+  currentVersion: string;
+  body: string | null;
+}
+
+/**
+ * Update status states.
+ */
+export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
+
+/**
  * Mutable refs for streaming JSON accumulation.
  * These MUST remain outside the reactive store to avoid
  * triggering reactivity on every character append during streaming.
@@ -151,6 +165,20 @@ export interface ConversationState {
     /** Pre-tokens to display while waiting for update */
     pendingPreTokens: number | null;
   };
+
+  // === Update ===
+  update: {
+    /** Available update info */
+    available: UpdateInfo | null;
+    /** Download progress (0-100) */
+    downloadProgress: number | null;
+    /** Update status */
+    status: UpdateStatus;
+    /** Error message if any */
+    error: string | null;
+    /** Version that was dismissed (don't show banner for this version) */
+    dismissedVersion: string | null;
+  };
 }
 
 /**
@@ -206,6 +234,13 @@ export function createInitialState(): ConversationState {
       warningDismissed: false,
       pendingUpdateMessageId: null,
       pendingPreTokens: null,
+    },
+    update: {
+      available: null,
+      downloadProgress: null,
+      status: 'idle',
+      error: null,
+      dismissedVersion: null,
     },
   };
 }

@@ -22,7 +22,7 @@
  */
 
 // Types
-export type { ConversationState, StreamingRefs } from "./types";
+export type { ConversationState, StreamingRefs, UpdateInfo, UpdateStatus } from "./types";
 export { createInitialState } from "./types";
 
 // Actions
