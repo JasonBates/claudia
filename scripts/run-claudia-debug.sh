@@ -57,4 +57,5 @@ if pgrep -f "Claudia.app" > /dev/null 2>&1; then
 fi
 
 # Launch with debug enabled - use env to explicitly pass the variable
-exec env CLAUDIA_DEBUG=1 "$APP_PATH"
+# Pass current directory so Claudia opens in the right location
+exec env CLAUDIA_DEBUG=1 "$APP_PATH" "$PWD"
