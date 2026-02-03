@@ -1061,7 +1061,7 @@ function App() {
               store.isPlanning() && planWindowOpen()
                 ? "How can I improve the plan?"
                 : store.sessionActive()
-                  ? "Type a message... (Enter to send, Shift+Tab to change mode)"
+                  ? "Type a message..."
                   : ""
             }
             mode={currentMode()}
