@@ -1890,7 +1890,7 @@ del {
 /* Input row (mode indicator + textarea) */
 .input-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   width: 100%;
 }
@@ -2056,6 +2056,7 @@ del {
 .mode-icon {
   font-size: 16px;
   font-weight: 600;
+  line-height: 1;
 }
 
 .mode-label {
