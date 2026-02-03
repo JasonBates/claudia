@@ -66,6 +66,12 @@ const UpdateBanner: Component<UpdateBannerProps> = (props) => {
         </button>
       </Show>
 
+      <Show when={isError()}>
+        <button class="update-btn" onClick={props.onDownload}>
+          Retry
+        </button>
+      </Show>
+
       <button
         class="update-dismiss"
         onClick={props.onDismiss}
