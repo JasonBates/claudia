@@ -198,8 +198,10 @@ impl LlmReviewer {
     /// Check for obviously dangerous patterns without calling the LLM
     /// Returns Some(ReviewResult) if we can make an instant decision
     pub fn instant_decision(&self, request: &ReviewRequest) -> Option<ReviewResult> {
-        // Check Write/Edit tools
-        if request.tool_name == "Write" || request.tool_name == "Edit" {
+        // Check Write/Edit tools (case-insensitive)
+        if request.tool_name.eq_ignore_ascii_case("Write")
+            || request.tool_name.eq_ignore_ascii_case("Edit")
+        {
             return self.check_write_path(request);
         }
 
@@ -852,6 +854,45 @@ mod tests {
         };
         let result = reviewer.instant_decision(&request);
         assert!(result.is_some());
+        assert!(!result.unwrap().safe);
+    }
+
+    #[test]
+    fn test_case_insensitive_write() {
+        let reviewer = LlmReviewer::new("".into(), 3000);
+        let request = ReviewRequest {
+            tool_name: "write".into(), // lowercase
+            tool_input: serde_json::json!({"file_path": "/etc/passwd", "content": "test"}),
+            description: None,
+        };
+        let result = reviewer.instant_decision(&request);
+        assert!(result.is_some(), "lowercase 'write' should trigger path check");
+        assert!(!result.unwrap().safe);
+    }
+
+    #[test]
+    fn test_case_insensitive_edit() {
+        let reviewer = LlmReviewer::new("".into(), 3000);
+        let request = ReviewRequest {
+            tool_name: "EDIT".into(), // uppercase
+            tool_input: serde_json::json!({"file_path": "~/.ssh/config"}),
+            description: None,
+        };
+        let result = reviewer.instant_decision(&request);
+        assert!(result.is_some(), "uppercase 'EDIT' should trigger path check");
+        assert!(!result.unwrap().safe);
+    }
+
+    #[test]
+    fn test_case_insensitive_read() {
+        let reviewer = LlmReviewer::new("".into(), 3000);
+        let request = ReviewRequest {
+            tool_name: "READ".into(), // uppercase
+            tool_input: serde_json::json!({"file_path": "~/.bash_history"}),
+            description: None,
+        };
+        let result = reviewer.instant_decision(&request);
+        assert!(result.is_some(), "uppercase 'READ' should trigger path check");
         assert!(!result.unwrap().safe);
     }
 

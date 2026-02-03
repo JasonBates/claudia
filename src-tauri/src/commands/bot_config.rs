@@ -1,7 +1,11 @@
 use crate::llm_reviewer::validate_api_key;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::PathBuf;
 use tauri::State;
+
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 use super::AppState;
 
@@ -120,10 +124,28 @@ pub async fn set_bot_api_key(
         lines.push(key_line);
     }
 
-    // Write back to .env file
+    // Write back to .env file with restrictive permissions (0o600)
+    // This ensures the file is only readable/writable by the owner
     let contents = lines.join("\n");
-    fs::write(&env_path, contents)
-        .map_err(|e| format!("Failed to write .env file: {}", e))?;
+
+    #[cfg(unix)]
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600) // Owner read/write only
+            .open(&env_path)
+            .map_err(|e| format!("Failed to create .env file: {}", e))?;
+        file.write_all(contents.as_bytes())
+            .map_err(|e| format!("Failed to write .env file: {}", e))?;
+    }
+
+    #[cfg(not(unix))]
+    {
+        fs::write(&env_path, contents)
+            .map_err(|e| format!("Failed to write .env file: {}", e))?;
+    }
 
     Ok(())
 }

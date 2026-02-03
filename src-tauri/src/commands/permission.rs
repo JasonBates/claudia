@@ -240,9 +240,10 @@ pub async fn review_permission_request(
 
     let result = reviewer.review_permission(&request).await?;
 
+    // SECURITY: Only log safe/unsafe status, not reason (may contain secrets echoed by LLM)
     cmd_debug_log(
         "BOT_REVIEW",
-        &format!("Review result: safe={}, reason={}", result.safe, result.reason),
+        &format!("Review result: safe={}", result.safe),
     );
 
     Ok(result)
