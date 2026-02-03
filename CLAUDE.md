@@ -78,7 +78,10 @@ export CLAUDIA_LAUNCH_DIR="/path/to/test/directory"
 - Testing Claude Code hooks in a specific directory
 
 ## Common Mistakes to Avoid
-<!-- Add entries here when Claude makes mistakes -->
+
+- **Tauri plugin permissions**: When adding a new Tauri plugin, remember to add its permissions to `src-tauri/capabilities/default.json`. The updater requires `"updater:default"` and `"process:allow-restart"`.
+- **Signing key mismatch**: The public key in `tauri.conf.json` must match the private key used for signing. When regenerating keys, update both GitHub secrets AND the pubkey in config.
+- **Password vs no-password keys**: If the signing key was generated with `--ci` (no password), do NOT set `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` in the workflow. If generated with a password, it MUST be set.
 
 ## Displaying Images
 To display an image inline, use the **Read tool** on the image file.
