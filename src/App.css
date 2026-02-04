@@ -3919,3 +3919,8 @@ del {
   background: var(--bg-secondary);
 }
 
+/* Hide mouse cursor while typing */
+.app.cursor-hidden,
+.app.cursor-hidden * {
+  cursor: none !important;
+}
