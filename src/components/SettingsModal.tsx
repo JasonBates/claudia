@@ -1,4 +1,4 @@
-import { Component, For, Show, createSignal, onMount, onCleanup } from "solid-js";
+import { Component, For, createSignal, createEffect, onMount, onCleanup } from "solid-js";
 import type { ColorSchemeInfo } from "../lib/tauri";
 import type { FontOption } from "../hooks/useSettings";
 import type { UpdateStatus } from "../lib/store/types";
@@ -22,21 +22,91 @@ interface SettingsModalProps {
   currentVersion: string;
   updateAvailable: { version: string } | null;
   updateStatus: UpdateStatus;
+  downloadProgress: number | null;
   onCheckForUpdates: () => Promise<void>;
+  onDownload: () => void;
+  onInstall: () => void;
 }
 
 const SettingsModal: Component<SettingsModalProps> = (props) => {
   let modalRef: HTMLDivElement | undefined;
-  const [checkStatus, setCheckStatus] = createSignal<"idle" | "checking" | "done" | "error">("idle");
+  let checkFailedTimerId: ReturnType<typeof setTimeout> | undefined;
+  const [checkFailed, setCheckFailed] = createSignal(false);
+  const [downloadInitiated, setDownloadInitiated] = createSignal(false);
+
+  // Reset downloadInitiated when update leaves downloading state
+  createEffect(() => {
+    const status = props.updateStatus;
+    if (status === "ready" || status === "error" || status === "idle") {
+      setDownloadInitiated(false);
+    }
+  });
 
   const handleCheckForUpdates = async () => {
-    setCheckStatus("checking");
+    // Clear any existing error timer
+    if (checkFailedTimerId) {
+      clearTimeout(checkFailedTimerId);
+      checkFailedTimerId = undefined;
+    }
+    setCheckFailed(false);
     try {
       await props.onCheckForUpdates();
-      setCheckStatus("done");
     } catch {
-      setCheckStatus("error");
+      setCheckFailed(true);
+      // Clear error after 3 seconds
+      checkFailedTimerId = setTimeout(() => setCheckFailed(false), 3000);
     }
+  };
+
+  // Compute button state based on update status (pure, no side effects)
+  // Store updateStatus takes priority over local checkFailed for real update states
+  const buttonState = () => {
+    if (props.updateStatus === "checking") return "checking";
+    if (props.updateStatus === "ready") return "ready";
+    if (props.updateStatus === "error") return "error";
+    if (props.updateStatus === "downloading") return "downloading";
+    // Local states only apply when store is idle
+    if (checkFailed()) return "check-failed";
+    if (downloadInitiated()) return "downloading";
+    if (props.updateAvailable) return "available";
+    return "idle";
+  };
+
+  const buttonText = () => {
+    switch (buttonState()) {
+      case "checking": return "Checking...";
+      case "downloading": {
+        const progress = props.downloadProgress ?? 0;
+        return `Downloading... ${progress}%`;
+      }
+      case "ready": return "Restart to Update";
+      case "error": return "Retry Update";
+      case "check-failed": return "Check Failed";
+      case "available": return `Update to v${props.updateAvailable?.version}`;
+      default: return "Check for Updates";
+    }
+  };
+
+  const handleButtonClick = () => {
+    const state = buttonState();
+    if (state === "available" || state === "error") {
+      setDownloadInitiated(true);
+      try {
+        props.onDownload();
+      } catch {
+        // Reset if download fails to start
+        setDownloadInitiated(false);
+      }
+    } else if (state === "ready") {
+      props.onInstall();
+    } else if (state === "idle" || state === "check-failed") {
+      handleCheckForUpdates();
+    }
+  };
+
+  const isButtonDisabled = () => {
+    const state = buttonState();
+    return state === "checking" || state === "downloading";
   };
 
   // Handle Escape key to close
@@ -54,6 +124,7 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
 
   onCleanup(() => {
     document.removeEventListener("keydown", handleKeyDown);
+    if (checkFailedTimerId) clearTimeout(checkFailedTimerId);
   });
 
   // Group schemes: bundled first, then user schemes
@@ -87,31 +158,16 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
               <span class="settings-version">Claudia v{props.currentVersion}</span>
               <button
                 class="settings-update-btn"
-                onClick={handleCheckForUpdates}
-                disabled={checkStatus() === "checking" || props.updateStatus === "downloading"}
+                classList={{
+                  "update-action": ["available", "downloading", "ready"].includes(buttonState()),
+                  "update-error": buttonState() === "error" || buttonState() === "check-failed",
+                }}
+                onClick={handleButtonClick}
+                disabled={isButtonDisabled()}
               >
-                <Show when={checkStatus() === "checking"} fallback="Check for Updates">
-                  Checking...
-                </Show>
+                {buttonText()}
               </button>
             </div>
-            <Show when={checkStatus() === "done"}>
-              <p class="settings-hint settings-update-result">
-                <Show
-                  when={props.updateAvailable}
-                  fallback={<span class="update-current">You're up to date</span>}
-                >
-                  <span class="update-available">
-                    v{props.updateAvailable?.version} available — see banner above
-                  </span>
-                </Show>
-              </p>
-            </Show>
-            <Show when={checkStatus() === "error"}>
-              <p class="settings-hint settings-update-result">
-                <span class="update-error">Check failed — try again later</span>
-              </p>
-            </Show>
           </div>
 
           {/* Content Margins Section */}

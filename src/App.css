@@ -3233,19 +3233,23 @@ del {
   cursor: not-allowed;
 }
 
-.settings-update-result {
-  margin-top: 8px;
-}
-
-.settings-update-result .update-current {
-  color: var(--green);
-}
-
-.settings-update-result .update-available {
+.settings-update-btn.update-action {
+  border-color: var(--cyan);
   color: var(--cyan);
 }
 
-.settings-update-result .update-error {
+.settings-update-btn.update-action:hover:not(:disabled) {
+  background: var(--cyan);
+  color: var(--bg);
+}
+
+.settings-update-btn.update-error {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.settings-update-btn.update-error:hover:not(:disabled) {
+  border-color: var(--red);
   color: var(--red);
 }
 

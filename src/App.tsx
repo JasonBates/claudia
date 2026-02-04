@@ -1252,7 +1252,10 @@ function App() {
           currentVersion={appVersion()}
           updateAvailable={store.updateAvailable()}
           updateStatus={store.updateStatus()}
+          downloadProgress={store.updateProgress()}
           onCheckForUpdates={checkForUpdatesInteractive}
+          onDownload={handleDownloadUpdate}
+          onInstall={handleInstallUpdate}
         />
       </Show>
 
