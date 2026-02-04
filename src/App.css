@@ -2693,23 +2693,25 @@ del {
   opacity: 0.6;
 }
 
-/* Context Warning - inline with title bar */
+/* Context Warning - compact clickable element in title bar */
 .context-warning {
   position: fixed;
   top: 0;
-  left: 80px;  /* After traffic lights */
-  right: 200px;  /* Before status pill */
-  height: 32px;  /* Match title bar */
+  left: 50%;
+  transform: translateX(-50%);
+  height: 32px;
+  max-width: calc(100% - 180px);  /* Leave room for traffic lights and buttons */
   display: flex;
   align-items: center;
-  justify-content: center;  /* Center horizontally */
+  justify-content: center;
   gap: 6px;
+  padding: 0 12px;
   font-size: 14px;
   z-index: 1000;  /* Above drag region (which is z-index: 999) */
-  cursor: grab;
+  cursor: pointer;
   opacity: 0.85;
   transition: opacity 0.15s;
-  -webkit-app-region: drag;  /* Allow window dragging through this area */
+  -webkit-app-region: no-drag;  /* Keep this clickable, let drag-region handle dragging */
 }
 
 .context-warning:hover {
@@ -2727,14 +2729,13 @@ del {
 .warning-icon {
   font-size: 16px;
   opacity: 0.9;
-  -webkit-app-region: no-drag;  /* Allow clicking */
-  cursor: pointer;
 }
 
 .warning-text {
   font-weight: 500;
-  -webkit-app-region: no-drag;  /* Allow clicking */
-  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .compact-btn {

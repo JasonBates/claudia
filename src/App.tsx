@@ -1061,7 +1061,9 @@ function App() {
         <div class="top-bar"></div>
         <div class="drag-region" data-tauri-drag-region="true"></div>
 
-        <Show when={session.workingDir()}>
+        {/* Hide dir-indicator when context warning is shown - they overlap in the title bar.
+            Condition is inverse of warning: !(threshold !== "ok" && !dismissed) = (threshold === "ok" || dismissed) */}
+        <Show when={session.workingDir() && (contextThreshold() === "ok" || store.warningDismissed())}>
           <div class="dir-indicator" title={session.workingDir()!}>
             <Show when={__CT_WORKTREE__}>
               <span class="worktree-indicator">{__CT_WORKTREE__}</span>
