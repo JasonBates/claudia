@@ -25,6 +25,7 @@ import {
   useLocalCommands,
   useSidebar,
   useSettings,
+  useKeyboardCursor,
 } from "./hooks";
 import SettingsModal from "./components/SettingsModal";
 import BotSettings from "./components/BotSettings";
@@ -108,6 +109,9 @@ function App() {
 
   // Settings modal
   const settings = useSettings();
+
+  // Hide mouse cursor while typing
+  const keyboardCursor = useKeyboardCursor();
 
   // Force scroll to bottom when user sends a new message
   const [forceScroll, setForceScroll] = createSignal(false);
@@ -1040,7 +1044,7 @@ function App() {
   // ============================================================================
 
   return (
-    <div class="app">
+    <div class="app" classList={{ "cursor-hidden": keyboardCursor.cursorHidden() }}>
       {/* Session Sidebar */}
       <Sidebar
         collapsed={sidebar.collapsed()}

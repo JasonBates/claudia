@@ -13,3 +13,6 @@ export type { UseSidebarReturn, UseSidebarOptions } from "./useSidebar";
 
 export { useSettings } from "./useSettings";
 export type { UseSettingsReturn, FontOption } from "./useSettings";
+
+export { useKeyboardCursor } from "./useKeyboardCursor";
+export type { UseKeyboardCursorReturn } from "./useKeyboardCursor";
