@@ -739,7 +739,14 @@ async function main() {
       }
     } else {
       // Plain text (existing behavior)
-      messageContent = `[${dateTime}] ${content}`;
+      // Don't add timestamp to slash commands - CLI needs "/" at start
+      // Trim leading whitespace for slash command detection and sending
+      const trimmed = content.trimStart();
+      if (trimmed.startsWith("/")) {
+        messageContent = trimmed;
+      } else {
+        messageContent = `[${dateTime}] ${content}`;
+      }
     }
 
     const msg = JSON.stringify({
