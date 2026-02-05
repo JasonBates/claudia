@@ -10,8 +10,6 @@ Claude Code is powerful. The terminal is not where you want to live. Claudia wra
 
 > *Why rebuild the agent runtime when you can wrap it?*
 
-_Note: this is only a few days of development work, there are still bugs to work out, please open issues, and contribute fixes._
-
 <p align="center">
   <a href="https://github.com/JasonBates/claudia/releases/latest/download/Claudia_universal.dmg">
     <img src="https://img.shields.io/badge/⬇_Download_Claudia_for_macOS-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download Claudia" height="50" />
