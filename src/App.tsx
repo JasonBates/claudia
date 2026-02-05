@@ -1433,7 +1433,7 @@ function App() {
       <Show when={projectPickerOpen()}>
         <ProjectPickerModal
           projects={projectList()}
-          currentPath={session.workingDir()}
+          currentPath={session.workingDir() ?? undefined}
           onSelect={handleProjectSelect}
           onClose={startupPickerMode() ? undefined : handleProjectPickerClose}
           onContinueInCurrentDir={startupPickerMode() ? handleContinueInCurrentDir : undefined}
