@@ -70,6 +70,10 @@ export interface UseLocalCommandsOptions {
    * Callback to open a new window.
    */
   onOpenNewWindow?: () => void;
+  /**
+   * Callback to open the project picker.
+   */
+  onOpenProjectPicker?: () => void;
 }
 
 export interface UseLocalCommandsReturn {
@@ -168,7 +172,7 @@ function matchesKeybinding(e: KeyboardEvent, binding: ParsedKeybinding): boolean
  * - Unified system: commands can have both slash and keybinding
  */
 export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalCommandsReturn {
-  const { streaming, session, owner, sidebar, onCliEvent, onOpenSettings, onFocusInput, onOpenNewWindow } = options;
+  const { streaming, session, owner, sidebar, onCliEvent, onOpenSettings, onFocusInput, onOpenNewWindow, onOpenProjectPicker } = options;
 
   // ==========================================================================
   // Command Handlers
@@ -425,6 +429,14 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
   const handleOpenNewWindow = async () => {
     console.log("[COMMANDS] Opening new window");
     onOpenNewWindow?.();
+  };
+
+  /**
+   * Open project picker (Cmd+O)
+   */
+  const handleOpenProjectPicker = async () => {
+    console.log("[COMMANDS] Opening project picker");
+    onOpenProjectPicker?.();
   };
 
   /**
@@ -746,6 +758,12 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       description: "Open a new window",
       keybinding: "cmd+n",
       handler: handleOpenNewWindow,
+    },
+    {
+      name: "projects",
+      description: "Open project picker",
+      keybinding: "cmd+t",
+      handler: handleOpenProjectPicker,
     },
     {
       name: "help",

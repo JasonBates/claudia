@@ -13,6 +13,7 @@ pub mod config_cmd;
 pub mod directory_cmd;
 pub mod messaging;
 pub mod permission;
+pub mod project_list;
 pub mod secure_ipc;
 pub mod session;
 pub mod session_list;
@@ -48,6 +49,9 @@ pub struct AppState {
     pub config: Arc<Mutex<Config>>,
     /// Directory from which the app was launched
     pub launch_dir: String,
+    /// Whether a specific directory was provided via CLI argument
+    /// Used to skip project picker when app is reopened in a specific directory
+    pub has_cli_directory: bool,
     /// Unique session ID for this app instance (used for multi-instance safety)
     pub session_id: String,
     /// Monotonic counter to detect superseded requests (prevents concurrent event loop hangs)
@@ -57,6 +61,10 @@ pub struct AppState {
 impl AppState {
     /// Create new AppState with optional CLI-provided directory
     pub fn new(cli_dir: Option<String>) -> Self {
+        // Track if a CLI directory was explicitly provided
+        // This is used to skip the project picker on reopen
+        let has_cli_directory = cli_dir.is_some();
+
         // Use CLI directory if provided, then check CLAUDIA_LAUNCH_DIR env var,
         // otherwise default to home directory.
         // This ensures a predictable experience when launched from desktop/Finder
@@ -84,6 +92,7 @@ impl AppState {
             process_handle: Arc::new(Mutex::new(None)),
             config: Arc::new(Mutex::new(config)),
             launch_dir,
+            has_cli_directory,
             session_id,
             request_generation: AtomicU64::new(0),
         }

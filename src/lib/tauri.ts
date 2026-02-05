@@ -438,7 +438,7 @@ export async function getSchemeColors(name: string): Promise<ColorSchemeColors> 
 }
 
 // ============================================================================
-// New Window
+// New Window / Project Switching
 // ============================================================================
 
 /**
@@ -451,6 +451,50 @@ export async function openInNewWindow(directory: string): Promise<void> {
   console.log("[TAURI] Opening new window for directory:", directory);
   await invoke("open_new_window", { directory });
   console.log("[TAURI] New window opened");
+}
+
+/**
+ * Close current window and reopen in a different directory.
+ * This spawns a new instance with the directory as CLI argument, then exits.
+ *
+ * @param directory - The directory to reopen in
+ */
+export async function reopenInDirectory(directory: string): Promise<void> {
+  console.log("[TAURI] Reopening in directory:", directory);
+  await invoke("reopen_in_directory", { directory });
+  // App will exit after this, no need for anything else
+}
+
+/**
+ * Check if a CLI directory argument was provided when launching the app.
+ * Used to skip the project picker when the app is reopened in a specific directory.
+ */
+export async function hasCliDirectory(): Promise<boolean> {
+  return await invoke<boolean>("has_cli_directory");
+}
+
+// ============================================================================
+// Project Listing (for project picker)
+// ============================================================================
+
+/**
+ * Information about a Claude Code project
+ */
+export interface ProjectInfo {
+  encodedName: string; // "-Users-jasonbates-Code-repos-my-project"
+  decodedPath: string; // "/Users/jasonbates/Code/repos/my-project"
+  displayName: string; // "my-project"
+  lastUsed: number; // Unix timestamp (from most recent session file)
+  sessionCount: number; // Number of .jsonl files
+  isNew: boolean; // True for newly opened directories with no sessions yet
+}
+
+/**
+ * List all Claude Code projects, sorted by most recently used.
+ * Reads from ~/.claude/projects/ directory.
+ */
+export async function listProjects(): Promise<ProjectInfo[]> {
+  return await invoke<ProjectInfo[]>("list_projects");
 }
 
 // ============================================================================
