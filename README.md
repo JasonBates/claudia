@@ -12,6 +12,13 @@ Claude Code is powerful. The terminal is not where you want to live. Claudia wra
 
 _Note: this is only a few days of development work, there are still bugs to work out, please open issues, and contribute fixes._
 
+<p align="center">
+  <a href="https://github.com/JasonBates/claudia/releases/latest/download/Claudia_universal.dmg">
+    <img src="https://img.shields.io/badge/⬇_Download_Claudia_for_macOS-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download Claudia" height="50" />
+  </a>
+</p>
+<p align="center"><em>Requires macOS 12+ and <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code CLI</a> installed</em></p>
+
 ## Screenshots
 
 <p align="center">
