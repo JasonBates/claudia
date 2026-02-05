@@ -128,6 +128,12 @@ jobs:
             security delete-keychain $KEYCHAIN_PATH || true
           fi
 
+      - name: Create versionless DMG copy
+        run: |
+          DMG_PATH=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+          DMG_DIR=$(dirname "$DMG_PATH")
+          cp "$DMG_PATH" "$DMG_DIR/Claudia_universal.dmg"
+
       - name: Generate update manifest
         run: node scripts/generate-update-manifest.js
 
