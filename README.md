@@ -12,7 +12,7 @@ Claude Code is powerful. The terminal is not where you want to live. Claudia wra
 
 <p align="center">
   <a href="https://github.com/JasonBates/claudia/releases/latest/download/Claudia_universal.dmg">
-    <img src="https://img.shields.io/badge/⬇_Download_Claudia_for_macOS-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download Claudia" height="50" />
+    <img src="https://img.shields.io/badge/⬇_Download_Claudia_for_macOS-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download Claudia" height="80" />
   </a>
 </p>
 <p align="center"><em>Requires macOS 12+ and <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code CLI</a> installed</em></p>
@@ -73,13 +73,21 @@ Cowork wraps a sandboxed environment. Claudia wraps Claude Code itself—so you 
 
 ## Installation
 
-### Prerequisites
+### Download (Recommended)
+
+Download the latest release and drag Claudia.app to your Applications folder:
+
+**[⬇ Download Claudia for macOS](https://github.com/JasonBates/claudia/releases/latest/download/Claudia_universal.dmg)**
+
+Requires macOS 12+ and [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed.
+
+### Build from Source
+
+If you prefer to build from source, you'll need:
 
 - Node.js 18+
 - Rust toolchain
 - Claude Code CLI (`claude` command available)
-
-### Build from Source
 
 ```bash
 git clone https://github.com/JasonBates/claudia.git
