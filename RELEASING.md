@@ -97,6 +97,16 @@ Monitor progress at: https://github.com/JasonBates/claudia/actions
 2. Download and test the DMG on a fresh machine
 3. Test the auto-updater by running an older version
 
+### 8. Update Download Badge
+
+Update the download badge in `README.md` to point to the new version:
+
+```markdown
+[![Download for macOS](https://img.shields.io/badge/Download-v0.3.0-black?logo=apple)](https://github.com/JasonBates/claudia/releases/download/v0.3.0/Claudia_0.3.0_universal.dmg)
+```
+
+Replace `0.3.0` with the new version number in both places (badge label and download URL).
+
 ## Quick Reference
 
 ```bash
