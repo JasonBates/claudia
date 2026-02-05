@@ -11,7 +11,7 @@ Claude Code is powerful. The terminal is not where you want to live. Claudia wra
 > *Why rebuild the agent runtime when you can wrap it?*
 
 <p align="center">
-  <a href="https://github.com/JasonBates/claudia/releases/latest/download/Claudia_universal.dmg">
+  <a href="https://github.com/JasonBates/claudia/releases/download/v0.3.1/Claudia_0.3.1_universal.dmg">
     <img src="https://img.shields.io/badge/⬇_Download_Claudia_for_macOS-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download Claudia" height="80" />
   </a>
 </p>
@@ -77,7 +77,7 @@ Cowork wraps a sandboxed environment. Claudia wraps Claude Code itself—so you 
 
 Download the latest release and drag Claudia.app to your Applications folder:
 
-**[⬇ Download Claudia for macOS](https://github.com/JasonBates/claudia/releases/latest/download/Claudia_universal.dmg)**
+**[⬇ Download Claudia for macOS](https://github.com/JasonBates/claudia/releases/download/v0.3.1/Claudia_0.3.1_universal.dmg)**
 
 Requires macOS 12+ and [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed.
 
