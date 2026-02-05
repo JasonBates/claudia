@@ -4,9 +4,18 @@ This guide covers how to create a new release of Claudia with the auto-update sy
 
 ## Prerequisites
 
-- GitHub secrets configured:
-  - `TAURI_SIGNING_PRIVATE_KEY` - The minisign private key (base64-encoded)
-  - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - Password for the key (required if key is password-protected)
+### GitHub Secrets Required
+
+**Update signing (minisign):**
+- `TAURI_SIGNING_PRIVATE_KEY` - The minisign private key (base64-encoded)
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - Password for the key (required if key is password-protected)
+
+**Apple code signing & notarization:**
+- `APPLE_CERTIFICATE` - Developer ID Application certificate (.p12, base64-encoded)
+- `APPLE_CERTIFICATE_PASSWORD` - Password for the .p12 certificate
+- `APPLE_ID` - Apple ID email used for notarization
+- `APPLE_PASSWORD` - App-specific password (generate at appleid.apple.com)
+- `APPLE_TEAM_ID` - 10-character Team ID from Apple Developer account
 
 ## Signing Keys
 
@@ -30,6 +39,36 @@ After generating:
 3. Update `pubkey` in `src-tauri/tauri.conf.json` with the public key content
 
 **Important:** If using a password-protected key, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` MUST be set. If using `--ci` (unencrypted), do NOT set the password variable.
+
+## Apple Code Signing Setup
+
+The release workflow automatically signs and notarizes the app for distribution.
+
+### Creating a Developer ID Application Certificate
+
+1. **Generate CSR**: Keychain Access → Certificate Assistant → Request Certificate From CA
+2. **Create certificate**: https://developer.apple.com/account/resources/certificates/list → Developer ID Application
+3. **Install**: Double-click the downloaded `.cer` file
+
+### Exporting for GitHub Actions
+
+1. Open Keychain Access, find "Developer ID Application: [Your Name]"
+2. Right-click → Export → Save as `.p12` with a password
+3. Base64 encode: `base64 -i certificate.p12 | pbcopy`
+4. Add to GitHub secrets as `APPLE_CERTIFICATE`
+
+### Creating an App-Specific Password
+
+1. Go to https://appleid.apple.com/account/manage
+2. Sign in → App-Specific Passwords → Generate
+3. Name it "Claudia Notarization"
+4. Add to GitHub secrets as `APPLE_PASSWORD`
+
+### Finding Your Team ID
+
+1. Go to https://developer.apple.com/account
+2. Look under Membership Details → Team ID (10 characters)
+3. Add to GitHub secrets as `APPLE_TEAM_ID`
 
 ## Release Process
 
@@ -83,11 +122,14 @@ gh workflow run release.yml -f tag=v<version> --ref main
 
 ### 6. Monitor the Release
 
-The GitHub Actions workflow builds:
-1. Universal macOS binary (arm64 + x86_64)
-2. Signs update artifacts with minisign
-3. Generates `latest.json` manifest
-4. Creates GitHub Release with all artifacts
+The GitHub Actions workflow:
+1. Builds universal macOS binary (arm64 + x86_64)
+2. Signs the app with Developer ID Application certificate
+3. Notarizes the DMG with Apple (takes 1-5 minutes)
+4. Staples the notarization ticket to the DMG
+5. Signs update artifacts with minisign
+6. Generates `latest.json` manifest
+7. Creates GitHub Release with all artifacts
 
 Monitor progress at: https://github.com/JasonBates/claudia/actions
 
@@ -147,4 +189,27 @@ gh workflow run release.yml -f tag=v<version> --ref main
 
 ### DMG won't open on user's machine
 
-Without Apple Developer signing, users need to right-click → Open the first time to bypass Gatekeeper.
+With proper signing and notarization, the app should open without warnings. If users still see Gatekeeper warnings:
+
+1. Check notarization succeeded in the workflow logs
+2. Verify the DMG was stapled: `stapler validate /path/to/Claudia.dmg`
+3. Check the signature: `codesign -dv --verbose=4 /path/to/Claudia.app`
+
+### Notarization fails
+
+Common causes:
+- **Invalid credentials**: Verify `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID` secrets
+- **App-specific password expired**: Generate a new one at appleid.apple.com
+- **Certificate issues**: Ensure the Developer ID Application certificate is valid and not expired
+- **Hardened runtime**: The entitlements.plist must include required permissions
+
+Check notarization history:
+```bash
+xcrun notarytool history --apple-id "your@email.com" --password "app-specific-password" --team-id "TEAMID"
+```
+
+### Code signing fails in CI
+
+- Verify `APPLE_CERTIFICATE` is properly base64-encoded
+- Ensure `APPLE_CERTIFICATE_PASSWORD` matches the .p12 export password
+- Check the certificate hasn't expired: `security find-identity -v -p codesigning`

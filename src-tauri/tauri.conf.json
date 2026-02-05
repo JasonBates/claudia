@@ -59,7 +59,8 @@
       "../sdk-bridge-v2.mjs"
     ],
     "macOS": {
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "entitlements": "entitlements.plist"
     }
   }
 }
