@@ -1,38 +1,32 @@
-/* Solarized Dark theme with proportional fonts */
+/* Default theme: Gruvbox Dark
+   These values are overridden by applyColorScheme() at runtime.
+   Having real defaults ensures the UI is visible before JS loads. */
 
 :root {
-  /* Solarized Dark base colors */
-  --base03: #002b36;  /* darkest background */
-  --base02: #073642;  /* background highlights */
-  --base01: #586e75;  /* comments, secondary content */
-  --base00: #657b83;  /* optional emphasized content */
-  --base0: #839496;   /* body text */
-  --base1: #93a1a1;   /* optional emphasized content */
+  /* Gruvbox Dark defaults - overridden by color scheme */
+  --bg: #282828;
+  --bg-secondary: #3c3836;
+  --bg-tertiary: #1d2021;
+  --fg: #ebdbb2;
+  --fg-muted: #a89984;
+  --accent: #83a598;
+  --red: #fb4934;
+  --green: #b8bb26;
+  --yellow: #fabd2f;
+  --blue: #83a598;
+  --cyan: #8ec07c;
+  --magenta: #d3869b;
+  --violet: #d3869b;
+  --border: #504945;
+  --user-bg: #3c3836;
+  --code-bg: #1d2021;
+  --quote: #a89984;
 
-  /* Solarized accent colors */
-  --yellow: #b58900;
-  --red: #dc322f;
-  --magenta: #d33682;
-  --violet: #6c71c4;
-  --blue: #268bd2;
-  --cyan: #2aa198;
-  --green: #859900;
-
-  /* Theme mappings */
-  --bg: var(--bg);
-  --bg-secondary: var(--bg-secondary);
-  --bg-tertiary: #001e26;
-  --fg: var(--fg);          /* brighter: base1 instead of base0 */
-  --fg-muted: var(--base00);   /* brighter: base00 instead of base01 */
-  --accent: var(--blue);
+  /* Derived colors */
   --accent-secondary: var(--violet);
   --success: var(--green);
   --warning: var(--yellow);
   --error: var(--red);
-  --border: #0a4959;
-  --user-bg: var(--bg-secondary);
-  --code-bg: #001e26;
-  --quote: var(--violet);  /* Blockquote accent - set by color scheme */
 
   /* Configurable appearance settings */
   --content-margin: 16px;
