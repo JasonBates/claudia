@@ -70,8 +70,12 @@ pub fn run() {
             // Appearance commands
             commands::appearance_cmd::list_color_schemes,
             commands::appearance_cmd::get_scheme_colors,
-            // New window command
+            // Directory/window commands
             commands::directory_cmd::open_new_window,
+            commands::directory_cmd::reopen_in_directory,
+            commands::directory_cmd::has_cli_directory,
+            // Project listing (for project picker)
+            commands::project_list::list_projects,
             // Bot mode commands
             commands::bot_config::get_bot_api_key,
             commands::bot_config::has_bot_api_key,

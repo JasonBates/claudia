@@ -11,7 +11,8 @@ import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel"
 import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion, hasBotApiKey } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion, hasBotApiKey, listProjects, reopenInDirectory, getLaunchDir, hasCliDirectory } from "./lib/tauri";
+import type { ProjectInfo } from "./lib/tauri";
 import type { ThemeSettings } from "./lib/theme-utils";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
 import { Mode, getNextMode, isValidMode } from "./lib/mode-utils";
@@ -30,6 +31,7 @@ import {
 import SettingsModal from "./components/SettingsModal";
 import BotSettings from "./components/BotSettings";
 import UpdateBanner from "./components/UpdateBanner";
+import { ProjectPickerModal } from "./components/ProjectPickerModal";
 import "./App.css";
 
 function App() {
@@ -122,6 +124,13 @@ function App() {
   // Track plan viewer window
   const [planWindowOpen, setPlanWindowOpen] = createSignal(false);
 
+  // Project picker state
+  const [projectPickerOpen, setProjectPickerOpen] = createSignal(false);
+  const [startupPickerMode, setStartupPickerMode] = createSignal(false);
+  const [projectList, setProjectList] = createSignal<ProjectInfo[]>([]);
+  const [projectsLoading, setProjectsLoading] = createSignal(false);
+  const [projectLoadError, setProjectLoadError] = createSignal<string | undefined>();
+
   // ============================================================================
   // Store-based Helpers
   // ============================================================================
@@ -188,6 +197,105 @@ function App() {
     }
   };
 
+  // ============================================================================
+  // Project Picker Handlers
+  // ============================================================================
+
+  /**
+   * Continue with normal startup flow (used after project selection or skip)
+   */
+  const continueWithStartup = async () => {
+    try {
+      await session.startSession();
+      store.dispatch(actions.setSessionActive(true));
+      permissions.startPolling();
+    } catch (e) {
+      store.dispatch(actions.setSessionError(`Failed to start session: ${e}`));
+    }
+  };
+
+  /**
+   * Handle project selection from picker
+   */
+  const handleProjectSelect = async (path: string, newWindow: boolean) => {
+    // Get current directory to check if we're already there
+    const currentLaunchDir = await getLaunchDir();
+    const alreadyInTarget = currentLaunchDir === path;
+
+    if (newWindow) {
+      try {
+        await openInNewWindow(path);
+        // If this was startup picker, still need to start session in current window
+        if (startupPickerMode()) {
+          setStartupPickerMode(false);
+          setProjectPickerOpen(false);
+          await continueWithStartup();
+        }
+      } catch (e) {
+        console.error("[PROJECT_PICKER] Failed to open new window:", e);
+        setProjectLoadError(`Failed to open new window: ${e}`);
+      }
+    } else if (alreadyInTarget) {
+      // Already in this directory - just close picker and continue
+      setStartupPickerMode(false);
+      setProjectPickerOpen(false);
+      setProjectLoadError(undefined);
+      await continueWithStartup();
+    } else {
+      // Replace current window with different directory
+      setProjectPickerOpen(false);
+      try {
+        await reopenInDirectory(path);
+        // App will exit and restart, no need to continue
+      } catch (e) {
+        console.error("[PROJECT_PICKER] Failed to reopen:", e);
+        setProjectLoadError(`Failed to open project: ${e}`);
+        setProjectPickerOpen(true); // Re-show picker with error
+      }
+    }
+  };
+
+  /**
+   * Close project picker (only in runtime mode, not startup)
+   */
+  const handleProjectPickerClose = () => {
+    if (!startupPickerMode()) {
+      setProjectPickerOpen(false);
+      setProjectLoadError(undefined);
+    }
+    // In startup mode, can't close without selecting
+  };
+
+  /**
+   * Continue in current directory when user skips or project listing fails
+   */
+  const handleContinueInCurrentDir = async () => {
+    setStartupPickerMode(false);
+    setProjectPickerOpen(false);
+    setProjectLoadError(undefined);
+    await continueWithStartup();
+  };
+
+  /**
+   * Open project picker manually (Cmd+O or /projects)
+   */
+  const openProjectPicker = async () => {
+    // Refresh project list when opening picker manually
+    setProjectsLoading(true);
+    setProjectLoadError(undefined);
+
+    try {
+      const projects = await listProjects();
+      setProjectList(projects);
+    } catch (e) {
+      setProjectLoadError(String(e));
+    }
+
+    setProjectsLoading(false);
+    setStartupPickerMode(false);
+    setProjectPickerOpen(true);
+  };
+
   // Local commands (slash commands + keyboard shortcuts)
   const localCommands = useLocalCommands({
     streaming: streamingInterface,
@@ -197,6 +305,7 @@ function App() {
     onOpenSettings: settings.openSettings,
     onFocusInput: () => commandInputRef?.focus(),
     onOpenNewWindow: handleOpenNewWindow,
+    onOpenProjectPicker: openProjectPicker,
   });
 
   // ============================================================================
@@ -1010,16 +1119,48 @@ function App() {
       console.error("[MOUNT] Failed to register Tauri drag/drop:", err);
     }
 
-    try {
-      await session.startSession();
+    // Check if this app was launched with an explicit directory (via CLI arg or reopen)
+    // If so, skip the project picker and start directly in that directory
+    const wasExplicitlyLaunched = await hasCliDirectory();
+    if (wasExplicitlyLaunched) {
+      console.log("[MOUNT] Explicit CLI directory provided, skipping picker");
+      await continueWithStartup();
+    } else {
+      // Check how many projects exist to decide startup flow
+      try {
+        setProjectsLoading(true);
+        const projects = await listProjects();
+        setProjectList(projects);
+        setProjectsLoading(false);
 
-      // Sync session state to store after startup
-      // The Tauri startSession doesn't emit events, so we need to sync manually
-      store.dispatch(actions.setSessionActive(true));
-
-      permissions.startPolling();
-    } catch (e) {
-      store.dispatch(actions.setSessionError(`Failed to start session: ${e}`));
+        if (projects.length >= 2) {
+          // Multiple projects - show picker, don't start session yet
+          console.log("[MOUNT] Multiple projects found, showing picker");
+          setStartupPickerMode(true);
+          setProjectPickerOpen(true);
+        } else if (projects.length === 1) {
+          // Single project - check if we need to reopen
+          const launchDir = await getLaunchDir();
+          if (launchDir !== projects[0].decodedPath) {
+            // Not in the right directory, reopen there
+            console.log("[MOUNT] Single project, reopening in:", projects[0].decodedPath);
+            await reopenInDirectory(projects[0].decodedPath);
+            return; // App will restart
+          }
+          // Already in right dir, continue with normal startup
+          await continueWithStartup();
+        } else {
+          // No projects - open in home (existing behavior)
+          await continueWithStartup();
+        }
+      } catch (e) {
+        // Error loading projects - show picker with error and fallback option
+        console.error("[MOUNT] Failed to load projects:", e);
+        setProjectsLoading(false);
+        setProjectLoadError(String(e));
+        setStartupPickerMode(true);
+        setProjectPickerOpen(true);
+      }
     }
 
     // Check for updates in the background (non-blocking)
@@ -1286,6 +1427,20 @@ function App() {
             <div class="drop-zone-text">Drop image here</div>
           </div>
         </div>
+      </Show>
+
+      {/* Project Picker Modal */}
+      <Show when={projectPickerOpen()}>
+        <ProjectPickerModal
+          projects={projectList()}
+          currentPath={session.workingDir()}
+          onSelect={handleProjectSelect}
+          onClose={startupPickerMode() ? undefined : handleProjectPickerClose}
+          onContinueInCurrentDir={startupPickerMode() ? handleContinueInCurrentDir : undefined}
+          showCloseButton={!startupPickerMode()}
+          isLoading={projectsLoading()}
+          error={projectLoadError()}
+        />
       </Show>
     </div>
   );
