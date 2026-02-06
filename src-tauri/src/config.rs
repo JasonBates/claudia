@@ -30,6 +30,9 @@ pub struct Config {
     // Permission mode (persisted across sessions)
     #[serde(default = "default_permission_mode")]
     pub permission_mode: String,
+    // Sandbox mode: restricts Claude to only write files within the working directory
+    #[serde(default = "default_sandbox_enabled")]
+    pub sandbox_enabled: bool,
 }
 
 fn default_permission_mode() -> String {
@@ -58,6 +61,10 @@ fn default_bot_timeout_ms() -> u64 {
 
 fn default_bot_safety_threshold() -> f64 {
     0.8 // 80% confidence required
+}
+
+fn default_sandbox_enabled() -> bool {
+    true
 }
 
 impl Config {

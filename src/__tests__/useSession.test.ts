@@ -6,10 +6,11 @@ import { useSession, UseSessionReturn } from "../hooks/useSession";
 vi.mock("../lib/tauri", () => ({
   startSession: vi.fn(),
   getLaunchDir: vi.fn(),
+  isSandboxEnabled: vi.fn(),
 }));
 
 // Import mocked functions for test control
-import { startSession as mockStartSession, getLaunchDir as mockGetLaunchDir } from "../lib/tauri";
+import { startSession as mockStartSession, getLaunchDir as mockGetLaunchDir, isSandboxEnabled as mockIsSandboxEnabled } from "../lib/tauri";
 
 describe("useSession", () => {
   let dispose: () => void;
@@ -18,6 +19,7 @@ describe("useSession", () => {
     vi.clearAllMocks();
     // Default successful mocks
     vi.mocked(mockGetLaunchDir).mockResolvedValue("/launch/dir");
+    vi.mocked(mockIsSandboxEnabled).mockResolvedValue(false);
     vi.mocked(mockStartSession).mockResolvedValue("/working/dir");
   });
 

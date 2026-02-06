@@ -61,9 +61,10 @@ pub struct AppState {
 impl AppState {
     /// Create new AppState with optional CLI-provided directory
     pub fn new(cli_dir: Option<String>) -> Self {
-        // Track if a CLI directory was explicitly provided
+        // Track if a directory was explicitly provided (via CLI arg or env var)
         // This is used to skip the project picker on reopen
-        let has_cli_directory = cli_dir.is_some();
+        let has_cli_directory =
+            cli_dir.is_some() || std::env::var("CLAUDIA_LAUNCH_DIR").ok().is_some();
 
         // Use CLI directory if provided, then check CLAUDIA_LAUNCH_DIR env var,
         // otherwise default to home directory.

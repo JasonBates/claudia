@@ -45,6 +45,7 @@ pub fn run() {
             commands::session::send_interrupt,
             commands::session::is_session_active,
             commands::session::get_launch_dir,
+            commands::session::is_sandbox_enabled,
             commands::session::clear_session,
             commands::session::resume_session,
             // Messaging

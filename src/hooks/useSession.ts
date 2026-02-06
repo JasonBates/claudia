@@ -1,5 +1,5 @@
 import { createSignal, Accessor, Setter } from "solid-js";
-import { startSession as tauriStartSession, getLaunchDir } from "../lib/tauri";
+import { startSession as tauriStartSession, getLaunchDir, isSandboxEnabled } from "../lib/tauri";
 import type { SessionInfo } from "../lib/event-handlers";
 
 export interface UseSessionReturn {
@@ -11,6 +11,7 @@ export interface UseSessionReturn {
   setWorkingDir: Setter<string | null>;
   sessionInfo: Accessor<SessionInfo>;
   setSessionInfo: Setter<SessionInfo>;
+  sandboxEnabled: Accessor<boolean>;
 
   // Launch session tracking (for "Original Session" feature)
   launchSessionId: Accessor<string | null>;
@@ -39,6 +40,7 @@ export function useSession(): UseSessionReturn {
   const [workingDir, setWorkingDir] = createSignal<string | null>(null);
   const [sessionInfo, setSessionInfo] = createSignal<SessionInfo>({});
   const [sessionError, setSessionError] = createSignal<string | null>(null);
+  const [sandboxEnabled, setSandboxEnabled] = createSignal(false);
 
   // Track the session ID created when the app launches (for "Original Session" feature)
   const [launchSessionId, setLaunchSessionId] = createSignal<string | null>(null);
@@ -65,10 +67,11 @@ export function useSession(): UseSessionReturn {
     setSessionError(null);
 
     try {
-      // Get launch directory (worktree) first
-      const launch = await getLaunchDir();
-      console.log("[useSession] Launch directory:", launch);
+      // Get launch directory (worktree) and sandbox status
+      const [launch, sandbox] = await Promise.all([getLaunchDir(), isSandboxEnabled()]);
+      console.log("[useSession] Launch directory:", launch, "Sandbox:", sandbox);
       setLaunchDir(launch);
+      setSandboxEnabled(sandbox);
 
       // Start session with timeout so we don't hang forever on failures
       // Pass launch directory so Claude spawns in the correct working directory
@@ -91,6 +94,7 @@ export function useSession(): UseSessionReturn {
     setWorkingDir,
     sessionInfo,
     setSessionInfo,
+    sandboxEnabled,
     launchSessionId,
     setLaunchSessionId,
     startSession,

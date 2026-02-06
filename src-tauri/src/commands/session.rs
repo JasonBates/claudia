@@ -13,6 +13,13 @@ pub fn get_launch_dir(state: State<'_, AppState>) -> String {
     state.launch_dir.clone()
 }
 
+/// Check if sandbox mode is enabled in the config
+#[tauri::command]
+pub async fn is_sandbox_enabled(state: State<'_, AppState>) -> Result<bool, String> {
+    let config = state.config.lock().await;
+    Ok(config.sandbox_enabled)
+}
+
 /// Start a new Claude session
 /// Uses the split sender/receiver/handle architecture for responsive control commands
 #[tauri::command]
