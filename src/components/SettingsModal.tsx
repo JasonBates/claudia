@@ -104,11 +104,6 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
     }
   };
 
-  const isButtonDisabled = () => {
-    const state = buttonState();
-    return state === "checking" || state === "downloading";
-  };
-
   // Handle Escape key to close
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -161,9 +156,9 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
                 classList={{
                   "update-action": ["available", "downloading", "ready"].includes(buttonState()),
                   "update-error": buttonState() === "error" || buttonState() === "check-failed",
+                  "update-busy": buttonState() === "checking" || buttonState() === "downloading",
                 }}
                 onClick={handleButtonClick}
-                disabled={isButtonDisabled()}
               >
                 {buttonText()}
               </button>
