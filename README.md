@@ -1,6 +1,6 @@
 # Claudia
 
-[![Download for macOS](https://img.shields.io/badge/Download-v0.3.2-black?logo=apple)](https://github.com/JasonBates/claudia/releases/download/v0.3.2/Claudia_0.3.2_universal.dmg)
+[![Download for macOS](https://img.shields.io/badge/Download-v0.4.0-black?logo=apple)](https://github.com/JasonBates/claudia/releases/download/v0.4.0/Claudia_0.4.0_universal.dmg)
 [![Test](https://github.com/JasonBates/claudia/actions/workflows/test.yml/badge.svg)](https://github.com/JasonBates/claudia/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
