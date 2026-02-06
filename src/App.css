@@ -258,6 +258,9 @@ body {
 }
 
 .session-preview {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 16px;
   color: var(--fg);
   white-space: nowrap;
@@ -323,17 +326,32 @@ body {
   background: var(--accent);
 }
 
-/* Session item edit mode */
-.session-item.edit-mode {
+.sidebar-close-button {
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
-  cursor: default;
+  justify-content: center;
+  transition: background 0.1s ease, color 0.1s ease;
 }
 
-.session-item.edit-mode .session-content {
-  flex: 1;
-  min-width: 0;
+.sidebar-close-button:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* Session item edit mode - extra left padding for absolutely-positioned delete button */
+.session-item.edit-mode {
+  padding-left: 20px;
+  cursor: default;
 }
 
 .session-item.editing {
@@ -341,7 +359,10 @@ body {
 }
 
 .session-delete-btn {
-  flex-shrink: 0;
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 20px;
   height: 20px;
   padding: 0;
@@ -355,26 +376,27 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 2;
   transition: transform 0.1s ease, opacity 0.1s ease;
 }
 
 .session-delete-btn:hover {
-  transform: scale(1.1);
+  transform: translateY(-50%) scale(1.1);
   background: #c82333;
 }
 
 .session-rename-btn {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   padding: 0;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--fg-muted);
   background: transparent;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   transition: background 0.1s ease, color 0.1s ease;
