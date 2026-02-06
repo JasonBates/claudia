@@ -235,7 +235,11 @@ export function handleResult(event: NormalizedResultEvent, ctx: EventContext): v
 
   ctx.dispatch({
     type: "FINISH_STREAMING",
-    payload: { generateId: ctx.generateMessageId },
+    payload: {
+      generateId: ctx.generateMessageId,
+      // Pass result content as fallback for slash commands that don't stream text
+      fallbackContent: event.content,
+    },
   });
 }
 

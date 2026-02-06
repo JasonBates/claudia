@@ -40,7 +40,11 @@ export type Action =
   | { type: "SET_STREAMING_BLOCKS"; payload: ContentBlock[] }
   | {
       type: "FINISH_STREAMING";
-      payload?: { interrupted?: boolean; generateId: () => string };
+      payload?: {
+        interrupted?: boolean;
+        generateId: () => string;
+        fallbackContent?: string;
+      };
     }
   | { type: "RESET_STREAMING" }
   | { type: "SET_SHOW_THINKING"; payload: boolean }
@@ -166,6 +170,7 @@ export const actions = {
   finishStreaming: (opts?: {
     interrupted?: boolean;
     generateId: () => string;
+    fallbackContent?: string;
   }): Action => ({
     type: "FINISH_STREAMING",
     payload: opts,
