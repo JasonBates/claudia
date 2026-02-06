@@ -3344,6 +3344,7 @@ del {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 16px;
   margin-top: 8px;
 }
@@ -3361,17 +3362,21 @@ del {
   color: var(--fg);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.settings-update-btn:hover:not(:disabled) {
+.settings-update-btn:hover:not(.update-busy) {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.settings-update-btn:disabled {
-  opacity: 0.5;
+.settings-update-btn.update-busy {
+  color: var(--fg-muted);
+  border-color: var(--border);
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .settings-update-btn.update-action {
@@ -3379,7 +3384,7 @@ del {
   color: var(--cyan);
 }
 
-.settings-update-btn.update-action:hover:not(:disabled) {
+.settings-update-btn.update-action:hover:not(.update-busy) {
   background: var(--cyan);
   color: var(--bg);
 }
@@ -3389,7 +3394,7 @@ del {
   color: var(--red);
 }
 
-.settings-update-btn.update-error:hover:not(:disabled) {
+.settings-update-btn.update-error:hover:not(.update-busy) {
   border-color: var(--red);
   color: var(--red);
 }
