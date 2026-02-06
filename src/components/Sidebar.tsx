@@ -6,12 +6,14 @@ interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   sessions: SessionEntry[];
+  sessionNames: Record<string, string>;
   currentSessionId: string | null;
   launchSessionId: string | null;
   isLoading: boolean;
   error: string | null;
   onResume: (sessionId: string) => void;
   onDelete: (sessionId: string) => void;
+  onRename: (sessionId: string, name: string) => void;
   onNewSession: () => void;
   onReturnToOriginal: () => void;
 }
@@ -25,6 +27,8 @@ const Sidebar: Component<SidebarProps> = (props) => {
   // Resizable width state
   const [width, setWidth] = createSignal(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = createSignal(false);
+  // Edit mode state
+  const [editMode, setEditMode] = createSignal(false);
 
   // Load saved width on mount
   onMount(() => {
@@ -76,6 +80,7 @@ const Sidebar: Component<SidebarProps> = (props) => {
     window.removeEventListener("mousemove", handleMouseMove);
     window.removeEventListener("mouseup", handleMouseUp);
   });
+
   // Sort sessions by modified date (newest first)
   // Current session stays in its natural position based on last meaningful content
   const sortedSessions = () => {
@@ -114,6 +119,11 @@ const Sidebar: Component<SidebarProps> = (props) => {
     return true;
   };
 
+  // Toggle edit mode
+  const toggleEditMode = () => {
+    setEditMode(!editMode());
+  };
+
   return (
     <>
       {/* Sidebar panel - toggled via Cmd+Shift+[ or /resume command */}
@@ -124,7 +134,17 @@ const Sidebar: Component<SidebarProps> = (props) => {
       >
         <div class="sidebar-header">
           <span class="sidebar-title">Sessions</span>
-          <span class="sidebar-count">{props.sessions.length}</span>
+          <div class="sidebar-header-actions">
+            <button
+              type="button"
+              class="sidebar-edit-button"
+              classList={{ active: editMode() }}
+              onClick={toggleEditMode}
+            >
+              {editMode() ? "Done" : "Edit"}
+            </button>
+            <span class="sidebar-count">{props.sessions.length}</span>
+          </div>
         </div>
 
         <div class="sidebar-content">
@@ -184,9 +204,12 @@ const Sidebar: Component<SidebarProps> = (props) => {
                 {(session) => (
                   <SessionItem
                     session={session}
+                    customName={props.sessionNames[session.sessionId]}
                     isActive={session.sessionId === props.currentSessionId}
+                    editMode={editMode()}
                     onClick={() => props.onResume(session.sessionId)}
                     onDelete={() => props.onDelete(session.sessionId)}
+                    onRename={(name) => props.onRename(session.sessionId, name)}
                   />
                 )}
               </For>

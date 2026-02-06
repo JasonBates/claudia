@@ -11,7 +11,7 @@ import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel"
 import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion, hasBotApiKey, listProjects, reopenInDirectory, getLaunchDir, hasCliDirectory } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion, hasBotApiKey, listProjects, reopenInDirectory, getLaunchDir, hasCliDirectory, checkClaudeCodeInstalled } from "./lib/tauri";
 import type { ProjectInfo } from "./lib/tauri";
 import type { ThemeSettings } from "./lib/theme-utils";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
@@ -32,6 +32,7 @@ import SettingsModal from "./components/SettingsModal";
 import BotSettings from "./components/BotSettings";
 import UpdateBanner from "./components/UpdateBanner";
 import { ProjectPickerModal } from "./components/ProjectPickerModal";
+import ClaudeCodeInstallPrompt from "./components/ClaudeCodeInstallPrompt";
 import "./App.css";
 
 function App() {
@@ -131,6 +132,10 @@ function App() {
   const [projectsLoading, setProjectsLoading] = createSignal(false);
   const [projectLoadError, setProjectLoadError] = createSignal<string | undefined>();
 
+  // Claude Code install check state
+  const [showInstallPrompt, setShowInstallPrompt] = createSignal(false);
+  const [isCheckingInstall, setIsCheckingInstall] = createSignal(false);
+
   // ============================================================================
   // Store-based Helpers
   // ============================================================================
@@ -211,6 +216,56 @@ function App() {
       permissions.startPolling();
     } catch (e) {
       store.dispatch(actions.setSessionError(`Failed to start session: ${e}`));
+    }
+  };
+
+  /**
+   * Re-check if Claude Code is installed (called from install prompt)
+   */
+  const handleCheckClaudeCodeAgain = async () => {
+    setIsCheckingInstall(true);
+    try {
+      const status = await checkClaudeCodeInstalled();
+      if (status.installed) {
+        console.log("[INSTALL_CHECK] Claude Code now found:", status.version);
+        setShowInstallPrompt(false);
+        // Continue with normal startup flow
+        const wasExplicitlyLaunched = await hasCliDirectory();
+        if (wasExplicitlyLaunched) {
+          await continueWithStartup();
+        } else {
+          // Check projects for picker logic
+          try {
+            setProjectsLoading(true);
+            const projects = await listProjects();
+            setProjectList(projects);
+            setProjectsLoading(false);
+
+            if (projects.length >= 2) {
+              setStartupPickerMode(true);
+              setProjectPickerOpen(true);
+            } else if (projects.length === 1) {
+              const launchDir = await getLaunchDir();
+              if (launchDir !== projects[0].decodedPath) {
+                await reopenInDirectory(projects[0].decodedPath);
+                return;
+              }
+              await continueWithStartup();
+            } else {
+              await continueWithStartup();
+            }
+          } catch (e) {
+            setProjectsLoading(false);
+            setProjectLoadError(String(e));
+            setStartupPickerMode(true);
+            setProjectPickerOpen(true);
+          }
+        }
+      } else {
+        console.log("[INSTALL_CHECK] Claude Code still not found");
+      }
+    } finally {
+      setIsCheckingInstall(false);
     }
   };
 
@@ -1119,6 +1174,16 @@ function App() {
       console.error("[MOUNT] Failed to register Tauri drag/drop:", err);
     }
 
+    // Check if Claude Code CLI is installed before proceeding
+    console.log("[MOUNT] Checking for Claude Code CLI...");
+    const claudeStatus = await checkClaudeCodeInstalled();
+    if (!claudeStatus.installed) {
+      console.log("[MOUNT] Claude Code CLI not found, showing install prompt");
+      setShowInstallPrompt(true);
+      return; // Don't proceed with startup until installed
+    }
+    console.log("[MOUNT] Claude Code CLI found:", claudeStatus.version, "at", claudeStatus.path);
+
     // Check if this app was launched with an explicit directory (via CLI arg or reopen)
     // If so, skip the project picker and start directly in that directory
     const wasExplicitlyLaunched = await hasCliDirectory();
@@ -1191,12 +1256,14 @@ function App() {
         collapsed={sidebar.collapsed()}
         onToggle={sidebar.toggleSidebar}
         sessions={sidebar.sessions()}
+        sessionNames={sidebar.sessionNames()}
         currentSessionId={store.sessionInfo().sessionId || null}
         launchSessionId={store.launchSessionId()}
         isLoading={sidebar.isLoading()}
         error={sidebar.error()}
         onResume={handleResumeSession}
         onDelete={sidebar.handleDeleteSession}
+        onRename={sidebar.handleRenameSession}
         onNewSession={handleNewSession}
         onReturnToOriginal={handleReturnToOriginal}
       />
@@ -1440,6 +1507,14 @@ function App() {
           showCloseButton={!startupPickerMode()}
           isLoading={projectsLoading()}
           error={projectLoadError()}
+        />
+      </Show>
+
+      {/* Claude Code Install Prompt */}
+      <Show when={showInstallPrompt()}>
+        <ClaudeCodeInstallPrompt
+          onCheckAgain={handleCheckClaudeCodeAgain}
+          isChecking={isCheckingInstall()}
         />
       </Show>
     </div>

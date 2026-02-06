@@ -1,4 +1,7 @@
 {
+  "preferences": {
+    "outputStyle": "explanatory"
+  },
   "permissions": {
     "allow": [
       "npm run dev",

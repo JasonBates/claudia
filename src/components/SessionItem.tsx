@@ -1,11 +1,14 @@
-import { Component } from "solid-js";
+import { Component, Show, createSignal } from "solid-js";
 import type { SessionEntry } from "../lib/types";
 
 interface SessionItemProps {
   session: SessionEntry;
+  customName?: string;
   isActive: boolean;
+  editMode: boolean;
   onClick: () => void;
   onDelete: () => void;
+  onRename: (name: string) => void;
 }
 
 /**
@@ -94,7 +97,17 @@ function parseTimestampPrefix(text: string): { timestamp: string | null; content
 }
 
 const SessionItem: Component<SessionItemProps> = (props) => {
+  // Editing state for inline rename
+  const [isEditing, setIsEditing] = createSignal(false);
+  const [editValue, setEditValue] = createSignal("");
+  let inputRef: HTMLInputElement | undefined;
+
   const handleClick = (e: MouseEvent) => {
+    // Don't navigate if in edit mode or editing
+    if (props.editMode || isEditing()) {
+      e.stopPropagation();
+      return;
+    }
     console.log("[SESSION_ITEM] Click detected!", props.session.sessionId);
     e.stopPropagation();
     props.onClick();
@@ -102,10 +115,55 @@ const SessionItem: Component<SessionItemProps> = (props) => {
 
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();
-    // Simple confirmation for delete
-    if (confirm("Delete this session?")) {
+    // Context menu delete still works when not in edit mode
+    if (!props.editMode && confirm("Delete this session?")) {
       props.onDelete();
     }
+  };
+
+  const handleDelete = (e: MouseEvent) => {
+    e.stopPropagation();
+    props.onDelete();
+  };
+
+  const startEditing = (e: MouseEvent) => {
+    e.stopPropagation();
+    // Initialize with current custom name or the display content
+    setEditValue(props.customName || displayContent());
+    setIsEditing(true);
+    // Focus input on next tick
+    setTimeout(() => {
+      inputRef?.focus();
+      inputRef?.select();
+    }, 0);
+  };
+
+  const saveEdit = () => {
+    const newName = editValue().trim();
+    // Only save if name changed
+    const currentName = props.customName || "";
+    if (newName !== currentName) {
+      props.onRename(newName);
+    }
+    setIsEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      saveEdit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelEdit();
+    }
+  };
+
+  const handleBlur = () => {
+    saveEdit();
   };
 
   // Parse out any injected timestamp from the first prompt
@@ -113,36 +171,84 @@ const SessionItem: Component<SessionItemProps> = (props) => {
   const displayContent = () => parsed().content || "Empty session";
   const injectedTimestamp = () => parsed().timestamp;
 
+  // Use custom name if available, otherwise fall back to first prompt
+  const displayName = () => props.customName || displayContent();
+
   return (
-    <button
-      type="button"
+    <div
       class="session-item"
-      classList={{ active: props.isActive }}
+      classList={{
+        active: props.isActive,
+        "edit-mode": props.editMode,
+        editing: isEditing()
+      }}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
-      title={props.session.firstPrompt}
+      title={props.customName || props.session.firstPrompt}
     >
-      <div class="session-preview">
-        {truncate(displayContent(), 60)}
+      {/* Delete button - shown in edit mode */}
+      <Show when={props.editMode && !isEditing()}>
+        <button
+          type="button"
+          class="session-delete-btn"
+          onClick={handleDelete}
+          title="Delete session"
+        >
+          ×
+        </button>
+      </Show>
+
+      {/* Main content area */}
+      <div class="session-content">
+        <Show
+          when={!isEditing()}
+          fallback={
+            <input
+              ref={inputRef}
+              type="text"
+              class="session-name-input"
+              value={editValue()}
+              onInput={(e) => setEditValue(e.currentTarget.value)}
+              onKeyDown={handleKeyDown}
+              onBlur={handleBlur}
+            />
+          }
+        >
+          <div class="session-preview">
+            {truncate(displayName(), 60)}
+          </div>
+          <div class="session-meta">
+            {injectedTimestamp() && !props.customName ? (
+              <>
+                <span class="session-injected-time">{injectedTimestamp()}</span>
+                <span class="session-count">{props.session.messageCount}</span>
+              </>
+            ) : (
+              <>
+                <span class="session-count">
+                  {props.session.messageCount} msgs
+                </span>
+                <span class="session-time">
+                  {formatRelativeTime(props.session.modified)}
+                </span>
+              </>
+            )}
+          </div>
+        </Show>
       </div>
-      <div class="session-meta">
-        {injectedTimestamp() ? (
-          <>
-            <span class="session-injected-time">{injectedTimestamp()}</span>
-            <span class="session-count">{props.session.messageCount}</span>
-          </>
-        ) : (
-          <>
-            <span class="session-count">
-              {props.session.messageCount} msgs
-            </span>
-            <span class="session-time">
-              {formatRelativeTime(props.session.modified)}
-            </span>
-          </>
-        )}
-      </div>
-    </button>
+
+      {/* Rename button - shown in edit mode */}
+      <Show when={props.editMode && !isEditing()}>
+        <button
+          type="button"
+          class="session-rename-btn"
+          onClick={startEditing}
+          title="Rename session"
+        >
+          ✎
+        </button>
+      </Show>
+    </div>
   );
 };
 

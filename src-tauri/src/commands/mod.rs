@@ -17,6 +17,7 @@ pub mod project_list;
 pub mod secure_ipc;
 pub mod session;
 pub mod session_list;
+pub mod session_names;
 pub mod streaming_cmd;
 pub mod window_cmd;
 
