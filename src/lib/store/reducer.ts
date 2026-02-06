@@ -554,40 +554,66 @@ export function conversationReducer(
     // =========================================================================
     // Permission Actions
     // =========================================================================
-    case "SET_PENDING_PERMISSION":
+    case "ENQUEUE_PERMISSION": {
+      // Don't add duplicate requestId (idempotent for hook polling)
+      const exists = state.permission.queue.some(
+        (q) => q.request.requestId === action.payload.requestId
+      );
+      if (exists) return state;
       return {
         ...state,
         permission: {
-          ...state.permission,
-          pending: action.payload,
+          queue: [
+            ...state.permission.queue,
+            { request: action.payload, isReviewing: false, reviewResult: null },
+          ],
+        },
+      };
+    }
+
+    case "DEQUEUE_PERMISSION":
+      return {
+        ...state,
+        permission: {
+          queue: state.permission.queue.filter(
+            (q) => q.request.requestId !== action.payload
+          ),
         },
       };
 
-    case "SET_PERMISSION_REVIEWING":
+    case "SET_PERMISSION_REVIEWING": {
+      const { requestId, reviewing } = action.payload;
       return {
         ...state,
         permission: {
-          ...state.permission,
-          isReviewing: action.payload,
+          queue: state.permission.queue.map((q) =>
+            q.request.requestId === requestId
+              ? { ...q, isReviewing: reviewing }
+              : q
+          ),
         },
       };
+    }
 
-    case "SET_REVIEW_RESULT":
+    case "SET_REVIEW_RESULT": {
+      const { requestId: rid, result } = action.payload;
       return {
         ...state,
         permission: {
-          ...state.permission,
-          reviewResult: action.payload,
+          queue: state.permission.queue.map((q) =>
+            q.request.requestId === rid
+              ? { ...q, reviewResult: result, isReviewing: false }
+              : q
+          ),
         },
       };
+    }
 
-    case "CLEAR_PERMISSION_STATE":
+    case "CLEAR_PERMISSION_QUEUE":
       return {
         ...state,
         permission: {
-          pending: null,
-          isReviewing: false,
-          reviewResult: null,
+          queue: [],
         },
       };
 

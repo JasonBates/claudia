@@ -189,12 +189,14 @@ describe("usePermissions", () => {
       expect(hook.pendingPermission()?.toolInput).toEqual({ command: "rm -rf /" });
     });
 
-    it("should NOT update pendingPermission if one is already pending", async () => {
+    it("should accept new permission requests even when one is pending", async () => {
       vi.mocked(mockPollPermissionRequest).mockResolvedValue(sampleRequest);
       const hook = createHook();
 
       hook.startPolling();
       await vi.advanceTimersByTimeAsync(200);
+
+      expect(hook.pendingPermission()?.requestId).toBe("tool-123");
 
       // Now another request comes (different ID)
       vi.mocked(mockPollPermissionRequest).mockResolvedValue({
@@ -208,8 +210,9 @@ describe("usePermissions", () => {
 
       await vi.advanceTimersByTimeAsync(200);
 
-      // Should still show the first request
-      expect(hook.pendingPermission()?.requestId).toBe("tool-123");
+      // In local mode (no store queue), new request replaces the old one
+      // In store mode, both would be queued; the store deduplicates by requestId
+      expect(hook.pendingPermission()?.requestId).toBe("tool-456");
     });
 
     it("should ignore polling errors silently", async () => {

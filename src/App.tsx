@@ -90,12 +90,13 @@ function App() {
     owner,
     getCurrentMode: currentMode,
     pendingPermission: store.pendingPermission,
-    clearPendingPermission: () => store.dispatch(actions.setPendingPermission(null)),
+    enqueuePermission: (perm) => store.dispatch(actions.enqueuePermission(perm)),
+    dequeuePermission: (id) => store.dispatch(actions.dequeuePermission(id)),
     // Bot mode review state
     isReviewing: store.permissionIsReviewing,
-    setIsReviewing: (value: boolean) => store.dispatch(actions.setPermissionReviewing(value)),
+    setIsReviewing: (id: string, value: boolean) => store.dispatch(actions.setPermissionReviewing(id, value)),
     reviewResult: store.permissionReviewResult,
-    setReviewResult: (value) => store.dispatch(actions.setReviewResult(value)),
+    setReviewResult: (id: string, value) => store.dispatch(actions.setReviewResult(id, value)),
     // Open settings when API key is missing or invalid
     onBotApiKeyRequired: () => {
       setBotSettingsError("API key required for BotGuard");

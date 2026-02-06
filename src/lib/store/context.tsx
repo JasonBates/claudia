@@ -87,12 +87,14 @@ export interface StoreContextValue {
   planNeedsRefresh: () => string | null;
   /** Permission request ID for plan approval (to send control_response) */
   planPermissionRequestId: () => string | null;
-  /** Pending permission request */
+  /** Pending permission request (first in queue, or null) */
   pendingPermission: () => PermissionRequest | null;
-  /** Whether Bot mode is reviewing a permission */
+  /** Whether Bot mode is reviewing the current permission */
   permissionIsReviewing: () => boolean;
-  /** Result from LLM review (Bot mode) */
+  /** Result from LLM review for the current permission (Bot mode) */
   permissionReviewResult: () => ReviewResult | null;
+  /** Number of queued permission requests */
+  permissionQueueLength: () => number;
   /** Pre-compaction token count */
   lastCompactionPreTokens: () => number | null;
   /** Compaction message ID */
@@ -388,9 +390,13 @@ export const StoreProvider: ParentComponent = (props) => {
     planReady: () => state.planning.isReady,
     planNeedsRefresh: () => state.planning.needsRefresh,
     planPermissionRequestId: () => state.planning.permissionRequestId,
-    pendingPermission: () => state.permission.pending,
-    permissionIsReviewing: () => state.permission.isReviewing,
-    permissionReviewResult: () => state.permission.reviewResult,
+    pendingPermission: () => {
+      const first = state.permission.queue[0];
+      return first ? first.request : null;
+    },
+    permissionIsReviewing: () => state.permission.queue[0]?.isReviewing ?? false,
+    permissionReviewResult: () => state.permission.queue[0]?.reviewResult ?? null,
+    permissionQueueLength: () => state.permission.queue.length,
     lastCompactionPreTokens: () => state.compaction.preTokens,
     compactionMessageId: () => state.compaction.messageId,
     warningDismissed: () => state.compaction.warningDismissed,

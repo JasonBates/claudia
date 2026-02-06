@@ -693,7 +693,7 @@ describe("conversationReducer", () => {
   // Permission Actions
   // =========================================================================
   describe("Permission Actions", () => {
-    it("SET_PENDING_PERMISSION should set permission request", () => {
+    it("ENQUEUE_PERMISSION should add permission to queue", () => {
       const state = createInitialState();
       const permission: PermissionRequest = {
         requestId: "req-1",
@@ -703,34 +703,166 @@ describe("conversationReducer", () => {
       };
 
       const newState = conversationReducer(state, {
-        type: "SET_PENDING_PERMISSION",
+        type: "ENQUEUE_PERMISSION",
         payload: permission,
       });
 
-      expect(newState.permission.pending).toEqual(permission);
+      expect(newState.permission.queue).toHaveLength(1);
+      expect(newState.permission.queue[0].request).toEqual(permission);
+      expect(newState.permission.queue[0].isReviewing).toBe(false);
+      expect(newState.permission.queue[0].reviewResult).toBeNull();
     });
 
-    it("SET_PENDING_PERMISSION should clear permission with null", () => {
+    it("ENQUEUE_PERMISSION should not add duplicate requestId", () => {
+      const permission: PermissionRequest = {
+        requestId: "req-1",
+        toolName: "Bash",
+        description: "Run command",
+        source: "control",
+      };
       const state = {
         ...createInitialState(),
         permission: {
-          pending: {
-            requestId: "req-1",
-            toolName: "Bash",
-            description: "Run command",
-            source: "control" as const,
-          },
-          isReviewing: false,
-          reviewResult: null,
+          queue: [{ request: permission, isReviewing: false, reviewResult: null }],
         },
       };
 
       const newState = conversationReducer(state, {
-        type: "SET_PENDING_PERMISSION",
-        payload: null,
+        type: "ENQUEUE_PERMISSION",
+        payload: permission,
       });
 
-      expect(newState.permission.pending).toBeNull();
+      expect(newState.permission.queue).toHaveLength(1);
+    });
+
+    it("ENQUEUE_PERMISSION should queue multiple different requests", () => {
+      const state = createInitialState();
+      const perm1: PermissionRequest = {
+        requestId: "req-1",
+        toolName: "Bash",
+        description: "Run command",
+        source: "control",
+      };
+      const perm2: PermissionRequest = {
+        requestId: "req-2",
+        toolName: "Write",
+        description: "Write file",
+        source: "control",
+      };
+
+      let newState = conversationReducer(state, {
+        type: "ENQUEUE_PERMISSION",
+        payload: perm1,
+      });
+      newState = conversationReducer(newState, {
+        type: "ENQUEUE_PERMISSION",
+        payload: perm2,
+      });
+
+      expect(newState.permission.queue).toHaveLength(2);
+      expect(newState.permission.queue[0].request.requestId).toBe("req-1");
+      expect(newState.permission.queue[1].request.requestId).toBe("req-2");
+    });
+
+    it("DEQUEUE_PERMISSION should remove by requestId", () => {
+      const perm1: PermissionRequest = {
+        requestId: "req-1",
+        toolName: "Bash",
+        description: "Run command",
+        source: "control",
+      };
+      const perm2: PermissionRequest = {
+        requestId: "req-2",
+        toolName: "Write",
+        description: "Write file",
+        source: "control",
+      };
+      const state = {
+        ...createInitialState(),
+        permission: {
+          queue: [
+            { request: perm1, isReviewing: false, reviewResult: null },
+            { request: perm2, isReviewing: false, reviewResult: null },
+          ],
+        },
+      };
+
+      const newState = conversationReducer(state, {
+        type: "DEQUEUE_PERMISSION",
+        payload: "req-1",
+      });
+
+      expect(newState.permission.queue).toHaveLength(1);
+      expect(newState.permission.queue[0].request.requestId).toBe("req-2");
+    });
+
+    it("SET_PERMISSION_REVIEWING should update specific queue item", () => {
+      const permission: PermissionRequest = {
+        requestId: "req-1",
+        toolName: "Bash",
+        description: "Run command",
+        source: "control",
+      };
+      const state = {
+        ...createInitialState(),
+        permission: {
+          queue: [{ request: permission, isReviewing: false, reviewResult: null }],
+        },
+      };
+
+      const newState = conversationReducer(state, {
+        type: "SET_PERMISSION_REVIEWING",
+        payload: { requestId: "req-1", reviewing: true },
+      });
+
+      expect(newState.permission.queue[0].isReviewing).toBe(true);
+    });
+
+    it("SET_REVIEW_RESULT should update specific queue item and clear reviewing", () => {
+      const permission: PermissionRequest = {
+        requestId: "req-1",
+        toolName: "Bash",
+        description: "Run command",
+        source: "control",
+      };
+      const state = {
+        ...createInitialState(),
+        permission: {
+          queue: [{ request: permission, isReviewing: true, reviewResult: null }],
+        },
+      };
+
+      const newState = conversationReducer(state, {
+        type: "SET_REVIEW_RESULT",
+        payload: { requestId: "req-1", result: { safe: true, reason: "Safe operation" } },
+      });
+
+      expect(newState.permission.queue[0].isReviewing).toBe(false);
+      expect(newState.permission.queue[0].reviewResult).toEqual({
+        safe: true,
+        reason: "Safe operation",
+      });
+    });
+
+    it("CLEAR_PERMISSION_QUEUE should empty the queue", () => {
+      const permission: PermissionRequest = {
+        requestId: "req-1",
+        toolName: "Bash",
+        description: "Run command",
+        source: "control",
+      };
+      const state = {
+        ...createInitialState(),
+        permission: {
+          queue: [{ request: permission, isReviewing: false, reviewResult: null }],
+        },
+      };
+
+      const newState = conversationReducer(state, {
+        type: "CLEAR_PERMISSION_QUEUE",
+      });
+
+      expect(newState.permission.queue).toHaveLength(0);
     });
   });
 

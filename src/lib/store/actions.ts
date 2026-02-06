@@ -81,10 +81,11 @@ export type Action =
   | { type: "EXIT_PLANNING" }
 
   // === Permission Actions ===
-  | { type: "SET_PENDING_PERMISSION"; payload: PermissionRequest | null }
-  | { type: "SET_PERMISSION_REVIEWING"; payload: boolean }
-  | { type: "SET_REVIEW_RESULT"; payload: ReviewResult | null }
-  | { type: "CLEAR_PERMISSION_STATE" }
+  | { type: "ENQUEUE_PERMISSION"; payload: PermissionRequest }
+  | { type: "DEQUEUE_PERMISSION"; payload: string }
+  | { type: "SET_PERMISSION_REVIEWING"; payload: { requestId: string; reviewing: boolean } }
+  | { type: "SET_REVIEW_RESULT"; payload: { requestId: string; result: ReviewResult | null } }
+  | { type: "CLEAR_PERMISSION_QUEUE" }
 
   // === Session Actions ===
   | { type: "SET_SESSION_ACTIVE"; payload: boolean }
@@ -265,19 +266,23 @@ export const actions = {
   exitPlanning: (): Action => ({ type: "EXIT_PLANNING" }),
 
   // === Permission Actions ===
-  setPendingPermission: (permission: PermissionRequest | null): Action => ({
-    type: "SET_PENDING_PERMISSION",
+  enqueuePermission: (permission: PermissionRequest): Action => ({
+    type: "ENQUEUE_PERMISSION",
     payload: permission,
   }),
-  setPermissionReviewing: (reviewing: boolean): Action => ({
+  dequeuePermission: (requestId: string): Action => ({
+    type: "DEQUEUE_PERMISSION",
+    payload: requestId,
+  }),
+  setPermissionReviewing: (requestId: string, reviewing: boolean): Action => ({
     type: "SET_PERMISSION_REVIEWING",
-    payload: reviewing,
+    payload: { requestId, reviewing },
   }),
-  setReviewResult: (result: ReviewResult | null): Action => ({
+  setReviewResult: (requestId: string, result: ReviewResult | null): Action => ({
     type: "SET_REVIEW_RESULT",
-    payload: result,
+    payload: { requestId, result },
   }),
-  clearPermissionState: (): Action => ({ type: "CLEAR_PERMISSION_STATE" }),
+  clearPermissionQueue: (): Action => ({ type: "CLEAR_PERMISSION_QUEUE" }),
 
   // === Session Actions ===
   setSessionActive: (active: boolean): Action => ({

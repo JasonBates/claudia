@@ -37,14 +37,20 @@ export interface UsePermissionsOptions {
   /**
    * External pending permission accessor (from store).
    * If provided, the hook will use this instead of its own internal signal.
+   * Returns the first item in the permission queue, or null.
    */
   pendingPermission?: Accessor<PermissionRequest | null>;
 
   /**
-   * Callback to clear the pending permission (from store dispatch).
-   * Required if pendingPermission is provided.
+   * Callback to enqueue a permission request (from store dispatch).
+   * Deduplicates by requestId — safe to call multiple times for the same request.
    */
-  clearPendingPermission?: () => void;
+  enqueuePermission?: (permission: PermissionRequest) => void;
+
+  /**
+   * Callback to remove a permission from the queue by requestId (from store dispatch).
+   */
+  dequeuePermission?: (requestId: string) => void;
 
   // === Bot Mode State (optional) ===
 
@@ -55,9 +61,9 @@ export interface UsePermissionsOptions {
   isReviewing?: Accessor<boolean>;
 
   /**
-   * Dispatch function to update isReviewing state.
+   * Dispatch function to update isReviewing state for a specific request.
    */
-  setIsReviewing?: (value: boolean) => void;
+  setIsReviewing?: (requestId: string, value: boolean) => void;
 
   /**
    * Accessor for reviewResult state (from store).
@@ -65,9 +71,9 @@ export interface UsePermissionsOptions {
   reviewResult?: Accessor<ReviewResult | null>;
 
   /**
-   * Dispatch function to update reviewResult state.
+   * Dispatch function to update reviewResult state for a specific request.
    */
-  setReviewResult?: (value: ReviewResult | null) => void;
+  setReviewResult?: (requestId: string, value: ReviewResult | null) => void;
 
   /**
    * Callback when Bot mode requires API key setup.
@@ -95,13 +101,19 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
   // When external permission state is provided (from store), use it for reading
   const pendingPermission = options.pendingPermission ?? localPendingPermission;
 
-  // For setting permission in polling mode (only used when no external state)
-  const setPendingPermission = setLocalPendingPermission;
+  // Enqueue function that works with either queue (store) or local state
+  const enqueuePermission = (permission: PermissionRequest) => {
+    if (options.enqueuePermission) {
+      options.enqueuePermission(permission);
+    } else {
+      setLocalPendingPermission(permission);
+    }
+  };
 
-  // Clear function that works with either local or external state
-  const clearPendingPermission = () => {
-    if (options.clearPendingPermission) {
-      options.clearPendingPermission();
+  // Dequeue function that works with either queue (store) or local state
+  const dequeuePermission = (requestId: string) => {
+    if (options.dequeuePermission) {
+      options.dequeuePermission(requestId);
     } else {
       setLocalPendingPermission(null);
     }
@@ -140,8 +152,8 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
         console.log("[usePermissions] LLM review result:", result);
 
         // Update review state
-        options.setIsReviewing?.(false);
-        options.setReviewResult?.(result);
+        options.setIsReviewing?.(reviewingRequestId, false);
+        options.setReviewResult?.(reviewingRequestId, result);
 
         // If safe, auto-approve
         if (result.safe) {
@@ -176,8 +188,8 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
         }
 
         // On error, clear reviewing state and show dialog for manual decision
-        options.setIsReviewing?.(false);
-        options.setReviewResult?.({
+        options.setIsReviewing?.(reviewingRequestId, false);
+        options.setReviewResult?.(reviewingRequestId, {
           safe: false,
           reason: isApiKeyError
             ? "API key missing or invalid. Please configure in settings."
@@ -201,7 +213,7 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
     permissionPollInterval = window.setInterval(async () => {
       try {
         const request = await pollPermissionRequest();
-        if (request && !pendingPermission()) {
+        if (request) {
           console.log("[usePermissions] Hook request received:", request);
           const mode = options.getCurrentMode();
 
@@ -212,21 +224,22 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
             return;
           }
 
+          const permReq: PermissionRequest = {
+            requestId: request.tool_use_id,
+            toolName: request.tool_name,
+            toolInput: request.tool_input,
+            description: `Allow ${request.tool_name}?`,
+            source: "hook",
+          };
+
           // In bot mode, trigger LLM review before deciding
           if (mode === "bot") {
             console.log("[usePermissions] Bot mode (polling) - triggering LLM review:", request.tool_name);
             runWithOwner(options.owner, () => {
               batch(() => {
-                // Set reviewing flag FIRST (triggers the review effect)
-                options.setIsReviewing?.(true);
-                // Then set the pending permission
-                setPendingPermission({
-                  requestId: request.tool_use_id,
-                  toolName: request.tool_name,
-                  toolInput: request.tool_input,
-                  description: `Allow ${request.tool_name}?`,
-                  source: "hook",
-                });
+                // Enqueue first so the item exists, then set reviewing on it
+                enqueuePermission(permReq);
+                options.setIsReviewing?.(request.tool_use_id, true);
               });
             });
             return;
@@ -235,14 +248,7 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
           // For request/plan modes, show permission dialog directly
           runWithOwner(options.owner, () => {
             batch(() => {
-              // Show permission dialog
-              setPendingPermission({
-                requestId: request.tool_use_id,
-                toolName: request.tool_name,
-                toolInput: request.tool_input,
-                description: `Allow ${request.tool_name}?`,
-                source: "hook",
-              });
+              enqueuePermission(permReq);
             });
           });
         }
@@ -271,7 +277,7 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
     const permission = pendingPermission();
     if (!permission) return;
 
-    clearPendingPermission();
+    dequeuePermission(permission.requestId);
 
     // Use the appropriate response mechanism based on the request source:
     // - "control": stream-based response (control_response via stdin)
@@ -292,7 +298,7 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
     const permission = pendingPermission();
     if (!permission) return;
 
-    clearPendingPermission();
+    dequeuePermission(permission.requestId);
 
     // Use the appropriate response mechanism based on the request source:
     // - "control": stream-based response (control_response via stdin)
@@ -309,7 +315,7 @@ export function usePermissions(options: UsePermissionsOptions): UsePermissionsRe
   return {
     // Signals
     pendingPermission,
-    setPendingPermission,
+    setPendingPermission: setLocalPendingPermission,
 
     // Actions
     handlePermissionAllow,
