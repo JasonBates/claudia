@@ -298,6 +298,10 @@ export async function getLaunchDir(): Promise<string> {
   return await invoke<string>("get_launch_dir");
 }
 
+export async function isSandboxEnabled(): Promise<boolean> {
+  return await invoke<boolean>("is_sandbox_enabled");
+}
+
 // ============================================================================
 // Streaming Command Runner
 // ============================================================================

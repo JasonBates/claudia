@@ -5,6 +5,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::thread;
 use tokio::sync::mpsc;
 
+use crate::config::Config;
 use crate::events::ClaudeEvent;
 
 fn rust_debug_log(prefix: &str, msg: &str) {
@@ -245,6 +246,16 @@ pub fn spawn_claude_process_with_resume(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
+
+    // Pass sandbox mode to bridge if enabled in config
+    let dir_str = working_dir.to_string_lossy();
+    if Config::load(Some(&dir_str))
+        .map(|c| c.sandbox_enabled)
+        .unwrap_or(false)
+    {
+        rust_debug_log("SPAWN", "Sandbox mode enabled");
+        cmd.env("CLAUDIA_SANDBOX", "1");
+    }
 
     if let Some(session_id) = resume_session_id {
         cmd.env("CLAUDE_RESUME_SESSION", session_id);

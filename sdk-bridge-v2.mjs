@@ -155,6 +155,21 @@ async function main() {
 
   // Build Claude args - optionally resume a session
   function buildClaudeArgs(resumeSessionId = null) {
+    const settings = { alwaysThinkingEnabled: true };
+
+    // Enable SDK sandbox when CLAUDIA_SANDBOX is set
+    if (process.env.CLAUDIA_SANDBOX === "1") {
+      debugLog("SANDBOX", "Sandbox mode enabled - restricting to working directory");
+      settings.sandbox = {
+        enabled: true,
+        autoAllowBashIfSandboxed: true,
+        allowUnsandboxedCommands: false,
+        network: {
+          allowLocalBinding: true,
+        }
+      };
+    }
+
     const args = [
       "--input-format", "stream-json",
       "--output-format", "stream-json",
@@ -166,7 +181,7 @@ async function main() {
       // See handlePermissionRequestEvent in event-handlers.ts
       "--permission-prompt-tool", "stdio",
       "--permission-mode", "default",
-      "--settings", JSON.stringify({ alwaysThinkingEnabled: true }),
+      "--settings", JSON.stringify(settings),
       "--append-system-prompt", `User's timezone: ${userTimezone}`
     ];
 

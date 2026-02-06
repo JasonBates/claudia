@@ -79,6 +79,7 @@ function createMockSession(): UseSessionReturn {
   const [sessionInfo, setSessionInfo] = createSignal<SessionInfo>({});
   const [sessionError] = createSignal<string | null>(null);
   const [launchSessionId, setLaunchSessionId] = createSignal<string | null>(null);
+  const [sandboxEnabled] = createSignal(false);
 
   return {
     sessionActive,
@@ -88,6 +89,7 @@ function createMockSession(): UseSessionReturn {
     setWorkingDir,
     sessionInfo,
     setSessionInfo,
+    sandboxEnabled,
     sessionError,
     launchSessionId,
     setLaunchSessionId,

@@ -1276,10 +1276,18 @@ function App() {
         {/* Hide dir-indicator when context warning is shown - they overlap in the title bar.
             Condition is inverse of warning: !(threshold !== "ok" && !dismissed) = (threshold === "ok" || dismissed) */}
         <Show when={session.workingDir() && (contextThreshold() === "ok" || store.warningDismissed())}>
-          <div class="dir-indicator" title={session.workingDir()!}>
+          <div class="dir-indicator">
             <Show when={__CT_WORKTREE__}>
               <span class="worktree-indicator">{__CT_WORKTREE__}</span>
               <span class="worktree-separator">:</span>
+            </Show>
+            <Show when={session.sandboxEnabled()}>
+              <span class="sandbox-indicator">
+                🔒
+                <span class="sandbox-tooltip">
+                  Sandboxed — writes restricted to:{"\n"}{(() => { const parts = (session.workingDir() || "").split("/"); return parts.length > 3 ? ".../" + parts.slice(-3).join("/") : session.workingDir(); })()}{"\n\n"}Commands and file writes are limited to this directory and below. Reads are unrestricted.
+                </span>
+              </span>
             </Show>
             {session.workingDir()!.split("/").pop() || session.workingDir()}
           </div>
