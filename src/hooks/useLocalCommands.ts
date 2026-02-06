@@ -446,15 +446,42 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
     const helpMsgId = `help-${Date.now()}`;
     const helpToolId = `help-tool-${Date.now()}`;
 
-    // Group commands by category (exclude duplicates like /quit, /x, /q)
+    // Format keybinding for display (e.g., "cmd+k" -> "Cmd+K")
+    const fmtKey = (kb: string) =>
+      kb.replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\[/g, "[");
+
+    // Primary commands (exclude aliases quit/x/q)
     const primaryCommands = commands.filter(
-      (c) => !["quit", "x", "q"].includes(c.name)
+      (c) => !["quit", "x", "q", "help"].includes(c.name)
     );
 
-    const lines = primaryCommands.map((cmd) => {
-      const keybind = cmd.keybinding ? ` (${cmd.keybinding})` : "";
-      return `/${cmd.name}${keybind} - ${cmd.description}`;
-    });
+    const lines: string[] = [];
+
+    lines.push("SLASH COMMANDS");
+    lines.push("─".repeat(40));
+    for (const cmd of primaryCommands) {
+      const kb = cmd.keybinding ? `  ${fmtKey(cmd.keybinding)}` : "";
+      lines.push(`  /${cmd.name.padEnd(14)} ${cmd.description}${kb}`);
+    }
+    // Bridge-handled commands
+    lines.push(`  /sandbox        Show sandbox status`);
+    lines.push(`  /compact        Compact conversation context`);
+
+    lines.push("");
+    lines.push("BASH PASSTHROUGH");
+    lines.push("─".repeat(40));
+    lines.push("  !<command>      Run a shell command directly");
+
+    lines.push("");
+    lines.push("KEYBOARD SHORTCUTS");
+    lines.push("─".repeat(40));
+    for (const cmd of primaryCommands) {
+      if (cmd.keybinding) {
+        lines.push(`  ${fmtKey(cmd.keybinding).padEnd(16)} ${cmd.description}`);
+      }
+    }
+    lines.push(`  ${"Escape".padEnd(16)} Interrupt current response`);
+    lines.push(`  ${"Shift+Enter".padEnd(16)} New line in input`);
 
     const output = lines.join("\n");
 
@@ -785,11 +812,9 @@ export function useLocalCommands(options: UseLocalCommandsOptions): UseLocalComm
       description: "Run diagnostics",
       handler: handleDoctor,
     },
-    {
-      name: "compact",
-      description: "Compact context (sent to Claude CLI)",
-      handler: async () => {}, // No-op, handled specially in dispatch
-    },
+    // Note: /compact and /sandbox are handled outside this registry
+    // /compact is sent to the Claude CLI (see dispatch special case)
+    // /sandbox is handled in the SDK bridge
   ];
 
   // Pre-parse keybindings for faster matching

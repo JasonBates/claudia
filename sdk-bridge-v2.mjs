@@ -153,6 +153,20 @@ async function main() {
     }
   }, 60000);
 
+  // Domains allowed through the sandbox network proxy
+  const SANDBOX_ALLOWED_DOMAINS = [
+    "github.com",
+    "api.github.com",
+    "*.githubusercontent.com",
+    "registry.npmjs.org",
+    "*.npmjs.org",
+    "pypi.org",
+    "files.pythonhosted.org",
+    "bun.sh",
+    "formulae.brew.sh",
+    "*.ghcr.io",
+  ];
+
   // Build Claude args - optionally resume a session
   function buildClaudeArgs(resumeSessionId = null) {
     const settings = { alwaysThinkingEnabled: true };
@@ -168,18 +182,7 @@ async function main() {
         enabled: true,
         autoAllowBashIfSandboxed: true,
         network: {
-          allowedDomains: [
-            "github.com",
-            "api.github.com",
-            "*.githubusercontent.com",
-            "registry.npmjs.org",
-            "*.npmjs.org",
-            "pypi.org",
-            "files.pythonhosted.org",
-            "bun.sh",
-            "formulae.brew.sh",
-            "*.ghcr.io",
-          ],
+          allowedDomains: SANDBOX_ALLOWED_DOMAINS,
         },
       };
     }
@@ -1020,6 +1023,20 @@ async function main() {
           // Other JSON messages can fall through to be sent as user messages
         } catch (innerE) {
           // Not JSON, continue to send as user message
+        }
+
+        // Handle /sandbox locally (CLI doesn't support it in stream-json mode)
+        if (text.trim().toLowerCase() === "/sandbox") {
+          const isEnabled = process.env.CLAUDIA_SANDBOX === "1";
+          const domains = isEnabled ? SANDBOX_ALLOWED_DOMAINS : [];
+          let status = isEnabled
+            ? `Sandbox: **enabled**\n\nFile writes restricted to working directory.\nNetwork proxy active with ${domains.length} allowed domain(s):\n${domains.map(d => `- ${d}`).join("\n")}`
+            : "Sandbox: **disabled**\n\nNo file write or network restrictions.";
+          status += "\n\nToggle in Settings (takes effect on next session).";
+          sendEvent("text_delta", { text: status });
+          sendEvent("result", { content: status });
+          sendEvent("done", {});
+          return;
         }
 
         sendEvent("processing", { prompt: text });

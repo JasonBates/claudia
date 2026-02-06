@@ -152,7 +152,9 @@ export function conversationReducer(
 
     case "FINISH_STREAMING": {
       // Move streaming content to messages if there's any content
-      const content = state.streaming.content;
+      // Use fallbackContent (e.g., from result events) when nothing was streamed
+      const content =
+        state.streaming.content || action.payload?.fallbackContent || "";
       const tools = [...state.tools.current];
       const blocks = [...state.streaming.blocks];
 
