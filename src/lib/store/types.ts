@@ -24,6 +24,19 @@ export interface ReviewResult {
 }
 
 /**
+ * A permission request with per-request review state (for Bot mode).
+ * Wraps PermissionRequest with review tracking so multiple requests
+ * can be queued independently.
+ */
+export interface QueuedPermission {
+  request: PermissionRequest;
+  /** True when Bot mode is reviewing this specific request */
+  isReviewing: boolean;
+  /** Result from LLM review for this specific request */
+  reviewResult: ReviewResult | null;
+}
+
+/**
  * Information about an available update.
  */
 export interface UpdateInfo {
@@ -132,12 +145,8 @@ export interface ConversationState {
 
   // === Permissions ===
   permission: {
-    /** Current permission dialog request */
-    pending: PermissionRequest | null;
-    /** True when Bot mode is reviewing a permission */
-    isReviewing: boolean;
-    /** Result from LLM review (Bot mode) */
-    reviewResult: ReviewResult | null;
+    /** FIFO queue of pending permission requests. First item is shown in UI. */
+    queue: QueuedPermission[];
   };
 
   // === Session ===
@@ -218,9 +227,7 @@ export function createInitialState(): ConversationState {
       permissionRequestId: null,
     },
     permission: {
-      pending: null,
-      isReviewing: false,
-      reviewResult: null,
+      queue: [],
     },
     session: {
       active: false,

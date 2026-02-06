@@ -91,12 +91,13 @@ function App() {
     owner,
     getCurrentMode: currentMode,
     pendingPermission: store.pendingPermission,
-    clearPendingPermission: () => store.dispatch(actions.setPendingPermission(null)),
+    enqueuePermission: (perm) => store.dispatch(actions.enqueuePermission(perm)),
+    dequeuePermission: (id) => store.dispatch(actions.dequeuePermission(id)),
     // Bot mode review state
     isReviewing: store.permissionIsReviewing,
-    setIsReviewing: (value: boolean) => store.dispatch(actions.setPermissionReviewing(value)),
+    setIsReviewing: (id: string, value: boolean) => store.dispatch(actions.setPermissionReviewing(id, value)),
     reviewResult: store.permissionReviewResult,
-    setReviewResult: (value) => store.dispatch(actions.setReviewResult(value)),
+    setReviewResult: (id: string, value) => store.dispatch(actions.setReviewResult(id, value)),
     // Open settings when API key is missing or invalid
     onBotApiKeyRequired: () => {
       setBotSettingsError("API key required for BotGuard");
@@ -476,9 +477,12 @@ function App() {
 
     // If switching away from bot mode while a review is in progress, cancel it
     if (prevMode === "bot") {
-      console.log("[CYCLE_MODE] Leaving bot mode, clearing review state");
-      store.dispatch(actions.setPermissionReviewing(false));
-      store.dispatch(actions.setReviewResult(null));
+      const pending = store.pendingPermission();
+      if (pending) {
+        console.log("[CYCLE_MODE] Leaving bot mode, clearing review state for:", pending.requestId);
+        store.dispatch(actions.setPermissionReviewing(pending.requestId, false));
+        store.dispatch(actions.setReviewResult(pending.requestId, null));
+      }
     }
 
     // Helper to set mode and persist to config + localStorage

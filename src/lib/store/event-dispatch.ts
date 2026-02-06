@@ -594,7 +594,7 @@ export function handlePermissionRequest(
           description,
           source: "control",
         };
-        ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });
+        ctx.dispatch({ type: "ENQUEUE_PERMISSION", payload: permission });
       });
     return;
   }
@@ -602,7 +602,6 @@ export function handlePermissionRequest(
   // In bot mode, trigger LLM review before deciding
   if (mode === "bot") {
     console.log("[PERMISSION] Bot mode - triggering LLM review:", toolName, "requestId:", requestId);
-    ctx.dispatch({ type: "SET_PERMISSION_REVIEWING", payload: true });
     const permission: PermissionRequest = {
       requestId,
       toolName,
@@ -610,7 +609,9 @@ export function handlePermissionRequest(
       description,
       source: "control",
     };
-    ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });
+    // Enqueue first so the item exists, then set reviewing on it
+    ctx.dispatch({ type: "ENQUEUE_PERMISSION", payload: permission });
+    ctx.dispatch({ type: "SET_PERMISSION_REVIEWING", payload: { requestId, reviewing: true } });
     return;
   }
 
@@ -623,7 +624,7 @@ export function handlePermissionRequest(
     source: "control",
   };
 
-  ctx.dispatch({ type: "SET_PENDING_PERMISSION", payload: permission });
+  ctx.dispatch({ type: "ENQUEUE_PERMISSION", payload: permission });
 }
 
 /**

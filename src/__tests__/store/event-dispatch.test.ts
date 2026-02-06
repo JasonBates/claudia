@@ -595,7 +595,7 @@ describe("Event Dispatch Functions", () => {
   // Permission Handler
   // =========================================================================
   describe("handlePermissionRequest", () => {
-    it("should dispatch SET_PENDING_PERMISSION in request mode", () => {
+    it("should dispatch ENQUEUE_PERMISSION in request mode", () => {
       const ctx = createMockContext({
         getCurrentMode: () => "request",
       });
@@ -610,7 +610,7 @@ describe("Event Dispatch Functions", () => {
       handlePermissionRequest(event as Parameters<typeof handlePermissionRequest>[0], ctx);
 
       expect(ctx.dispatch).toHaveBeenCalledWith({
-        type: "SET_PENDING_PERMISSION",
+        type: "ENQUEUE_PERMISSION",
         payload: expect.objectContaining({
           requestId: "req-123",
           toolName: "Bash",
