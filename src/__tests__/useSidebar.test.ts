@@ -7,12 +7,18 @@ import type { SessionEntry } from "../lib/types";
 vi.mock("../lib/tauri", () => ({
   listSessions: vi.fn(),
   deleteSession: vi.fn(),
+  getSessionNames: vi.fn(),
+  setSessionName: vi.fn(),
+  deleteSessionName: vi.fn(),
 }));
 
 // Import mocked functions
 import {
   listSessions as mockListSessions,
   deleteSession as mockDeleteSession,
+  getSessionNames as mockGetSessionNames,
+  setSessionName as mockSetSessionName,
+  deleteSessionName as mockDeleteSessionName,
 } from "../lib/tauri";
 
 // Mock localStorage
@@ -74,6 +80,10 @@ describe("useSidebar", () => {
     // Default: return sample sessions
     vi.mocked(mockListSessions).mockResolvedValue(sampleSessions);
     vi.mocked(mockDeleteSession).mockResolvedValue(undefined);
+    // Session names mocks
+    vi.mocked(mockGetSessionNames).mockResolvedValue({});
+    vi.mocked(mockSetSessionName).mockResolvedValue(undefined);
+    vi.mocked(mockDeleteSessionName).mockResolvedValue(undefined);
   });
 
   afterEach(() => {

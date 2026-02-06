@@ -67,6 +67,10 @@ pub fn run() {
             commands::session_list::list_sessions,
             commands::session_list::delete_session,
             commands::session_list::get_session_history,
+            // Session custom names
+            commands::session_names::get_session_names,
+            commands::session_names::set_session_name,
+            commands::session_names::delete_session_name,
             // Appearance commands
             commands::appearance_cmd::list_color_schemes,
             commands::appearance_cmd::get_scheme_colors,
@@ -74,6 +78,7 @@ pub fn run() {
             commands::directory_cmd::open_new_window,
             commands::directory_cmd::reopen_in_directory,
             commands::directory_cmd::has_cli_directory,
+            commands::directory_cmd::check_claude_code_installed,
             // Project listing (for project picker)
             commands::project_list::list_projects,
             // Bot mode commands

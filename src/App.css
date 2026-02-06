@@ -302,6 +302,111 @@ body {
   white-space: nowrap;
 }
 
+/* Sidebar header actions */
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-edit-button {
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.sidebar-edit-button:hover {
+  background: var(--bg);
+}
+
+.sidebar-edit-button.active {
+  color: var(--fg);
+  background: var(--accent);
+}
+
+/* Session item edit mode */
+.session-item.edit-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+}
+
+.session-item.edit-mode .session-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-item.editing {
+  background: var(--bg);
+}
+
+.session-delete-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: #fff;
+  background: #dc3545;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+
+.session-delete-btn:hover {
+  transform: scale(1.1);
+  background: #c82333;
+}
+
+.session-rename-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 14px;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.session-rename-btn:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.session-name-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--fg);
+  background: var(--bg-lighter);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  outline: none;
+}
+
+.session-name-input:focus {
+  box-shadow: 0 0 0 2px rgba(38, 139, 210, 0.2);
+}
+
 /* Sidebar states */
 .sidebar-loading,
 .sidebar-empty,
@@ -4182,4 +4287,153 @@ del {
   font-size: 11px;
   color: var(--fg-muted);
   opacity: 0.7;
+}
+
+/* =============================================================================
+   Claude Code Install Prompt
+   ============================================================================= */
+
+.install-prompt-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.2s ease;
+}
+
+.install-prompt-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  width: 480px;
+  max-width: 90vw;
+  padding: 32px;
+  text-align: center;
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+  animation: slideUp 0.25s ease;
+}
+
+.install-prompt-icon {
+  color: var(--accent);
+  margin-bottom: 20px;
+}
+
+.install-prompt-icon svg {
+  opacity: 0.9;
+}
+
+.install-prompt-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0 0 12px 0;
+}
+
+.install-prompt-message {
+  font-size: 14px;
+  color: var(--fg-muted);
+  line-height: 1.6;
+  margin: 0 0 24px 0;
+}
+
+.install-prompt-steps {
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+
+.install-prompt-step-header {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  margin: 0 0 12px 0;
+}
+
+.install-prompt-steps ol {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--fg-muted);
+  line-height: 1.8;
+}
+
+.install-prompt-steps li {
+  margin-bottom: 8px;
+}
+
+.install-prompt-steps li:last-child {
+  margin-bottom: 0;
+}
+
+.install-prompt-steps code {
+  font-family: "SF Mono", "Monaco", "Menlo", monospace;
+  font-size: 12px;
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--accent);
+}
+
+.install-prompt-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.install-prompt-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.install-prompt-btn.primary {
+  background: var(--accent);
+  color: white;
+  border: none;
+}
+
+.install-prompt-btn.primary:hover {
+  filter: brightness(1.1);
+}
+
+.install-prompt-btn.secondary {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.install-prompt-btn.secondary:hover {
+  background: var(--bg);
+  border-color: var(--fg-muted);
+}
+
+.install-prompt-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.install-prompt-hint {
+  font-size: 12px;
+  color: var(--fg-muted);
+  opacity: 0.7;
+  margin: 0;
+}
+
+.install-prompt-hint code {
+  font-family: "SF Mono", "Monaco", "Menlo", monospace;
+  font-size: 11px;
 }

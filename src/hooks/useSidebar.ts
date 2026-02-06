@@ -1,6 +1,6 @@
 import { createSignal, Accessor, Owner } from "solid-js";
 import type { SessionEntry } from "../lib/types";
-import { listSessions, deleteSession } from "../lib/tauri";
+import { listSessions, deleteSession, getSessionNames, setSessionName, deleteSessionName } from "../lib/tauri";
 
 // ============================================================================
 // Types
@@ -27,12 +27,14 @@ export interface UseSidebarReturn {
 
   // Session data
   sessions: Accessor<SessionEntry[]>;
+  sessionNames: Accessor<Record<string, string>>;
   isLoading: Accessor<boolean>;
   error: Accessor<string | null>;
 
   // Actions
   loadSessions: () => Promise<void>;
   handleDeleteSession: (sessionId: string) => Promise<void>;
+  handleRenameSession: (sessionId: string, name: string) => Promise<void>;
 }
 
 // ============================================================================
@@ -52,6 +54,7 @@ const STORAGE_KEY = "claudia-sidebar-collapsed";
  * - Sidebar visibility state (collapsed/expanded) with localStorage persistence
  * - Loading sessions from Claude Code's sessions-index.json
  * - Session deletion
+ * - Custom session names (stored separately in Claudia's config)
  *
  * Sessions are filtered to exclude sidechains (agent sessions) and sorted
  * by modification date (newest first).
@@ -65,6 +68,7 @@ export function useSidebar(options: UseSidebarOptions): UseSidebarReturn {
   // State signals
   const [collapsed, setCollapsed] = createSignal(loadCollapsedState());
   const [sessions, setSessions] = createSignal<SessionEntry[]>([]);
+  const [sessionNames, setSessionNames] = createSignal<Record<string, string>>({});
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
@@ -106,6 +110,19 @@ export function useSidebar(options: UseSidebarOptions): UseSidebarReturn {
   };
 
   /**
+   * Load session names from Claudia's config.
+   */
+  const loadSessionNames = async (): Promise<void> => {
+    try {
+      const names = await getSessionNames();
+      setSessionNames(names);
+    } catch (e) {
+      console.error("[SIDEBAR] Failed to load session names:", e);
+      // Non-critical error - continue without custom names
+    }
+  };
+
+  /**
    * Load sessions for the current working directory.
    */
   const loadSessions = async (): Promise<void> => {
@@ -120,7 +137,11 @@ export function useSidebar(options: UseSidebarOptions): UseSidebarReturn {
 
     try {
       console.log("[SIDEBAR] Loading sessions for:", dir);
-      const result = await listSessions(dir);
+      // Load sessions and names in parallel
+      const [result] = await Promise.all([
+        listSessions(dir),
+        loadSessionNames(),
+      ]);
       console.log("[SIDEBAR] Loaded", result.length, "sessions");
       setSessions(result);
     } catch (e) {
@@ -143,11 +164,48 @@ export function useSidebar(options: UseSidebarOptions): UseSidebarReturn {
       console.log("[SIDEBAR] Deleting session:", sessionId);
       await deleteSession(sessionId, dir);
 
+      // Also delete any custom name for this session
+      try {
+        await deleteSessionName(sessionId);
+        setSessionNames((prev) => {
+          const next = { ...prev };
+          delete next[sessionId];
+          return next;
+        });
+      } catch {
+        // Ignore errors cleaning up custom name
+      }
+
       // Remove from local state immediately for responsive UI
       setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       console.error("[SIDEBAR] Failed to delete session:", errorMsg);
+      setError(errorMsg);
+    }
+  };
+
+  /**
+   * Rename a session (set or update custom name).
+   */
+  const handleRenameSession = async (sessionId: string, name: string): Promise<void> => {
+    try {
+      console.log("[SIDEBAR] Renaming session:", sessionId, "to:", name);
+      await setSessionName(sessionId, name);
+
+      // Update local state
+      setSessionNames((prev) => {
+        const next = { ...prev };
+        if (name.trim()) {
+          next[sessionId] = name.trim();
+        } else {
+          delete next[sessionId];
+        }
+        return next;
+      });
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      console.error("[SIDEBAR] Failed to rename session:", errorMsg);
       setError(errorMsg);
     }
   };
@@ -163,11 +221,13 @@ export function useSidebar(options: UseSidebarOptions): UseSidebarReturn {
 
     // Session data
     sessions,
+    sessionNames,
     isLoading,
     error,
 
     // Actions
     loadSessions,
     handleDeleteSession,
+    handleRenameSession,
   };
 }

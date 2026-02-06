@@ -101,6 +101,7 @@ function createMockSession(): UseSessionReturn {
 function createMockSidebar(): UseSidebarReturn {
   const [collapsed, setCollapsed] = createSignal(true);
   const [sessions] = createSignal<SessionEntry[]>([]);
+  const [sessionNames] = createSignal<Record<string, string>>({});
   const [isLoading] = createSignal(false);
   const [error] = createSignal<string | null>(null);
 
@@ -109,10 +110,12 @@ function createMockSidebar(): UseSidebarReturn {
     toggleSidebar: vi.fn(() => setCollapsed((prev) => !prev)),
     openSidebar: vi.fn(() => setCollapsed(false)),
     sessions,
+    sessionNames,
     isLoading,
     error,
     loadSessions: vi.fn(),
     handleDeleteSession: vi.fn(),
+    handleRenameSession: vi.fn(),
   };
 }
 
