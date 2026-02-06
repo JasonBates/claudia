@@ -11,11 +11,13 @@ interface SettingsModalProps {
   availableSchemes: ColorSchemeInfo[];
   availableFonts: FontOption[];
   saveLocally: boolean;
+  sandboxEnabled: boolean;
   onMarginChange: (margin: number) => void;
   onFontChange: (font: string) => void;
   onFontSizeChange: (size: number) => void;
   onColorSchemeChange: (scheme: string | null) => void;
   onSaveLocallyChange: (locally: boolean) => void;
+  onSandboxEnabledChange: (enabled: boolean) => void;
   onResetDefaults: () => void;
   onClose: () => void;
   // Update props
@@ -269,6 +271,22 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
                 </div>
               </>
             )}
+          </div>
+
+          {/* Sandbox Section */}
+          <div class="settings-section">
+            <label class="settings-label">Sandbox</label>
+            <p class="settings-hint">
+              Restricts file writes to the working directory and proxies network access. Takes effect on next session.
+            </p>
+            <label class="settings-checkbox">
+              <input
+                type="checkbox"
+                checked={props.sandboxEnabled}
+                onChange={(e) => props.onSandboxEnabledChange(e.currentTarget.checked)}
+              />
+              Enable sandbox
+            </label>
           </div>
 
         </div>

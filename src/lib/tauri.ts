@@ -111,6 +111,7 @@ export interface Config {
   window_width?: number;
   window_height?: number;
   permission_mode?: string; // "auto" | "request" | "plan" | "bot"
+  sandbox_enabled?: boolean;
 }
 
 export interface ColorSchemeInfo {

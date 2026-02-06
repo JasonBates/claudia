@@ -1032,7 +1032,7 @@ async function main() {
           let status = isEnabled
             ? `Sandbox: **enabled**\n\nFile writes restricted to working directory.\nNetwork proxy active with ${domains.length} allowed domain(s):\n${domains.map(d => `- ${d}`).join("\n")}`
             : "Sandbox: **disabled**\n\nNo file write or network restrictions.";
-          status += "\n\nToggle in Settings or set `sandbox_enabled` in `.claudia/config.json`.";
+          status += "\n\nToggle in Settings (takes effect on next session).";
           sendEvent("text_delta", { text: status });
           sendEvent("result", { content: status });
           sendEvent("done", {});
