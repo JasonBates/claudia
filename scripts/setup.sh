@@ -4,6 +4,12 @@
 
 set -e
 
+# Ensure common tool paths are available (non-interactive shells like Conductor skip .zshrc)
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+# Load nvm if present
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'

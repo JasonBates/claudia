@@ -1,7 +1,7 @@
 {
     "scripts": {
-        "setup": "./scripts/setup.sh",
-        "run": "./scripts/run.sh --dev",
-        "archive": "./scripts/archive.sh"
+        "setup": "bash scripts/setup.sh",
+        "run": "bash scripts/run.sh --dev",
+        "archive": "bash scripts/archive.sh"
     }
 }

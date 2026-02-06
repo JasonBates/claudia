@@ -376,6 +376,33 @@ export async function deleteSession(sessionId: string, workingDir: string): Prom
   await invoke("delete_session", { sessionId, workingDir });
 }
 
+// ============================================================================
+// Session Custom Names
+// ============================================================================
+
+/**
+ * Get all custom session names.
+ * Returns a map of sessionId -> customName.
+ */
+export async function getSessionNames(): Promise<Record<string, string>> {
+  return await invoke<Record<string, string>>("get_session_names");
+}
+
+/**
+ * Set a custom name for a session.
+ * Pass an empty string to remove the custom name.
+ */
+export async function setSessionName(sessionId: string, name: string): Promise<void> {
+  await invoke("set_session_name", { sessionId, name });
+}
+
+/**
+ * Delete a custom name for a session.
+ */
+export async function deleteSessionName(sessionId: string): Promise<void> {
+  await invoke("delete_session_name", { sessionId });
+}
+
 /**
  * Resume a previous session by ID.
  * This restarts the Claude process with the --resume flag.
@@ -471,6 +498,26 @@ export async function reopenInDirectory(directory: string): Promise<void> {
  */
 export async function hasCliDirectory(): Promise<boolean> {
   return await invoke<boolean>("has_cli_directory");
+}
+
+/**
+ * Status of Claude Code CLI installation
+ */
+export interface ClaudeCodeStatus {
+  /** Whether Claude Code CLI is installed and accessible */
+  installed: boolean;
+  /** Version string if installed (e.g., "1.0.30") */
+  version: string | null;
+  /** Path to the claude binary if found */
+  path: string | null;
+}
+
+/**
+ * Check if Claude Code CLI is installed.
+ * Called at startup to show a friendly install message if needed.
+ */
+export async function checkClaudeCodeInstalled(): Promise<ClaudeCodeStatus> {
+  return await invoke<ClaudeCodeStatus>("check_claude_code_installed");
 }
 
 // ============================================================================

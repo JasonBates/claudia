@@ -1,5 +1,6 @@
 # Claudia
 
+[![Download for macOS](https://img.shields.io/badge/Download-v0.3.1-black?logo=apple)](https://github.com/JasonBates/claudia/releases/download/v0.3.1/Claudia_0.3.1_universal.dmg)
 [![Test](https://github.com/JasonBates/claudia/actions/workflows/test.yml/badge.svg)](https://github.com/JasonBates/claudia/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -9,7 +10,12 @@ Claude Code is powerful. The terminal is not where you want to live. Claudia wra
 
 > *Why rebuild the agent runtime when you can wrap it?*
 
-_Note: this is only a few days of development work, there are still bugs to work out, please open issues, and contribute fixes._
+<p align="center">
+  <a href="https://github.com/JasonBates/claudia/releases/latest/download/Claudia_universal.dmg">
+    <img src="https://img.shields.io/badge/⬇_Download_Claudia_for_macOS-black?style=for-the-badge&logo=apple&logoColor=white" alt="Download Claudia" height="80" />
+  </a>
+</p>
+<p align="center"><em>Requires macOS 12+ and <a href="https://docs.anthropic.com/en/docs/claude-code">Claude Code CLI</a> installed</em></p>
 
 ## Screenshots
 
@@ -67,13 +73,21 @@ Cowork wraps a sandboxed environment. Claudia wraps Claude Code itself—so you 
 
 ## Installation
 
-### Prerequisites
+### Download (Recommended)
+
+Download the latest release and drag Claudia.app to your Applications folder:
+
+**[⬇ Download Claudia for macOS](https://github.com/JasonBates/claudia/releases/latest/download/Claudia_universal.dmg)**
+
+Requires macOS 12+ and [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed.
+
+### Build from Source
+
+If you prefer to build from source, you'll need:
 
 - Node.js 18+
 - Rust toolchain
 - Claude Code CLI (`claude` command available)
-
-### Build from Source
 
 ```bash
 git clone https://github.com/JasonBates/claudia.git
