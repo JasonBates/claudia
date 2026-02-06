@@ -216,6 +216,17 @@ const SessionItem: Component<SessionItemProps> = (props) => {
         >
           <div class="session-preview">
             {truncate(displayName(), 60)}
+            {/* Rename button - inline with session name */}
+            <Show when={props.editMode}>
+              <button
+                type="button"
+                class="session-rename-btn"
+                onClick={startEditing}
+                title="Rename session"
+              >
+                ✎
+              </button>
+            </Show>
           </div>
           <div class="session-meta">
             {injectedTimestamp() && !props.customName ? (
@@ -236,18 +247,6 @@ const SessionItem: Component<SessionItemProps> = (props) => {
           </div>
         </Show>
       </div>
-
-      {/* Rename button - shown in edit mode */}
-      <Show when={props.editMode && !isEditing()}>
-        <button
-          type="button"
-          class="session-rename-btn"
-          onClick={startEditing}
-          title="Rename session"
-        >
-          ✎
-        </button>
-      </Show>
     </div>
   );
 };

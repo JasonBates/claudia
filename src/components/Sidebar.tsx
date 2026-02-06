@@ -144,6 +144,14 @@ const Sidebar: Component<SidebarProps> = (props) => {
               {editMode() ? "Done" : "Edit"}
             </button>
             <span class="sidebar-count">{props.sessions.length}</span>
+            <button
+              type="button"
+              class="sidebar-close-button"
+              onClick={props.onToggle}
+              title="Close sidebar"
+            >
+              ×
+            </button>
           </div>
         </div>
 

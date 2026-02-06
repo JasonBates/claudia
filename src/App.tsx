@@ -953,6 +953,10 @@ function App() {
     if (target.closest('.message-list')) {
       return;
     }
+    // Don't steal focus when editing session names (rename button or editing area)
+    if (target.closest('.session-rename-btn') || target.closest('.session-item.editing')) {
+      return;
+    }
     requestAnimationFrame(() => {
       commandInputRef?.focus();
     });
