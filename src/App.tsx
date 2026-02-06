@@ -477,9 +477,12 @@ function App() {
 
     // If switching away from bot mode while a review is in progress, cancel it
     if (prevMode === "bot") {
-      console.log("[CYCLE_MODE] Leaving bot mode, clearing review state");
-      store.dispatch(actions.setPermissionReviewing(false));
-      store.dispatch(actions.setReviewResult(null));
+      const pending = store.pendingPermission();
+      if (pending) {
+        console.log("[CYCLE_MODE] Leaving bot mode, clearing review state for:", pending.requestId);
+        store.dispatch(actions.setPermissionReviewing(pending.requestId, false));
+        store.dispatch(actions.setReviewResult(pending.requestId, null));
+      }
     }
 
     // Helper to set mode and persist to config + localStorage
