@@ -957,6 +957,10 @@ function App() {
     if (target.closest('.session-rename-btn') || target.closest('.session-item.editing')) {
       return;
     }
+    // Don't steal focus from project picker modal interactions
+    if (target.closest('.project-picker-overlay')) {
+      return;
+    }
     requestAnimationFrame(() => {
       commandInputRef?.focus();
     });

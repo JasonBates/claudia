@@ -67,19 +67,21 @@ const ProjectPickerModal: Component<ProjectPickerModalProps> = (props) => {
   const handleKeyDown = (e: KeyboardEvent) => {
     const projects = filteredProjects();
 
-    // QUAL-003 fix: Don't handle arrow keys when focus is in search input
-    // (allows cursor movement in text). Still handle Enter/Escape globally.
+    // QUAL-003 fix: Don't handle arrow keys when focus is in unrelated inputs
+    // (allows cursor movement in text). The project picker search input is
+    // single-line, so up/down arrows should navigate the list, not move a cursor.
     const isInInput = e.target instanceof HTMLInputElement ||
                       e.target instanceof HTMLTextAreaElement;
+    const isSearchInput = e.target === searchInputRef;
 
     switch (e.key) {
       case "ArrowDown":
-        if (isInInput) return; // Let input handle cursor
+        if (isInInput && !isSearchInput) return;
         e.preventDefault();
         setSelectedIndex((i) => Math.min(i + 1, Math.max(0, projects.length - 1)));
         break;
       case "ArrowUp":
-        if (isInInput) return; // Let input handle cursor
+        if (isInInput && !isSearchInput) return;
         e.preventDefault();
         setSelectedIndex((i) => Math.max(i - 1, 0));
         break;
@@ -131,10 +133,14 @@ const ProjectPickerModal: Component<ProjectPickerModalProps> = (props) => {
     document.removeEventListener("keydown", handleKeyDown);
   });
 
-  // Scroll selected item into view
-  const scrollToSelected = (el: HTMLDivElement) => {
-    el.scrollIntoView({ block: "nearest" });
-  };
+  // Scroll selected item into view when selection changes
+  createEffect(() => {
+    selectedIndex(); // track changes
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.project-item.selected');
+      el?.scrollIntoView({ block: "nearest" });
+    });
+  });
 
   return (
     <div class="project-picker-overlay" onClick={props.onClose}>
@@ -185,7 +191,6 @@ const ProjectPickerModal: Component<ProjectPickerModalProps> = (props) => {
 
                 return (
                   <div
-                    ref={(el) => isSelected() && scrollToSelected(el)}
                     class={`project-item ${isSelected() ? "selected" : ""} ${isCurrent() ? "current" : ""}`}
                     onClick={() => {
                       if (!isCurrent()) {
