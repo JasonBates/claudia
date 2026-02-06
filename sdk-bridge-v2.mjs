@@ -158,15 +158,29 @@ async function main() {
     const settings = { alwaysThinkingEnabled: true };
 
     // Enable SDK sandbox when CLAUDIA_SANDBOX is set
+    // Note: SDK sandbox restricts both file writes AND outbound network.
+    // The SDK always initializes allowedDomains as [], which triggers
+    // needsNetworkRestriction. We pass explicit allowedDomains so common
+    // dev domains work through the sandbox network proxy.
     if (process.env.CLAUDIA_SANDBOX === "1") {
-      debugLog("SANDBOX", "Sandbox mode enabled - restricting to working directory");
+      debugLog("SANDBOX", "Sandbox mode enabled");
       settings.sandbox = {
         enabled: true,
         autoAllowBashIfSandboxed: true,
-        allowUnsandboxedCommands: false,
         network: {
-          allowLocalBinding: true,
-        }
+          allowedDomains: [
+            "github.com",
+            "api.github.com",
+            "*.githubusercontent.com",
+            "registry.npmjs.org",
+            "*.npmjs.org",
+            "pypi.org",
+            "files.pythonhosted.org",
+            "bun.sh",
+            "formulae.brew.sh",
+            "*.ghcr.io",
+          ],
+        },
       };
     }
 
