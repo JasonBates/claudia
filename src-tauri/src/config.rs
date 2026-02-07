@@ -33,6 +33,9 @@ pub struct Config {
     // Sandbox mode: restricts Claude to only write files within the working directory
     #[serde(default = "default_sandbox_enabled")]
     pub sandbox_enabled: bool,
+    // Agent teams: enables coordinating multiple Claude instances working together
+    #[serde(default = "default_agent_teams_enabled")]
+    pub agent_teams_enabled: bool,
 }
 
 fn default_permission_mode() -> String {
@@ -65,6 +68,10 @@ fn default_bot_safety_threshold() -> f64 {
 
 fn default_sandbox_enabled() -> bool {
     true
+}
+
+fn default_agent_teams_enabled() -> bool {
+    false
 }
 
 impl Config {

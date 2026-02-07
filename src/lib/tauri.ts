@@ -112,6 +112,7 @@ export interface Config {
   window_height?: number;
   permission_mode?: string; // "auto" | "request" | "plan" | "bot"
   sandbox_enabled?: boolean;
+  agent_teams_enabled?: boolean;
 }
 
 export interface ColorSchemeInfo {

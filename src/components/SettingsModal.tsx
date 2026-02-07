@@ -12,12 +12,14 @@ interface SettingsModalProps {
   availableFonts: FontOption[];
   saveLocally: boolean;
   sandboxEnabled: boolean;
+  agentTeamsEnabled: boolean;
   onMarginChange: (margin: number) => void;
   onFontChange: (font: string) => void;
   onFontSizeChange: (size: number) => void;
   onColorSchemeChange: (scheme: string | null) => void;
   onSaveLocallyChange: (locally: boolean) => void;
   onSandboxEnabledChange: (enabled: boolean) => void;
+  onAgentTeamsEnabledChange: (enabled: boolean) => void;
   onResetDefaults: () => void;
   onClose: () => void;
   // Update props
@@ -286,6 +288,22 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
                 onChange={(e) => props.onSandboxEnabledChange(e.currentTarget.checked)}
               />
               Enable sandbox
+            </label>
+          </div>
+
+          {/* Agent Teams Section */}
+          <div class="settings-section">
+            <label class="settings-label">Agent Teams</label>
+            <p class="settings-hint">
+              Enables coordinating multiple Claude instances working together as a team. Takes effect on next session.
+            </p>
+            <label class="settings-checkbox">
+              <input
+                type="checkbox"
+                checked={props.agentTeamsEnabled}
+                onChange={(e) => props.onAgentTeamsEnabledChange(e.currentTarget.checked)}
+              />
+              Enable agent teams
             </label>
           </div>
 

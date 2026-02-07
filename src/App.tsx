@@ -1475,12 +1475,14 @@ function App() {
           availableFonts={settings.availableFonts}
           saveLocally={settings.saveLocally()}
           sandboxEnabled={settings.sandboxEnabled()}
+          agentTeamsEnabled={settings.agentTeamsEnabled()}
           onMarginChange={settings.setContentMargin}
           onFontChange={settings.setFontFamily}
           onFontSizeChange={settings.setFontSize}
           onColorSchemeChange={settings.setColorScheme}
           onSaveLocallyChange={settings.setSaveLocally}
           onSandboxEnabledChange={settings.setSandboxEnabled}
+          onAgentTeamsEnabledChange={settings.setAgentTeamsEnabled}
           onResetDefaults={settings.resetToDefaults}
           onClose={settings.closeSettings}
           currentVersion={appVersion()}

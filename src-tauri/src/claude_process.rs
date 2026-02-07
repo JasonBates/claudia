@@ -257,6 +257,15 @@ pub fn spawn_claude_process_with_resume(
         cmd.env("CLAUDIA_SANDBOX", "1");
     }
 
+    // Pass agent teams mode to bridge if enabled in config
+    if Config::load(Some(&dir_str))
+        .map(|c| c.agent_teams_enabled)
+        .unwrap_or(false)
+    {
+        rust_debug_log("SPAWN", "Agent teams enabled");
+        cmd.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+    }
+
     if let Some(session_id) = resume_session_id {
         cmd.env("CLAUDE_RESUME_SESSION", session_id);
     }
