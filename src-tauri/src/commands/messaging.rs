@@ -256,6 +256,7 @@ pub async fn send_message(
     let mut got_first_content = false;
     let mut pending_tool_count: usize = 0; // Count of regular tools awaiting results
     let mut pending_subagent_count: usize = 0; // Count of Task (subagent) tools - these get longer timeouts
+    let mut regular_tool_ids: std::collections::HashSet<String> = std::collections::HashSet::new(); // Track regular tool IDs for accurate completion tracking
     let mut pending_permission_count: usize = 0; // Count of permissions awaiting user response
     let mut subagent_tool_ids: std::collections::HashSet<String> = std::collections::HashSet::new(); // Track which tool IDs are subagents
     let mut compacting = false; // Track if compaction is in progress (can take 60+ seconds)
@@ -354,8 +355,11 @@ pub async fn send_message(
                 } = event
                 {
                     if name == "Task" {
-                        pending_subagent_count += 1;
-                        subagent_tool_ids.insert(id.clone());
+                        if subagent_tool_ids.insert(id.clone()) {
+                            pending_subagent_count += 1;
+                        } else {
+                            cmd_debug_log("TOOL", &format!("Duplicate subagent start (id={})", id));
+                        }
                         cmd_debug_log(
                             "TOOL",
                             &format!(
@@ -364,7 +368,11 @@ pub async fn send_message(
                             ),
                         );
                     } else {
-                        pending_tool_count += 1;
+                        if regular_tool_ids.insert(id.clone()) {
+                            pending_tool_count += 1;
+                        } else {
+                            cmd_debug_log("TOOL", &format!("Duplicate tool start (id={})", id));
+                        }
                         cmd_debug_log(
                             "TOOL",
                             &format!(
@@ -413,9 +421,9 @@ pub async fn send_message(
                                     id, pending_subagent_count, pending_tool_count, pending_permission_count
                                 ),
                             );
-                        } else if pending_tool_count > 0 {
+                        } else if regular_tool_ids.remove(id) {
                             // Regular tool
-                            pending_tool_count -= 1;
+                            pending_tool_count = pending_tool_count.saturating_sub(1);
                             cmd_debug_log(
                                 "TOOL",
                                 &format!(
@@ -423,24 +431,16 @@ pub async fn send_message(
                                     id, pending_subagent_count, pending_tool_count, pending_permission_count
                                 ),
                             );
+                        } else {
+                            cmd_debug_log(
+                                "TOOL",
+                                &format!(
+                                    "Tool result for unknown id={} (no pending counters changed)",
+                                    id
+                                ),
+                            );
                         }
                     }
-                }
-
-                // Text after tools means all tools are done
-                if matches!(event, ClaudeEvent::TextDelta { .. })
-                    && (pending_tool_count > 0 || pending_subagent_count > 0)
-                {
-                    cmd_debug_log(
-                        "TOOL",
-                        &format!(
-                            "All tools completed (via text) - was pending: {} subagents, {} tools",
-                            pending_subagent_count, pending_tool_count
-                        ),
-                    );
-                    pending_tool_count = 0;
-                    pending_subagent_count = 0;
-                    subagent_tool_ids.clear();
                 }
 
                 // Track compaction state (can take 60+ seconds)
@@ -540,7 +540,10 @@ pub async fn send_message(
             }
             Ok(None) => {
                 // Channel closed, process ended - clear state so next send_message triggers restart
-                cmd_debug_log("LOOP", "Channel returned None (closed) - clearing process state");
+                cmd_debug_log(
+                    "LOOP",
+                    "Channel returned None (closed) - clearing process state",
+                );
                 drop(receiver_guard); // Release lock before acquiring others
                 {
                     let mut sender_guard = sender_arc.lock().await;
