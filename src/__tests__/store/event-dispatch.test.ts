@@ -25,6 +25,9 @@ import {
   handleSubagentStart,
   handleSubagentProgress,
   handleSubagentEnd,
+  handleBgTaskRegistered,
+  handleBgTaskCompleted,
+  handleBgTaskResult,
   type EventContext,
 } from "../../lib/store/event-dispatch";
 import { createStreamingRefs } from "../../lib/store/refs";
@@ -768,6 +771,236 @@ describe("Event Dispatch Functions", () => {
           },
         },
       });
+    });
+  });
+
+  describe("background task handlers", () => {
+    it("should apply queued completion when bg_task_registered arrives", () => {
+      const ctx = createMockContext();
+      ctx.refs.pendingBgTaskCompletionsRef?.current.set("task-123", {
+        agentType: "Explore",
+        duration: 3000,
+        toolCount: 4,
+        summary: "Done",
+      });
+
+      handleBgTaskRegistered(
+        {
+          type: "bg_task_registered",
+          taskId: "task-123",
+          toolUseId: "tool-123",
+          agentType: "Explore",
+          description: "Investigate",
+        },
+        ctx
+      );
+
+      expect(ctx.dispatch).toHaveBeenCalledWith({
+        type: "UPDATE_TOOL_SUBAGENT",
+        payload: {
+          id: "tool-123",
+          subagent: expect.objectContaining({
+            status: "complete",
+            duration: 3000,
+            toolCount: 4,
+            result: "Done",
+          }),
+        },
+      });
+    });
+
+    it("should queue bg_task_completed when tool mapping is unknown", () => {
+      const ctx = createMockContext();
+
+      handleBgTaskCompleted(
+        {
+          type: "bg_task_completed",
+          taskId: "task-xyz",
+          toolUseId: undefined,
+          agentType: "Plan",
+          duration: 2000,
+          toolCount: 2,
+          summary: "Summary",
+        },
+        ctx
+      );
+
+      expect(ctx.refs.pendingBgTaskCompletionsRef?.current.get("task-xyz")).toEqual({
+        agentType: "Plan",
+        duration: 2000,
+        toolCount: 2,
+        summary: "Summary",
+      });
+    });
+
+    it("should always surface a completion message for bg_task_completed", () => {
+      const ctx = createMockContext();
+
+      handleBgTaskCompleted(
+        {
+          type: "bg_task_completed",
+          taskId: "task-msg",
+          toolUseId: undefined,
+          agentType: "Bash",
+          duration: 1000,
+          toolCount: 1,
+          summary: "Agent completed",
+        },
+        ctx
+      );
+
+      expect(ctx.dispatch).toHaveBeenCalledWith({
+        type: "ADD_MESSAGE",
+        payload: {
+          id: "bg-result-task-msg",
+          role: "assistant",
+          content: "Background (Bash)\n\nAgent completed",
+        },
+      });
+    });
+
+    it("should update tool state for bg_task_result with mapped tool", () => {
+      const ctx = createMockContext();
+      ctx.refs.bgTaskToToolUseIdRef?.current.set("task-abc", "tool-abc");
+
+      handleBgTaskResult(
+        {
+          type: "bg_task_result",
+          taskId: "task-abc",
+          toolUseId: undefined,
+          result: "Final report",
+          status: "completed",
+          agentType: "Explore",
+          duration: 9000,
+          toolCount: 8,
+        },
+        ctx
+      );
+
+      expect(ctx.dispatch).toHaveBeenCalledWith({
+        type: "UPDATE_TOOL",
+        payload: {
+          id: "tool-abc",
+          updates: {
+            result: "Final report",
+            isLoading: false,
+            autoExpanded: true,
+          },
+        },
+      });
+    });
+
+    it("should ignore late completion summary after final bg_task_result", () => {
+      const ctx = createMockContext();
+
+      handleBgTaskResult(
+        {
+          type: "bg_task_result",
+          taskId: "task-late",
+          toolUseId: undefined,
+          result: "Final output",
+          status: "completed",
+          agentType: "Explore",
+          duration: 1200,
+          toolCount: 2,
+        },
+        ctx
+      );
+
+      (ctx.dispatch as ReturnType<typeof vi.fn>).mockClear();
+
+      handleBgTaskCompleted(
+        {
+          type: "bg_task_completed",
+          taskId: "task-late",
+          toolUseId: undefined,
+          agentType: "Explore",
+          duration: 1400,
+          toolCount: 2,
+          summary: "Completed summary",
+        },
+        ctx
+      );
+
+      expect(ctx.dispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "UPDATE_MESSAGE",
+          payload: expect.objectContaining({ id: "bg-result-task-late" }),
+        })
+      );
+      expect(ctx.dispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "ADD_MESSAGE",
+          payload: expect.objectContaining({ id: "bg-result-task-late" }),
+        })
+      );
+      expect(ctx.dispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "UPDATE_TOOL",
+          payload: expect.objectContaining({
+            updates: expect.objectContaining({ result: "Completed summary" }),
+          }),
+        })
+      );
+    });
+
+    it("should keep one final background message per task across 5 interleaved tasks", () => {
+      const ctx = createMockContext();
+      const taskIds = ["task-a", "task-b", "task-c", "task-d", "task-e"];
+
+      for (const taskId of taskIds) {
+        handleBgTaskCompleted(
+          {
+            type: "bg_task_completed",
+            taskId,
+            toolUseId: undefined,
+            agentType: "Explore",
+            duration: 1000,
+            toolCount: 1,
+            summary: `Completed ${taskId}`,
+          },
+          ctx
+        );
+      }
+
+      const resultOrder = ["task-c", "task-a", "task-e", "task-b", "task-d"];
+      for (const taskId of resultOrder) {
+        handleBgTaskResult(
+          {
+            type: "bg_task_result",
+            taskId,
+            toolUseId: undefined,
+            result: `Final ${taskId}`,
+            status: "completed",
+            agentType: "Explore",
+            duration: 2000,
+            toolCount: 3,
+          },
+          ctx
+        );
+      }
+
+      const calls = (ctx.dispatch as ReturnType<typeof vi.fn>).mock.calls
+        .map(([action]) => action)
+        .filter(
+          (action) =>
+            action &&
+            (action.type === "ADD_MESSAGE" || action.type === "UPDATE_MESSAGE") &&
+            action.payload?.id?.startsWith("bg-result-")
+        );
+
+      for (const taskId of taskIds) {
+        const taskMessageId = `bg-result-${taskId}`;
+        const taskActions = calls.filter((action) => action.payload.id === taskMessageId);
+        expect(taskActions.length).toBeGreaterThan(0);
+
+        const lastTaskAction = taskActions[taskActions.length - 1];
+        const content =
+          lastTaskAction.type === "ADD_MESSAGE"
+            ? lastTaskAction.payload.content
+            : lastTaskAction.payload.updates.content;
+        expect(content).toContain(`Final ${taskId}`);
+      }
     });
   });
 

@@ -34,6 +34,9 @@ import type {
   NormalizedSubagentStartEvent,
   NormalizedSubagentProgressEvent,
   NormalizedSubagentEndEvent,
+  NormalizedBgTaskRegisteredEvent,
+  NormalizedBgTaskCompletedEvent,
+  NormalizedBgTaskResultEvent,
 } from "../claude-event-normalizer";
 import type { Action } from "./actions";
 import type { StreamingRefs } from "./types";
@@ -656,6 +659,264 @@ export function handleAskUserQuestion(
 // Subagent Handlers
 // =============================================================================
 
+function upsertBackgroundResultMessage(
+  taskId: string,
+  agentType: string,
+  result: string,
+  ctx: EventContext
+): void {
+  if (!taskId || !result) return;
+
+  const bgMessageId = `bg-result-${taskId}`;
+  const bgPrefix = agentType ? `Background (${agentType})` : "Background";
+  const bgContent = `${bgPrefix}\n\n${result}`;
+  const knownBgMessages = ctx.refs.bgResultMessageIdsRef?.current;
+
+  if (knownBgMessages?.has(taskId)) {
+    ctx.dispatch({
+      type: "UPDATE_MESSAGE",
+      payload: { id: bgMessageId, updates: { content: bgContent } },
+    });
+  } else {
+    ctx.dispatch({
+      type: "ADD_MESSAGE",
+      payload: {
+        id: bgMessageId,
+        role: "assistant",
+        content: bgContent,
+      },
+    });
+    knownBgMessages?.add(taskId);
+  }
+}
+
+function markBackgroundTaskFinalized(taskId: string, ctx: EventContext): void {
+  if (!taskId) return;
+  const finalizedSet = ctx.refs.bgFinalizedTaskIdsRef?.current;
+  const finalizedOrder = ctx.refs.bgFinalizedTaskOrderRef?.current;
+  if (!finalizedSet) return;
+
+  if (!finalizedSet.has(taskId)) {
+    finalizedSet.add(taskId);
+    finalizedOrder?.push(taskId);
+  }
+
+  const MAX_BG_FINALIZED_TASKS = 2000;
+  while ((finalizedOrder?.length || 0) > MAX_BG_FINALIZED_TASKS) {
+    const evicted = finalizedOrder?.shift();
+    if (!evicted) break;
+    finalizedSet.delete(evicted);
+  }
+}
+
+function isBackgroundTaskFinalized(taskId: string, ctx: EventContext): boolean {
+  if (!taskId) return false;
+  return ctx.refs.bgFinalizedTaskIdsRef?.current.has(taskId) ?? false;
+}
+
+function resolveBgTaskToolUseId(
+  taskId: string,
+  explicitToolUseId: string | undefined,
+  ctx: EventContext
+): string | null {
+  const taskToToolMap = ctx.refs.bgTaskToToolUseIdRef?.current;
+  const normalizedTaskId = taskId || "";
+  const normalizedToolId = explicitToolUseId || "";
+
+  if (taskToToolMap && normalizedTaskId && normalizedToolId) {
+    taskToToolMap.set(normalizedTaskId, normalizedToolId);
+  }
+
+  if (normalizedToolId) {
+    return normalizedToolId;
+  }
+
+  if (taskToToolMap && normalizedTaskId) {
+    return taskToToolMap.get(normalizedTaskId) || null;
+  }
+
+  return null;
+}
+
+function applyBgTaskCompletion(
+  toolUseId: string,
+  payload: { agentType: string; duration: number; toolCount: number; summary: string },
+  ctx: EventContext
+): void {
+  const summary = payload.summary || "";
+
+  ctx.dispatch({
+    type: "UPDATE_TOOL_SUBAGENT",
+    payload: {
+      id: toolUseId,
+      subagent: {
+        status: "complete",
+        duration: payload.duration || 0,
+        toolCount: payload.toolCount || 0,
+        result: summary || undefined,
+      },
+    },
+  });
+
+  if (summary) {
+    ctx.dispatch({
+      type: "UPDATE_TOOL",
+      payload: {
+        id: toolUseId,
+        updates: {
+          result: summary,
+          isLoading: false,
+          autoExpanded: true,
+        },
+      },
+    });
+  }
+}
+
+function applyBgTaskResult(
+  toolUseId: string,
+  payload: { result: string; agentType: string; duration: number; toolCount: number },
+  ctx: EventContext
+): void {
+  const result = payload.result || "";
+  if (result) {
+    ctx.refs.pendingResultsRef.current.set(toolUseId, {
+      result,
+      isError: false,
+    });
+  }
+
+  ctx.dispatch({
+    type: "UPDATE_TOOL_SUBAGENT",
+    payload: {
+      id: toolUseId,
+      subagent: {
+        status: "complete",
+        duration: payload.duration || 0,
+        toolCount: payload.toolCount || 0,
+        result: result || undefined,
+      },
+    },
+  });
+
+  ctx.dispatch({
+    type: "UPDATE_TOOL",
+    payload: {
+      id: toolUseId,
+      updates: {
+        result: result || undefined,
+        isLoading: false,
+        autoExpanded: true,
+      },
+    },
+  });
+}
+
+/**
+ * Handle bg_task_registered events (task_id -> tool_use_id mapping)
+ */
+export function handleBgTaskRegistered(
+  event: NormalizedBgTaskRegisteredEvent,
+  ctx: EventContext
+): void {
+  const taskId = event.taskId || "";
+  const toolUseId = resolveBgTaskToolUseId(taskId, event.toolUseId, ctx);
+
+  if (!taskId || !toolUseId) return;
+
+  const pendingCompletion = ctx.refs.pendingBgTaskCompletionsRef?.current.get(taskId);
+  if (pendingCompletion) {
+    applyBgTaskCompletion(toolUseId, pendingCompletion, ctx);
+    ctx.refs.pendingBgTaskCompletionsRef?.current.delete(taskId);
+  }
+
+  const pendingResult = ctx.refs.pendingBgTaskResultsRef?.current.get(taskId);
+  if (pendingResult) {
+    applyBgTaskResult(toolUseId, pendingResult, ctx);
+    ctx.refs.pendingBgTaskResultsRef?.current.delete(taskId);
+    upsertBackgroundResultMessage(taskId, pendingResult.agentType, pendingResult.result, ctx);
+    markBackgroundTaskFinalized(taskId, ctx);
+  }
+}
+
+/**
+ * Handle bg_task_completed events (task_notification completion)
+ */
+export function handleBgTaskCompleted(
+  event: NormalizedBgTaskCompletedEvent,
+  ctx: EventContext
+): void {
+  const taskId = event.taskId || "";
+  const completionPayload = {
+    agentType: event.agentType || "unknown",
+    duration: event.duration || 0,
+    toolCount: event.toolCount || 0,
+    summary: event.summary || "",
+  };
+
+  // Always surface completion notifications per task, even if no later
+  // bg_task_result arrives for that task.
+  if (taskId && !isBackgroundTaskFinalized(taskId, ctx)) {
+    const completionText =
+      completionPayload.summary || "Background task completed.";
+    upsertBackgroundResultMessage(
+      taskId,
+      completionPayload.agentType,
+      completionText,
+      ctx
+    );
+  }
+
+  const toolUseId = resolveBgTaskToolUseId(taskId, event.toolUseId, ctx);
+
+  if (!toolUseId) {
+    if (taskId) {
+      ctx.refs.pendingBgTaskCompletionsRef?.current.set(taskId, completionPayload);
+    }
+    return;
+  }
+
+  if (taskId && isBackgroundTaskFinalized(taskId, ctx)) {
+    return;
+  }
+
+  applyBgTaskCompletion(toolUseId, completionPayload, ctx);
+}
+
+/**
+ * Handle bg_task_result events (final task output)
+ */
+export function handleBgTaskResult(
+  event: NormalizedBgTaskResultEvent,
+  ctx: EventContext
+): void {
+  const taskId = event.taskId || "";
+  const resultPayload = {
+    result: event.result || "",
+    status: event.status || "completed",
+    agentType: event.agentType || "unknown",
+    duration: event.duration || 0,
+    toolCount: event.toolCount || 0,
+  };
+
+  // Always surface final bg task output as a dedicated message keyed by task ID.
+  // This guarantees visibility even if tool correlation misses in late/finalized paths.
+  if (taskId && resultPayload.result) {
+    upsertBackgroundResultMessage(taskId, resultPayload.agentType, resultPayload.result, ctx);
+    markBackgroundTaskFinalized(taskId, ctx);
+  }
+
+  const toolUseId = resolveBgTaskToolUseId(taskId, event.toolUseId, ctx);
+  if (!toolUseId) {
+    if (taskId) {
+      ctx.refs.pendingBgTaskResultsRef?.current.set(taskId, resultPayload);
+    }
+    return;
+  }
+
+  applyBgTaskResult(toolUseId, resultPayload, ctx);
+}
+
 /**
  * Handle subagent start events (Task tool started)
  * Events are normalized to camelCase before reaching this handler
@@ -726,6 +987,18 @@ export function handleSubagentEnd(event: NormalizedSubagentEndEvent, ctx: EventC
     return;
   }
 
+  // If subagent events race ahead of tool_start, queue the result so tool_start
+  // can apply it via existing pending result recovery logic.
+  const toolExists = taskId
+    ? ctx.getCurrentToolUses().some((t) => t.id === taskId)
+    : false;
+  if (!toolExists && taskId && result) {
+    ctx.refs.pendingResultsRef.current.set(taskId, {
+      result,
+      isError: false,
+    });
+  }
+
   ctx.dispatch({
     type: "UPDATE_TOOL_SUBAGENT",
     payload: {
@@ -738,6 +1011,23 @@ export function handleSubagentEnd(event: NormalizedSubagentEndEvent, ctx: EventC
       },
     },
   });
+
+  // Also update the Task tool's direct result/isLoading flags so output is visible
+  // even if subagent metadata is partially missing in some race paths.
+  if (taskId) {
+    ctx.dispatch({
+      type: "UPDATE_TOOL",
+      payload: {
+        id: taskId,
+        updates: {
+          result: result || undefined,
+          isLoading: false,
+          autoExpanded: true,
+        },
+      },
+    });
+  }
+
 }
 
 // =============================================================================
@@ -817,6 +1107,15 @@ export function createEventDispatcher(ctx: EventContext) {
           break;
         case "subagent_end":
           handleSubagentEnd(event, ctx);
+          break;
+        case "bg_task_registered":
+          handleBgTaskRegistered(event, ctx);
+          break;
+        case "bg_task_completed":
+          handleBgTaskCompleted(event, ctx);
+          break;
+        case "bg_task_result":
+          handleBgTaskResult(event, ctx);
           break;
       }
     });

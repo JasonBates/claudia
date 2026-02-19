@@ -72,6 +72,22 @@ export interface StreamingRefs {
   lastToolBlockIndexRef: { current: number | null };
   /** Map of tool ID to block index for O(1) lookups during UPDATE_TOOL */
   toolIdToBlockIndexRef: { current: Map<string, number> };
+  /** Background task ID -> Task tool_use_id mapping */
+  bgTaskToToolUseIdRef?: { current: Map<string, string> };
+  /** Background task completion metadata waiting for tool mapping */
+  pendingBgTaskCompletionsRef?: {
+    current: Map<string, { agentType: string; duration: number; toolCount: number; summary: string }>;
+  };
+  /** Background task result payloads waiting for tool mapping */
+  pendingBgTaskResultsRef?: {
+    current: Map<string, { result: string; status: string; agentType: string; duration: number; toolCount: number }>;
+  };
+  /** Track per-task background result message IDs for update-in-place behavior */
+  bgResultMessageIdsRef?: { current: Set<string> };
+  /** Tasks that already emitted final bg_task_result (prevents late completion overwrite) */
+  bgFinalizedTaskIdsRef?: { current: Set<string> };
+  /** Insertion order for bg finalized tasks so we can cap memory usage */
+  bgFinalizedTaskOrderRef?: { current: string[] };
 }
 
 /**

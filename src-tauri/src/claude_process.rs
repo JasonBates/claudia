@@ -834,6 +834,125 @@ fn parse_bridge_message(json: &serde_json::Value) -> Option<ClaudeEvent> {
             })
         }
 
+        "bg_task_registered" => {
+            let task_id = json
+                .get("taskId")
+                .or_else(|| json.get("task_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tool_use_id = json
+                .get("toolUseId")
+                .or_else(|| json.get("tool_use_id"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let agent_type = json
+                .get("agentType")
+                .or_else(|| json.get("agent_type"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let description = json
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            rust_debug_log(
+                "BG_TASK_REGISTERED",
+                &format!("task_id={}, tool_use_id={:?}", task_id, tool_use_id),
+            );
+            Some(ClaudeEvent::BgTaskRegistered {
+                task_id,
+                tool_use_id,
+                agent_type,
+                description,
+            })
+        }
+
+        "bg_task_completed" => {
+            let task_id = json
+                .get("taskId")
+                .or_else(|| json.get("task_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tool_use_id = json
+                .get("toolUseId")
+                .or_else(|| json.get("tool_use_id"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let agent_type = json
+                .get("agentType")
+                .or_else(|| json.get("agent_type"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let duration = json.get("duration").and_then(|v| v.as_u64()).unwrap_or(0);
+            let tool_count = json.get("toolCount").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let summary = json
+                .get("summary")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            rust_debug_log(
+                "BG_TASK_COMPLETED",
+                &format!("task_id={}, tool_use_id={:?}", task_id, tool_use_id),
+            );
+            Some(ClaudeEvent::BgTaskCompleted {
+                task_id,
+                tool_use_id,
+                agent_type,
+                duration,
+                tool_count,
+                summary,
+            })
+        }
+
+        "bg_task_result" => {
+            let task_id = json
+                .get("taskId")
+                .or_else(|| json.get("task_id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let tool_use_id = json
+                .get("toolUseId")
+                .or_else(|| json.get("tool_use_id"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let result = json
+                .get("result")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let status = json
+                .get("status")
+                .and_then(|v| v.as_str())
+                .unwrap_or("completed")
+                .to_string();
+            let agent_type = json
+                .get("agentType")
+                .or_else(|| json.get("agent_type"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let duration = json.get("duration").and_then(|v| v.as_u64()).unwrap_or(0);
+            let tool_count = json.get("toolCount").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            rust_debug_log(
+                "BG_TASK_RESULT",
+                &format!("task_id={}, tool_use_id={:?}", task_id, tool_use_id),
+            );
+            Some(ClaudeEvent::BgTaskResult {
+                task_id,
+                tool_use_id,
+                result,
+                status,
+                agent_type,
+                duration,
+                tool_count,
+            })
+        }
+
         _ => None,
     }
 }
@@ -1365,6 +1484,96 @@ mod tests {
             assert!(result.starts_with("Found"));
         } else {
             panic!("Expected SubagentEnd event");
+        }
+    }
+
+    #[test]
+    fn parse_bg_task_registered() {
+        let event = parse(json!({
+            "type": "bg_task_registered",
+            "taskId": "task_123",
+            "toolUseId": "tool_123",
+            "agentType": "Explore",
+            "description": "Investigate issue"
+        }));
+        if let Some(ClaudeEvent::BgTaskRegistered {
+            task_id,
+            tool_use_id,
+            agent_type,
+            description,
+        }) = event
+        {
+            assert_eq!(task_id, "task_123");
+            assert_eq!(tool_use_id, Some("tool_123".to_string()));
+            assert_eq!(agent_type, "Explore");
+            assert_eq!(description, "Investigate issue");
+        } else {
+            panic!("Expected BgTaskRegistered event");
+        }
+    }
+
+    #[test]
+    fn parse_bg_task_completed() {
+        let event = parse(json!({
+            "type": "bg_task_completed",
+            "taskId": "task_123",
+            "toolUseId": "tool_123",
+            "agentType": "Explore",
+            "duration": 4200,
+            "toolCount": 5,
+            "summary": "Done"
+        }));
+        if let Some(ClaudeEvent::BgTaskCompleted {
+            task_id,
+            tool_use_id,
+            agent_type,
+            duration,
+            tool_count,
+            summary,
+        }) = event
+        {
+            assert_eq!(task_id, "task_123");
+            assert_eq!(tool_use_id, Some("tool_123".to_string()));
+            assert_eq!(agent_type, "Explore");
+            assert_eq!(duration, 4200);
+            assert_eq!(tool_count, 5);
+            assert_eq!(summary, "Done");
+        } else {
+            panic!("Expected BgTaskCompleted event");
+        }
+    }
+
+    #[test]
+    fn parse_bg_task_result_with_snake_case() {
+        let event = parse(json!({
+            "type": "bg_task_result",
+            "task_id": "task_123",
+            "tool_use_id": "tool_123",
+            "result": "Final output",
+            "status": "completed",
+            "agent_type": "Explore",
+            "duration": 9000,
+            "toolCount": 8
+        }));
+        if let Some(ClaudeEvent::BgTaskResult {
+            task_id,
+            tool_use_id,
+            result,
+            status,
+            agent_type,
+            duration,
+            tool_count,
+        }) = event
+        {
+            assert_eq!(task_id, "task_123");
+            assert_eq!(tool_use_id, Some("tool_123".to_string()));
+            assert_eq!(result, "Final output");
+            assert_eq!(status, "completed");
+            assert_eq!(agent_type, "Explore");
+            assert_eq!(duration, 9000);
+            assert_eq!(tool_count, 8);
+        } else {
+            panic!("Expected BgTaskResult event");
         }
     }
 

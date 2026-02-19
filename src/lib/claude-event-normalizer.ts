@@ -220,6 +220,44 @@ export interface NormalizedSubagentEndEvent {
 }
 
 /**
+ * Background task registered event (task_id -> tool_use_id mapping)
+ */
+export interface NormalizedBgTaskRegisteredEvent {
+  type: "bg_task_registered";
+  taskId: string;
+  toolUseId: string | undefined;
+  agentType: string;
+  description: string;
+}
+
+/**
+ * Background task completed event (task_notification)
+ */
+export interface NormalizedBgTaskCompletedEvent {
+  type: "bg_task_completed";
+  taskId: string;
+  toolUseId: string | undefined;
+  agentType: string;
+  duration: number;
+  toolCount: number;
+  summary: string;
+}
+
+/**
+ * Background task final result event
+ */
+export interface NormalizedBgTaskResultEvent {
+  type: "bg_task_result";
+  taskId: string;
+  toolUseId: string | undefined;
+  result: string;
+  status: string;
+  agentType: string;
+  duration: number;
+  toolCount: number;
+}
+
+/**
  * Union of all normalized event types
  */
 export type NormalizedEvent =
@@ -244,7 +282,10 @@ export type NormalizedEvent =
   | NormalizedErrorEvent
   | NormalizedSubagentStartEvent
   | NormalizedSubagentProgressEvent
-  | NormalizedSubagentEndEvent;
+  | NormalizedSubagentEndEvent
+  | NormalizedBgTaskRegisteredEvent
+  | NormalizedBgTaskCompletedEvent
+  | NormalizedBgTaskResultEvent;
 
 // ============================================================================
 // Normalizer Function
@@ -422,6 +463,38 @@ export function normalizeClaudeEvent(event: ClaudeEvent): NormalizedEvent {
         duration: event.duration ?? 0,
         toolCount: event.tool_count ?? 0,
         result: event.result || "",
+      };
+
+    case "bg_task_registered":
+      return {
+        type: "bg_task_registered",
+        taskId: event.task_id ?? event.taskId ?? "",
+        toolUseId: event.tool_use_id ?? event.toolUseId,
+        agentType: event.agent_type ?? event.agentType ?? "unknown",
+        description: event.description || "",
+      };
+
+    case "bg_task_completed":
+      return {
+        type: "bg_task_completed",
+        taskId: event.task_id ?? event.taskId ?? "",
+        toolUseId: event.tool_use_id ?? event.toolUseId,
+        agentType: event.agent_type ?? event.agentType ?? "unknown",
+        duration: event.duration ?? 0,
+        toolCount: event.tool_count ?? 0,
+        summary: event.summary || "",
+      };
+
+    case "bg_task_result":
+      return {
+        type: "bg_task_result",
+        taskId: event.task_id ?? event.taskId ?? "",
+        toolUseId: event.tool_use_id ?? event.toolUseId,
+        result: event.result || "",
+        status: event.status || "completed",
+        agentType: event.agent_type ?? event.agentType ?? "unknown",
+        duration: event.duration ?? 0,
+        toolCount: event.tool_count ?? 0,
       };
 
     default: {

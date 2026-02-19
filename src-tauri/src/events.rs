@@ -67,6 +67,38 @@ pub enum ClaudeEvent {
         result: String,
     },
 
+    /// Background task registered (task_id -> tool_use_id mapping)
+    BgTaskRegistered {
+        task_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_use_id: Option<String>,
+        agent_type: String,
+        description: String,
+    },
+
+    /// Background task marked completed by task_notification
+    BgTaskCompleted {
+        task_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_use_id: Option<String>,
+        agent_type: String,
+        duration: u64,
+        tool_count: u32,
+        summary: String,
+    },
+
+    /// Background task final result payload (task_id scoped)
+    BgTaskResult {
+        task_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_use_id: Option<String>,
+        result: String,
+        status: String,
+        agent_type: String,
+        duration: u64,
+        tool_count: u32,
+    },
+
     /// Streaming tool input JSON
     ToolInput { json: String },
 

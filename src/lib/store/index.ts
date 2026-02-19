@@ -62,4 +62,7 @@ export {
   handleSubagentStart,
   handleSubagentProgress,
   handleSubagentEnd,
+  handleBgTaskRegistered,
+  handleBgTaskCompleted,
+  handleBgTaskResult,
 } from "./event-dispatch";

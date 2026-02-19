@@ -162,6 +162,9 @@ pub async fn send_message(
                     ClaudeEvent::SubagentEnd { .. }
                         | ClaudeEvent::SubagentProgress { .. }
                         | ClaudeEvent::SubagentStart { .. }
+                        | ClaudeEvent::BgTaskRegistered { .. }
+                        | ClaudeEvent::BgTaskCompleted { .. }
+                        | ClaudeEvent::BgTaskResult { .. }
                 ) {
                     // Forward subagent events via global emit (background task completions
                     // that arrived between pump abort and drain)
@@ -640,6 +643,9 @@ pub async fn send_message(
                         ClaudeEvent::SubagentEnd { .. }
                             | ClaudeEvent::SubagentProgress { .. }
                             | ClaudeEvent::SubagentStart { .. }
+                            | ClaudeEvent::BgTaskRegistered { .. }
+                            | ClaudeEvent::BgTaskCompleted { .. }
+                            | ClaudeEvent::BgTaskResult { .. }
                     ) {
                         cmd_debug_log("PUMP", &format!("Forwarding bg event: {:?}", event));
                         let _ = pump_app.emit("claude-bg-event", &event);

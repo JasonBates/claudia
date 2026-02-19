@@ -135,8 +135,14 @@ const SubagentTree: Component<{ subagent: SubagentInfo; fullResult?: string }> =
     return elapsedStr || "Starting";
   };
 
-  // Prefer full result from tool_result event over truncated subagent result
-  const resultText = () => props.fullResult || props.subagent.result || "";
+  // Task tools emit an initial "Async agent launched" tool_result before completion.
+  // Prefer subagent completion text over that placeholder when available.
+  const resultText = () => {
+    const fullResult = props.fullResult || "";
+    const isAsyncLaunchPlaceholder = fullResult.includes("Async agent launched successfully");
+    if (fullResult && !isAsyncLaunchPlaceholder) return fullResult;
+    return props.subagent.result || fullResult;
+  };
   const hasResult = () => !!resultText();
 
   // Truncated result preview (first ~120 chars)
