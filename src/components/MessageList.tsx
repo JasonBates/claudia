@@ -302,7 +302,9 @@ const MessageList: Component<MessageListProps> = (props) => {
                         // Render grouped Task tools in a single container with shared header
                         const toolCount = group.tools.length;
                         blockIndex += toolCount;
-                        const anyLoading = group.tools.some(t => t.tool.isLoading);
+                        const anyLoading = group.tools.some(t =>
+                          t.tool.isLoading || (t.tool.subagent && t.tool.subagent.status !== "complete")
+                        );
                         return (
                           <div class="tool-uses">
                             <div class="tool-result tool-group-container" classList={{ loading: anyLoading }}>

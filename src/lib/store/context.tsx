@@ -320,7 +320,12 @@ export const StoreProvider: ParentComponent = (props) => {
             const newSubagent = tool.subagent
               ? { ...tool.subagent, ...subagent }
               : (subagent as SubagentInfo);
-            setState("tools", "current", toolIdx, { ...tool, subagent: newSubagent });
+            const toolUpdates: Record<string, unknown> = { ...tool, subagent: newSubagent };
+            // Freeze ToolResult elapsed timer when subagent completes
+            if (subagent.status === "complete" && !tool.completedAt) {
+              toolUpdates.completedAt = Date.now();
+            }
+            setState("tools", "current", toolIdx, toolUpdates);
           }
 
           // Update streaming.blocks if found
@@ -329,9 +334,13 @@ export const StoreProvider: ParentComponent = (props) => {
             const newSubagent = toolBlock.tool.subagent
               ? { ...toolBlock.tool.subagent, ...subagent }
               : (subagent as SubagentInfo);
+            const toolUpdates: Record<string, unknown> = { ...toolBlock.tool, subagent: newSubagent };
+            if (subagent.status === "complete" && !toolBlock.tool.completedAt) {
+              toolUpdates.completedAt = Date.now();
+            }
             setState("streaming", "blocks", blockIdx, {
               type: "tool_use" as const,
-              tool: { ...toolBlock.tool, subagent: newSubagent }
+              tool: toolUpdates as unknown as ToolUse
             });
           }
 
@@ -342,10 +351,14 @@ export const StoreProvider: ParentComponent = (props) => {
             const newSubagent = toolBlock.tool.subagent
               ? { ...toolBlock.tool.subagent, ...subagent }
               : (subagent as SubagentInfo);
+            const toolUpdates: Record<string, unknown> = { ...toolBlock.tool, subagent: newSubagent };
+            if (subagent.status === "complete" && !toolBlock.tool.completedAt) {
+              toolUpdates.completedAt = Date.now();
+            }
             const newBlocks = [...msgBlocks];
             newBlocks[msgBlockIdx] = {
               type: "tool_use" as const,
-              tool: { ...toolBlock.tool, subagent: newSubagent }
+              tool: toolUpdates as unknown as ToolUse
             };
             setState("messages", msgIdx, "contentBlocks", newBlocks);
           }
@@ -353,7 +366,7 @@ export const StoreProvider: ParentComponent = (props) => {
         return;
       }
 
-      // All other actions go through reducer + reconcile
+      // All other actions go through reducer + reconcile.
       const newState = conversationReducer(state, action);
       setState(reconcile(newState));
     });

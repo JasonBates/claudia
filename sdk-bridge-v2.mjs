@@ -134,24 +134,22 @@ async function main() {
 
   // Subagent tracking state
   let activeSubagents = new Map();  // tool_use_id -> subagentInfo
+  let bgAgentMap = new Map();       // SDK agentId -> tool_use_id (for task_notification matching)
+  let mainResultSent = false;       // True after main conversation result; suppresses bg agent cost/stats
+  let completedBgAgents = new Map(); // tool_use_id -> {agentType, duration, toolCount} for bg result merge
+  let safetyNetTimer = null;        // setTimeout ref for bg agent safety net (cancelled on new message)
   // No stack - use Map ordering for oldest-first attribution
   let taskInputBuffer = "";         // Accumulate JSON for Task tool input parsing
+
+  // Early done tracking — send done on message_stop instead of waiting for CLI result.
+  // The CLI holds the result message while bg agents are running, causing a 6+ second
+  // streaming timeout delay. By sending done on message_stop, we unblock the user immediately.
+  let lastStopReason = null;        // stop_reason from most recent message_delta
+  let pendingCliResults = 0;        // Count of CLI result messages to suppress (sent early done)
 
   // Buffer limits to prevent unbounded memory growth
   const MAX_TASK_INPUT_SIZE = 1024 * 1024;  // 1MB limit for task input buffer
   const MAX_PENDING_MESSAGES = 100;          // Max queued messages during respawn
-  const SUBAGENT_TTL_MS = 5 * 60 * 1000;     // 5 minutes TTL for stale subagents
-
-  // Periodic cleanup of stale subagents
-  setInterval(() => {
-    const now = Date.now();
-    for (const [id, info] of activeSubagents) {
-      if (now - info.startTime > SUBAGENT_TTL_MS) {
-        debugLog("CLEANUP", `Removing stale subagent: ${id}`);
-        activeSubagents.delete(id);
-      }
-    }
-  }, 60000);
 
   // Domains allowed through the sandbox network proxy
   const SANDBOX_ALLOWED_DOMAINS = [
@@ -348,9 +346,28 @@ async function main() {
         break;
 
       case "message_delta":
+        lastStopReason = event.delta?.stop_reason || null;
         if (event.delta?.stop_reason === "tool_use") {
           sendEvent("tool_pending", {});
         }
+        break;
+
+      case "message_stop":
+        // When streaming is complete and the turn is ending (not tool_use),
+        // send done immediately to unblock the user. The CLI holds the result
+        // message while background agents are running, causing the Rust main
+        // loop to hit its streaming timeout (6 seconds). By sending done here,
+        // the main loop breaks instantly.
+        if (lastStopReason === "end_turn") {
+          sendEvent("done", {});
+          pendingCliResults++;
+          debugLog("EARLY_DONE", {
+            pendingCliResults,
+            activeSubagents: activeSubagents.size,
+            reason: "message_stop with end_turn"
+          });
+        }
+        lastStopReason = null;
         break;
 
       case "message_start":
@@ -397,6 +414,8 @@ async function main() {
     // Reset state for new process
     readySent = false;
     isInterrupting = false;
+    pendingCliResults = 0;
+    lastStopReason = null;
 
     claude = spawn(claudePath, buildClaudeArgs(resumeSessionId), {
       stdio: ["pipe", "pipe", "pipe"],
@@ -468,10 +487,40 @@ async function main() {
                 preTokens: preTokens,
                 postTokens: postTokens
               });
+            } else if (msg.subtype === "task_notification" && msg.status === "completed") {
+              // Background agent completed — map SDK agentId back to tool_use_id
+              const sdkAgentId = msg.task_id;
+              const toolUseId = bgAgentMap.get(sdkAgentId);
+              if (toolUseId && activeSubagents.has(toolUseId)) {
+                const subagent = activeSubagents.get(toolUseId);
+                const duration = Date.now() - subagent.startTime;
+                sendEvent("subagent_end", {
+                  id: toolUseId,
+                  agentType: subagent.agentType || "unknown",
+                  duration,
+                  toolCount: subagent.nestedToolCount,
+                  result: msg.summary || ""
+                });
+                debugLog("SUBAGENT_END_TASK_NOTIFY", { id: toolUseId, agentId: sdkAgentId, duration });
+                // Preserve timer data for the upcoming bg agent result (second subagent_end)
+                // Map preserves insertion order for FIFO matching with bg result events
+                completedBgAgents.set(toolUseId, {
+                  agentType: subagent.agentType || "unknown",
+                  duration,
+                  toolCount: subagent.nestedToolCount
+                });
+                activeSubagents.delete(toolUseId);
+                bgAgentMap.delete(sdkAgentId);
+              }
             }
             break;
 
           case "stream_event":
+            // After main result sent, suppress stream events while bg agents still
+            // have pending results (their internal text would create unwanted messages).
+            // Once all bg results are consumed, allow stream events through — these are
+            // Claude's synthesis response summarizing the agent results.
+            if (mainResultSent && (completedBgAgents.size > 0 || activeSubagents.size > 0)) break;
             handleStreamEvent(msg.event, msg.session_id);
             break;
 
@@ -550,25 +599,38 @@ async function main() {
                   // Check if this completes a subagent (Task tool)
                   const completedToolId = item.tool_use_id;
                   if (completedToolId && activeSubagents.has(completedToolId)) {
-                    const subagent = activeSubagents.get(completedToolId);
-                    subagent.status = "complete";
-                    const duration = Date.now() - subagent.startTime;
+                    const resultText = typeof item.content === 'string' ? item.content : JSON.stringify(item.content);
 
-                    sendEvent("subagent_end", {
-                      id: completedToolId,
-                      agentType: subagent.agentType || "unknown",
-                      duration: duration,
-                      toolCount: subagent.nestedToolCount,
-                      result: (typeof item.content === 'string' ? item.content : JSON.stringify(item.content)).slice(0, 500)
-                    });
-                    debugLog("SUBAGENT_END_FROM_USER", {
-                      id: completedToolId,
-                      agentType: subagent.agentType,
-                      duration,
-                      toolCount: subagent.nestedToolCount
-                    });
+                    // Background agents return "Async agent launched successfully" immediately.
+                    // Don't mark as complete — keep in activeSubagents so the real completion
+                    // (arriving later via background pump) fires a proper subagent_end.
+                    if (resultText.includes("Async agent launched successfully")) {
+                      const agentIdMatch = resultText.match(/agentId:\s*([a-f0-9]+)/);
+                      if (agentIdMatch) {
+                        bgAgentMap.set(agentIdMatch[1], completedToolId);
+                      }
+                      debugLog("SUBAGENT_ASYNC_LAUNCHED_FROM_USER", { id: completedToolId, agentId: agentIdMatch?.[1] });
+                    } else {
+                      const subagent = activeSubagents.get(completedToolId);
+                      subagent.status = "complete";
+                      const duration = Date.now() - subagent.startTime;
 
-                    activeSubagents.delete(completedToolId);
+                      sendEvent("subagent_end", {
+                        id: completedToolId,
+                        agentType: subagent.agentType || "unknown",
+                        duration: duration,
+                        toolCount: subagent.nestedToolCount,
+                        result: resultText.slice(0, 10000)
+                      });
+                      debugLog("SUBAGENT_END_FROM_USER", {
+                        id: completedToolId,
+                        agentType: subagent.agentType,
+                        duration,
+                        toolCount: subagent.nestedToolCount
+                      });
+
+                      activeSubagents.delete(completedToolId);
+                    }
                   }
 
                   sendEvent("tool_result", {
@@ -598,25 +660,38 @@ async function main() {
 
             // Check if this completes a subagent (Task tool)
             if (activeSubagents.has(completedToolId)) {
-              const subagent = activeSubagents.get(completedToolId);
-              subagent.status = "complete";
-              const duration = Date.now() - subagent.startTime;
+              const resultText = (msg.content || msg.output || "");
 
-              sendEvent("subagent_end", {
-                id: completedToolId,
-                agentType: subagent.agentType || "unknown",
-                duration: duration,
-                toolCount: subagent.nestedToolCount,
-                result: (msg.content || msg.output || "").slice(0, 500)
-              });
-              debugLog("SUBAGENT_END", {
-                id: completedToolId,
-                agentType: subagent.agentType,
-                duration,
-                toolCount: subagent.nestedToolCount
-              });
+              // Background agents return "Async agent launched successfully" immediately.
+              // Don't mark as complete — keep in activeSubagents so the real completion
+              // (arriving later via background pump) fires a proper subagent_end.
+              if (resultText.includes("Async agent launched successfully")) {
+                const agentIdMatch = resultText.match(/agentId:\s*([a-f0-9]+)/);
+                if (agentIdMatch) {
+                  bgAgentMap.set(agentIdMatch[1], completedToolId);
+                }
+                debugLog("SUBAGENT_ASYNC_LAUNCHED", { id: completedToolId, agentId: agentIdMatch?.[1] });
+              } else {
+                const subagent = activeSubagents.get(completedToolId);
+                subagent.status = "complete";
+                const duration = Date.now() - subagent.startTime;
 
-              activeSubagents.delete(completedToolId);
+                sendEvent("subagent_end", {
+                  id: completedToolId,
+                  agentType: subagent.agentType || "unknown",
+                  duration: duration,
+                  toolCount: subagent.nestedToolCount,
+                  result: resultText.slice(0, 10000)
+                });
+                debugLog("SUBAGENT_END", {
+                  id: completedToolId,
+                  agentType: subagent.agentType,
+                  duration,
+                  toolCount: subagent.nestedToolCount
+                });
+
+                activeSubagents.delete(completedToolId);
+              }
             }
 
             // Include currentToolId so frontend can match result to tool
@@ -664,6 +739,70 @@ async function main() {
               break;
             }
 
+            // Suppress late CLI MAIN result when we already sent early done on message_stop.
+            // The CLI holds result messages while bg agents run. We sent done early to
+            // unblock the user, so this late result would cause duplicate done/result events
+            // or prematurely terminate a newer turn's streaming loop.
+            // Only suppress when mainResultSent is false — if it's true, this is a bg agent
+            // result that should fall through to the bg agent handler below.
+            if (pendingCliResults > 0 && !mainResultSent) {
+              pendingCliResults--;
+              mainResultSent = true;  // Enable bg agent result handling
+              debugLog("LATE_CLI_RESULT_SUPPRESSED", {
+                cost: msg.total_cost_usd,
+                duration: msg.duration_ms,
+                remaining: pendingCliResults
+              });
+              // Still set up safety net for bg agents
+              if (activeSubagents.size > 0) {
+                debugLog("SUBAGENT_DEFERRED_SAFETY_NET", { pending: activeSubagents.size, ids: [...activeSubagents.keys()] });
+                safetyNetTimer = setTimeout(() => {
+                  safetyNetTimer = null;
+                  if (activeSubagents.size > 0) {
+                    debugLog("SUBAGENT_SAFETY_NET_FIRING", { remaining: activeSubagents.size, ids: [...activeSubagents.keys()] });
+                    for (const [id, info] of activeSubagents) {
+                      const duration = Date.now() - info.startTime;
+                      sendEvent("subagent_end", {
+                        id,
+                        agentType: info.agentType || "unknown",
+                        duration,
+                        toolCount: info.nestedToolCount,
+                        result: ""
+                      });
+                      debugLog("SUBAGENT_END_SAFETY_NET", { id, agentType: info.agentType, duration });
+                    }
+                    activeSubagents.clear();
+                    bgAgentMap.clear();
+                  }
+                }, 120000); // 2 minute safety net
+              }
+              break;
+            }
+
+            // Bg agent turn result — skip cost/stats but extract result text
+            // The bg pump only forwards subagent events, so no Done needed here.
+            // The subagent_end event carries the result text directly.
+            if (mainResultSent) {
+              // Pop first entry from completedBgAgents (Map preserves insertion order = FIFO)
+              const firstEntry = completedBgAgents.entries().next().value;
+              if (firstEntry && msg.result) {
+                const [bgToolId, preserved] = firstEntry;
+                sendEvent("subagent_end", {
+                  id: bgToolId,
+                  agentType: preserved.agentType || "unknown",
+                  duration: preserved.duration || 0,
+                  toolCount: preserved.toolCount || 0,
+                  result: msg.result.slice(0, 2000)
+                });
+                completedBgAgents.delete(bgToolId);
+                debugLog("BG_AGENT_RESULT_UPDATE", { id: bgToolId, resultLen: msg.result.length });
+              } else {
+                debugLog("BG_AGENT_RESULT_SKIPPED", { cost: msg.total_cost_usd, duration: msg.duration_ms });
+              }
+              break;
+            }
+            mainResultSent = true;
+
             // Extract token usage
             const usage = msg.usage || {};
             // Context = input + cache_read + cache_creation (consistent with message_start)
@@ -672,6 +811,31 @@ async function main() {
                                 (usage.cache_read_input_tokens || 0) +
                                 (usage.cache_creation_input_tokens || 0);
             const outputTokens = usage.output_tokens || 0;
+
+            // Set a delayed safety net for bg agents in case task_notification never arrives.
+            // task_notification events arrive after result and complete agents individually.
+            if (activeSubagents.size > 0) {
+              debugLog("SUBAGENT_DEFERRED_SAFETY_NET", { pending: activeSubagents.size, ids: [...activeSubagents.keys()] });
+              safetyNetTimer = setTimeout(() => {
+                safetyNetTimer = null;
+                if (activeSubagents.size > 0) {
+                  debugLog("SUBAGENT_SAFETY_NET_FIRING", { remaining: activeSubagents.size, ids: [...activeSubagents.keys()] });
+                  for (const [id, info] of activeSubagents) {
+                    const duration = Date.now() - info.startTime;
+                    sendEvent("subagent_end", {
+                      id,
+                      agentType: info.agentType || "unknown",
+                      duration,
+                      toolCount: info.nestedToolCount,
+                      result: ""
+                    });
+                    debugLog("SUBAGENT_END_SAFETY_NET", { id, agentType: info.agentType, duration });
+                  }
+                  activeSubagents.clear();
+                  bgAgentMap.clear();
+                }
+              }, 120000); // 2 minute safety net
+            }
 
             // Note: Rust expects camelCase, then serializes to TypeScript as snake_case
             sendEvent("result", {
@@ -779,6 +943,16 @@ async function main() {
       } else {
         messageContent = `[${dateTime}] ${content}`;
       }
+    }
+
+    // Reset flags so the next result event is treated as the main conversation result
+    mainResultSent = false;
+    pendingCliResults = 0;
+    lastStopReason = null;
+    completedBgAgents.clear();
+    if (safetyNetTimer) {
+      clearTimeout(safetyNetTimer);
+      safetyNetTimer = null;
     }
 
     const msg = JSON.stringify({
