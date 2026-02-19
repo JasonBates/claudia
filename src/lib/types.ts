@@ -67,6 +67,7 @@ export interface SubagentInfo {
   duration?: number;           // Calculated on completion (ms)
   nestedTools: SubagentNestedTool[];  // Tools executed within (if streamed)
   toolCount?: number;          // Total tool count from result (nested tools aren't always streamed)
+  result?: string;             // Final result text from subagent (up to 500 chars)
 }
 
 /**

@@ -2,7 +2,7 @@
 
 use std::sync::atomic::Ordering;
 
-use tauri::{ipc::Channel, State};
+use tauri::{ipc::Channel, AppHandle, Emitter, State};
 use tokio::time::{timeout, Duration};
 
 use super::{cmd_debug_log, AppState};
@@ -107,10 +107,20 @@ pub async fn send_message(
     message: String,
     channel: Channel<ClaudeEvent>,
     state: State<'_, AppState>,
+    app: AppHandle,
 ) -> Result<(), String> {
     // Safe UTF-8 truncation for logging
     let msg_preview: String = message.chars().take(50).collect();
     cmd_debug_log("SEND", &format!("Message: {}", msg_preview));
+
+    // Cancel background event pump from previous response
+    {
+        let mut pump = state.bg_pump_handle.lock().await;
+        if let Some(h) = pump.take() {
+            cmd_debug_log("PUMP", "Cancelling previous background event pump");
+            h.abort();
+        }
+    }
 
     // Capture our generation number - newer requests will supersede this one
     // This prevents concurrent event loops from competing for events
@@ -146,6 +156,17 @@ pub async fn send_message(
                 ) {
                     cmd_debug_log("DRAIN", &format!("Forwarding event: {:?}", event));
                     let _ = channel.send(event);
+                    forwarded += 1;
+                } else if matches!(
+                    &event,
+                    ClaudeEvent::SubagentEnd { .. }
+                        | ClaudeEvent::SubagentProgress { .. }
+                        | ClaudeEvent::SubagentStart { .. }
+                ) {
+                    // Forward subagent events via global emit (background task completions
+                    // that arrived between pump abort and drain)
+                    cmd_debug_log("DRAIN", &format!("Forwarding bg event: {:?}", event));
+                    let _ = app.emit("claude-bg-event", &event);
                     forwarded += 1;
                 } else {
                     if matches!(&event, ClaudeEvent::Closed { .. }) {
@@ -581,6 +602,59 @@ pub async fn send_message(
     }
 
     cmd_debug_log("DONE", &format!("Total events received: {}", event_count));
+
+    // Spawn background pump for late-arriving events
+    // (e.g., background tasks completing after Done)
+    {
+        let pump_receiver = state.receiver.clone();
+        let pump_app = app.clone();
+        let handle = tokio::spawn(async move {
+            cmd_debug_log("PUMP", "Background event pump started");
+            loop {
+                let event = {
+                    let mut guard = pump_receiver.lock().await;
+                    match guard.as_mut() {
+                        Some(rx) => {
+                            match timeout(Duration::from_millis(500), rx.recv_event()).await {
+                                Ok(Some(event)) => Some(event),
+                                Ok(None) => {
+                                    cmd_debug_log("PUMP", "Channel closed, pump exiting");
+                                    return;
+                                }
+                                Err(_) => None, // Timeout, loop again
+                            }
+                        }
+                        None => {
+                            cmd_debug_log("PUMP", "No receiver, pump exiting");
+                            return;
+                        }
+                    }
+                }; // Lock released here (RAII)
+
+                if let Some(event) = event {
+                    // Only forward subagent-related events from the background pump.
+                    // Other events (Done, TextDelta, Result, etc.) could interfere
+                    // with a new request the user has started since the main loop ended.
+                    if matches!(
+                        &event,
+                        ClaudeEvent::SubagentEnd { .. }
+                            | ClaudeEvent::SubagentProgress { .. }
+                            | ClaudeEvent::SubagentStart { .. }
+                    ) {
+                        cmd_debug_log("PUMP", &format!("Forwarding bg event: {:?}", event));
+                        let _ = pump_app.emit("claude-bg-event", &event);
+                    } else {
+                        cmd_debug_log("PUMP", &format!("Filtering out non-subagent bg event: {:?}", event));
+                    }
+                }
+            }
+        });
+
+        let mut pump = state.bg_pump_handle.lock().await;
+        *pump = Some(handle);
+        cmd_debug_log("PUMP", "Background event pump spawned");
+    }
+
     Ok(())
 }
 

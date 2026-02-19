@@ -2,11 +2,12 @@ import { createSignal, createEffect, onMount, onCleanup, Show, getOwner } from "
 import { batch, runWithOwner } from "solid-js";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { emitTo } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { readFile, readTextFile } from "@tauri-apps/plugin-fs";
 import MessageList from "./components/MessageList";
 import CommandInput, { CommandInputHandle } from "./components/CommandInput";
 import TodoPanel from "./components/TodoPanel";
+
 import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel";
 import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
@@ -50,6 +51,8 @@ function App() {
 
   // Ref to track todo panel hide timer (so it can be cancelled)
   let todoHideTimerRef: ReturnType<typeof setTimeout> | null = null;
+
+
 
   // ============================================================================
   // Store - Single Source of Truth
@@ -968,6 +971,8 @@ function App() {
 
   // Tauri drag/drop unlisten function
   let unlistenDragDrop: (() => void) | undefined;
+  // Background event listener unlisten function
+  let unlistenBgEvent: (() => void) | undefined;
 
   // Helper to get media type from file extension
   const getMediaTypeFromPath = (path: string): string | null => {
@@ -1186,6 +1191,29 @@ function App() {
       console.error("[MOUNT] Failed to register Tauri drag/drop:", err);
     }
 
+    // Listen for background events (late-arriving subagent completions, etc.)
+    // These arrive via Tauri's global event system from the background pump in Rust.
+    // handleEvent dispatches to event handlers which update both tool state and agent tracker.
+    try {
+      unlistenBgEvent = await listen<ClaudeEvent>("claude-bg-event", (tauriEvent) => {
+        const event = tauriEvent.payload;
+        console.log("[BG_EVENT] Received:", event.type);
+
+        if (owner) {
+          runWithOwner(owner, () => {
+            batch(() => {
+              handleEvent(event);
+            });
+          });
+        } else {
+          handleEvent(event);
+        }
+      });
+      console.log("[MOUNT] Background event listener registered");
+    } catch (err) {
+      console.error("[MOUNT] Failed to register background event listener:", err);
+    }
+
     // Check if Claude Code CLI is installed before proceeding
     console.log("[MOUNT] Checking for Claude Code CLI...");
     const claudeStatus = await checkClaudeCodeInstalled();
@@ -1252,6 +1280,7 @@ function App() {
     window.removeEventListener("keydown", handleKeyDown, true);
     document.removeEventListener("click", handleRefocusClick, true);
     unlistenDragDrop?.();
+    unlistenBgEvent?.();
     if (updateCheckInterval) {
       clearInterval(updateCheckInterval);
     }

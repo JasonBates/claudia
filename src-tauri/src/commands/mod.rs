@@ -57,6 +57,10 @@ pub struct AppState {
     pub session_id: String,
     /// Monotonic counter to detect superseded requests (prevents concurrent event loop hangs)
     pub request_generation: AtomicU64,
+    /// Handle to background event pump task
+    /// Reads late-arriving events (e.g., background task completions) between send_message calls
+    /// and forwards them to the frontend via Tauri's global event system
+    pub bg_pump_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl AppState {
@@ -97,6 +101,7 @@ impl AppState {
             has_cli_directory,
             session_id,
             request_generation: AtomicU64::new(0),
+            bg_pump_handle: Arc::new(Mutex::new(None)),
         }
     }
 }

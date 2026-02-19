@@ -94,6 +94,7 @@ export interface EventContext {
 
   /** Get current tool uses (for race condition handling) */
   getCurrentToolUses: () => ToolUse[];
+
 }
 
 // =============================================================================
@@ -664,12 +665,13 @@ export function handleSubagentStart(
   ctx: EventContext
 ): void {
   const taskId = event.id || "";
+  const now = Date.now();
 
   const subagentInfo: SubagentInfo = {
     agentType: event.agentType || "unknown",
     description: event.description || "",
     status: "running",
-    startTime: Date.now(),
+    startTime: now,
     nestedTools: [],
   };
 
@@ -715,8 +717,14 @@ export function handleSubagentProgress(
  */
 export function handleSubagentEnd(event: NormalizedSubagentEndEvent, ctx: EventContext): void {
   const taskId = event.id || "";
-  const duration = event.duration || 0;
-  const toolCount = event.toolCount || 0;
+  const result = event.result || "";
+
+  // Safety net: background agents return "Async agent launched successfully"
+  // immediately — the bridge now skips emitting subagent_end for these,
+  // but guard here too in case one slips through.
+  if (result.includes("Async agent launched successfully")) {
+    return;
+  }
 
   ctx.dispatch({
     type: "UPDATE_TOOL_SUBAGENT",
@@ -724,8 +732,9 @@ export function handleSubagentEnd(event: NormalizedSubagentEndEvent, ctx: EventC
       id: taskId,
       subagent: {
         status: "complete",
-        duration,
-        toolCount,
+        duration: event.duration || 0,
+        toolCount: event.toolCount || 0,
+        result: result || undefined,
       },
     },
   });

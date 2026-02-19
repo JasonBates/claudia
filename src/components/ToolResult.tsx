@@ -96,13 +96,15 @@ const formatToolName = (name: string): string => {
 };
 
 // Special renderer for Task (subagent) tools
-const SubagentTree: Component<{ subagent: SubagentInfo }> = (props) => {
+const SubagentTree: Component<{ subagent: SubagentInfo; fullResult?: string }> = (props) => {
+  const [resultExpanded, setResultExpanded] = createSignal(false);
   const isRunning = () => props.subagent.status !== "complete";
 
   // Elapsed time - derived from global tick, all timers update together
+  // Clamp to 0: globalTick can be up to ~1s stale when a subagent first starts
   const elapsed = () => {
     if (!props.subagent.startTime) return 0;
-    return globalTick() - props.subagent.startTime;
+    return Math.max(0, globalTick() - props.subagent.startTime);
   };
 
   // Nested tools streamed in real-time (may be empty if subagent tools aren't streamed)
@@ -133,6 +135,17 @@ const SubagentTree: Component<{ subagent: SubagentInfo }> = (props) => {
     return elapsedStr || "Starting";
   };
 
+  // Prefer full result from tool_result event over truncated subagent result
+  const resultText = () => props.fullResult || props.subagent.result || "";
+  const hasResult = () => !!resultText();
+
+  // Truncated result preview (first ~120 chars)
+  const resultPreview = () => {
+    const r = resultText();
+    if (r.length <= 120) return r;
+    return r.slice(0, 120) + "...";
+  };
+
   return (
     <div class="subagent-tree" classList={{ complete: props.subagent.status === "complete" }}>
       <div class="subagent-header">
@@ -143,6 +156,14 @@ const SubagentTree: Component<{ subagent: SubagentInfo }> = (props) => {
         </Show>
         <span class="subagent-status">{statusText()}</span>
         <span class="subagent-type">{props.subagent.agentType}</span>
+        <Show when={hasResult()}>
+          <button
+            class="tool-toggle-btn"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setResultExpanded(!resultExpanded()); }}
+          >
+            {resultExpanded() ? "\u2212" : "+"}
+          </button>
+        </Show>
       </div>
       <div class="subagent-branch">
         <span class="tree-char">└─</span>
@@ -162,6 +183,20 @@ const SubagentTree: Component<{ subagent: SubagentInfo }> = (props) => {
           </For>
         </div>
       </Show>
+      <Show when={hasResult() && !isRunning()}>
+        <Show when={resultExpanded()} fallback={
+          <div
+            class="subagent-result-preview"
+            onClick={() => setResultExpanded(true)}
+          >
+            {resultPreview()}
+          </div>
+        }>
+          <div class="subagent-result-full">
+            <MessageContent content={resultText()} />
+          </div>
+        </Show>
+      </Show>
     </div>
   );
 };
@@ -171,15 +206,30 @@ const ToolResult: Component<ToolResultProps> = (props) => {
   const [userOverride, setUserOverride] = createSignal<boolean | null>(null);
   const [showImageModal, setShowImageModal] = createSignal(false);
 
+  // For Task tools, "loading" means the subagent is still running,
+  // not just whether the tool_result has arrived
+  const isEffectivelyLoading = () => {
+    if (props.subagent && props.subagent.status !== "complete") return true;
+    return props.isLoading || false;
+  };
+
   // Elapsed time - updates every second via globalTick
   const elapsed = () => {
-    if (!props.startedAt) return null;
-    if (props.completedAt) {
-      // Show final duration
-      return props.completedAt - props.startedAt;
+    // Task tools with subagent: derive from subagent lifecycle
+    if (props.subagent) {
+      if (!props.subagent.startTime) return null;
+      if (props.subagent.status === "complete") {
+        // Use reported duration if available, otherwise compute from completedAt
+        if (props.subagent.duration) return props.subagent.duration;
+        return props.completedAt ? Math.max(0, props.completedAt - props.subagent.startTime) : 0;
+      }
+      // Still running — tick from subagent start
+      return Math.max(0, globalTick() - props.subagent.startTime);
     }
-    // Show live elapsed time while loading
-    return globalTick() - props.startedAt;
+    // Non-subagent tools: existing behavior
+    if (!props.startedAt) return null;
+    if (props.completedAt) return Math.max(0, props.completedAt - props.startedAt);
+    return Math.max(0, globalTick() - props.startedAt);
   };
 
   // Format elapsed time for display
@@ -356,7 +406,7 @@ const ToolResult: Component<ToolResultProps> = (props) => {
   if (props.grouped && isTaskByName()) {
     // Has subagent data → show SubagentTree
     if (props.subagent) {
-      return <SubagentTree subagent={props.subagent} />;
+      return <SubagentTree subagent={props.subagent} fullResult={props.result} />;
     }
     // No subagent but has result → Task errored or completed without spawning subagent
     // Fall through to normal ToolResult rendering (don't return early)
@@ -388,9 +438,9 @@ const ToolResult: Component<ToolResultProps> = (props) => {
   }
 
   return (
-    <div class="tool-result" classList={{ expanded: isExpanded(), loading: props.isLoading }}>
+    <div class="tool-result" classList={{ expanded: isExpanded(), loading: isEffectivelyLoading() }}>
       <div class="tool-header">
-        <span class="tool-icon" classList={{ complete: !props.isLoading }}>{props.isLoading ? "◐" : "✓"}</span>
+        <span class="tool-icon" classList={{ complete: !isEffectivelyLoading() }}>{isEffectivelyLoading() ? "◐" : "✓"}</span>
         <span class="tool-name">{displayName()}</span>
         <Show when={elapsedText()}>
           <span class="tool-elapsed" classList={{ loading: props.isLoading }}>{elapsedText()}</span>
@@ -398,7 +448,7 @@ const ToolResult: Component<ToolResultProps> = (props) => {
         <Show when={hasInput()}>
           <span class="tool-input-preview">{inputPreview()}</span>
         </Show>
-        <Show when={!props.isLoading && (hasInput() || props.result)}>
+        <Show when={!isEffectivelyLoading() && (hasInput() || props.result)}>
           <button
             class="tool-toggle-btn refocus-after"
             onClick={toggleExpanded}
@@ -416,7 +466,7 @@ const ToolResult: Component<ToolResultProps> = (props) => {
 
       {/* Special rendering for Task (subagent) - show tree view */}
       <Show when={isTask()}>
-        <SubagentTree subagent={props.subagent!} />
+        <SubagentTree subagent={props.subagent!} fullResult={props.result} />
       </Show>
 
       {/* Image result - always show inline when result contains image data */}

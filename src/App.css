@@ -2934,45 +2934,6 @@ del {
   opacity: 1;
 }
 
-/* Toast Notification */
-.toast-notification {
-  position: fixed;
-  bottom: 100px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-size: 16px;
-  color: var(--fg);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  z-index: 300;
-  animation: toastIn 0.3s ease, toastOut 0.3s ease 2.7s forwards;
-}
-
-@keyframes toastIn {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-@keyframes toastOut {
-  from {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(-50%) translateY(20px);
-  }
-}
-
 /* ============================================================================
    Startup Branding (inline header in message area)
    ============================================================================ */
@@ -3708,6 +3669,39 @@ del {
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.subagent-result-preview {
+  margin: 6px 0 2px 16px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: "SF Mono", "JetBrains Mono", Menlo, monospace;
+  color: var(--fg-muted);
+  line-height: 1.5;
+  max-height: 2.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  border-left: 2px solid var(--border);
+  transition: border-color 0.15s;
+}
+
+.subagent-result-preview:hover {
+  border-color: var(--cyan);
+  color: var(--fg);
+}
+
+.subagent-result-full {
+  margin: 6px 0 2px 16px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--bg);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Plan Approval Bar - Footer component for plan review */
