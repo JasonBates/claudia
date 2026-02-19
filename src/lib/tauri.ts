@@ -29,7 +29,10 @@ export interface ClaudeEvent {
     | "error"
     | "subagent_start"
     | "subagent_progress"
-    | "subagent_end";
+    | "subagent_end"
+    | "bg_task_registered"
+    | "bg_task_completed"
+    | "bg_task_result";
   // Status/Ready
   // snake_case from Rust/Tauri backend, camelCase from JS SDK bridge
   message?: string;
@@ -90,12 +93,19 @@ export interface ClaudeEvent {
   code?: number;
   // SubagentStart
   agent_type?: string;
+  agentType?: string;
   // SubagentProgress
   subagent_id?: string;
   tool_detail?: string;
   tool_count?: number;
   // SubagentEnd (uses existing duration, result fields)
   result?: string;
+  // Background task events (snake_case from Rust, camelCase from JS bridge)
+  task_id?: string;
+  taskId?: string;
+  toolUseId?: string;
+  summary?: string;
+  status?: string;
   // AskUserQuestion (control_request for AskUserQuestion tool)
   questions?: unknown[];
 }

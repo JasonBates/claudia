@@ -294,6 +294,7 @@ export const StoreProvider: ParentComponent = (props) => {
           // Find in finalized messages (for late-arriving subagent_end events)
           let msgIdx = -1;
           let msgBlockIdx = -1;
+          let msgToolIdx = -1;
           if (toolIdx === -1 && blockIdx === -1) {
             // Search in finalized messages (reverse order - most recent first)
             for (let m = state.messages.length - 1; m >= 0 && msgIdx === -1; m--) {
@@ -304,6 +305,16 @@ export const StoreProvider: ParentComponent = (props) => {
                   if (block.type === "tool_use" && (block as { type: "tool_use"; tool: ToolUse }).tool.id === id) {
                     msgIdx = m;
                     msgBlockIdx = b;
+                    break;
+                  }
+                }
+              }
+              // Fallback for legacy finalized messages that only carry toolUses
+              if (msgIdx === -1 && msg.toolUses) {
+                for (let t = 0; t < msg.toolUses.length; t++) {
+                  if (msg.toolUses[t].id === id) {
+                    msgIdx = m;
+                    msgToolIdx = t;
                     break;
                   }
                 }
@@ -361,6 +372,19 @@ export const StoreProvider: ParentComponent = (props) => {
               tool: toolUpdates as unknown as ToolUse
             };
             setState("messages", msgIdx, "contentBlocks", newBlocks);
+          }
+
+          // Update legacy message.toolUses if finalized without contentBlocks
+          if (msgIdx !== -1 && msgToolIdx !== -1) {
+            const msgTool = state.messages[msgIdx].toolUses![msgToolIdx];
+            const newSubagent = msgTool.subagent
+              ? { ...msgTool.subagent, ...subagent }
+              : (subagent as SubagentInfo);
+            const toolUpdates: Record<string, unknown> = { ...msgTool, subagent: newSubagent };
+            if (subagent.status === "complete" && !msgTool.completedAt) {
+              toolUpdates.completedAt = Date.now();
+            }
+            setState("messages", msgIdx, "toolUses", msgToolIdx, toolUpdates as unknown as ToolUse);
           }
         }
         return;

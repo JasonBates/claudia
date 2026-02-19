@@ -578,6 +578,76 @@ describe("normalizeClaudeEvent", () => {
   });
 
   // ==========================================================================
+  // Background Task Events
+  // ==========================================================================
+  describe("bg_task events", () => {
+    it("should normalize bg_task_registered", () => {
+      const raw: ClaudeEvent = {
+        type: "bg_task_registered",
+        task_id: "task-123",
+        tool_use_id: "tool-123",
+        agent_type: "Explore",
+        description: "Investigate bug",
+      };
+
+      const normalized = normalizeClaudeEvent(raw);
+
+      expect(normalized).toEqual({
+        type: "bg_task_registered",
+        taskId: "task-123",
+        toolUseId: "tool-123",
+        agentType: "Explore",
+        description: "Investigate bug",
+      });
+    });
+
+    it("should normalize bg_task_completed", () => {
+      const raw: ClaudeEvent = {
+        type: "bg_task_completed",
+        taskId: "task-123",
+        toolUseId: "tool-123",
+        agent_type: "Plan",
+        duration: 4200,
+        tool_count: 7,
+        summary: "Summary text",
+      };
+
+      const normalized = normalizeClaudeEvent(raw);
+
+      expect(normalized).toEqual({
+        type: "bg_task_completed",
+        taskId: "task-123",
+        toolUseId: "tool-123",
+        agentType: "Plan",
+        duration: 4200,
+        toolCount: 7,
+        summary: "Summary text",
+      });
+    });
+
+    it("should normalize bg_task_result with defaults", () => {
+      const raw: ClaudeEvent = {
+        type: "bg_task_result",
+        taskId: "task-abc",
+        result: "Final output",
+      };
+
+      const normalized = normalizeClaudeEvent(raw);
+
+      expect(normalized).toEqual({
+        type: "bg_task_result",
+        taskId: "task-abc",
+        toolUseId: undefined,
+        result: "Final output",
+        status: "completed",
+        agentType: "unknown",
+        duration: 0,
+        toolCount: 0,
+      });
+    });
+  });
+
+  // ==========================================================================
   // Simple Events (no dual fields)
   // ==========================================================================
   describe("simple events", () => {
