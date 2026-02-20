@@ -74,6 +74,10 @@ export interface StreamingRefs {
   toolIdToBlockIndexRef: { current: Map<string, number> };
   /** Background task ID -> Task tool_use_id mapping */
   bgTaskToToolUseIdRef?: { current: Map<string, string> };
+  /** Alias map for bg tasks: task:<id>/tool:<id> -> canonical task key */
+  bgTaskAliasToCanonicalRef?: { current: Map<string, string> };
+  /** Canonical bg task keys awaiting final bg_task_result */
+  bgPendingFinalTaskKeysRef?: { current: Set<string> };
   /** Background task completion metadata waiting for tool mapping */
   pendingBgTaskCompletionsRef?: {
     current: Map<string, { agentType: string; duration: number; toolCount: number; summary: string }>;

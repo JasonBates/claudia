@@ -158,7 +158,7 @@ const SubagentTree: Component<{ subagent: SubagentInfo; fullResult?: string }> =
         <Show when={isRunning()} fallback={
           <span class="subagent-check">✓</span>
         }>
-          <span class="subagent-spinner">◐</span>
+          <span class="subagent-spinner" />
         </Show>
         <span class="subagent-status">{statusText()}</span>
         <span class="subagent-type">{props.subagent.agentType}</span>
@@ -423,7 +423,7 @@ const ToolResult: Component<ToolResultProps> = (props) => {
       return (
         <div class="subagent-tree">
           <div class="subagent-header">
-            <span class="subagent-spinner">◐</span>
+            <span class="subagent-spinner" />
             <span class="subagent-status">Starting</span>
           </div>
         </div>
@@ -446,7 +446,9 @@ const ToolResult: Component<ToolResultProps> = (props) => {
   return (
     <div class="tool-result" classList={{ expanded: isExpanded(), loading: isEffectivelyLoading() }}>
       <div class="tool-header">
-        <span class="tool-icon" classList={{ complete: !isEffectivelyLoading() }}>{isEffectivelyLoading() ? "◐" : "✓"}</span>
+        <span class="tool-icon" classList={{ complete: !isEffectivelyLoading(), spinning: isEffectivelyLoading() }}>
+          {isEffectivelyLoading() ? "" : "✓"}
+        </span>
         <span class="tool-name">{displayName()}</span>
         <Show when={elapsedText()}>
           <span class="tool-elapsed" classList={{ loading: props.isLoading }}>{elapsedText()}</span>

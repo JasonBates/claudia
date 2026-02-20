@@ -1,4 +1,4 @@
-import { Component, For, Show, onMount, onCleanup, createEffect, createSignal } from "solid-js";
+import { Component, For, Show, Index, onMount, onCleanup, createEffect, createSignal } from "solid-js";
 import MessageContent from "./MessageContent";
 import ToolResult from "./ToolResult";
 import ThinkingPreview from "./ThinkingPreview";
@@ -9,33 +9,41 @@ export type { ToolUse, ContentBlock, Message } from "../lib/types";
 
 // Grouped block type - consecutive Task tools are grouped together
 type GroupedBlock =
-  | { type: "single"; block: ContentBlock }
-  | { type: "tool_group"; tools: Array<{ type: "tool_use"; tool: ToolUse }> };
+  | { type: "single"; block: ContentBlock; startIndex: number }
+  | { type: "tool_group"; tools: Array<{ type: "tool_use"; tool: ToolUse }>; startIndex: number };
 
 // Group consecutive Task tools together for unified rendering
-// Only groups when 2+ Task tools are consecutive; single Tasks render normally
+// Always groups consecutive Task tools (including single Task) so the
+// streaming DOM shape stays stable as more background tasks are launched.
 // Non-Task blocks (thinking, text) break the grouping
 function groupBlocks(blocks: ContentBlock[]): GroupedBlock[] {
   const result: GroupedBlock[] = [];
   let currentToolGroup: Array<{ type: "tool_use"; tool: ToolUse }> = [];
+  let currentToolGroupStart = -1;
 
   const flushToolGroup = () => {
-    if (currentToolGroup.length > 1) {
-      // 2+ consecutive Task tools → group them
-      result.push({ type: "tool_group", tools: [...currentToolGroup] });
-    } else if (currentToolGroup.length === 1) {
-      // Single Task tool → render as single block (not grouped)
-      result.push({ type: "single", block: currentToolGroup[0] });
+    if (currentToolGroup.length > 0) {
+      // 1+ consecutive Task tools -> grouped container (stable structure)
+      result.push({
+        type: "tool_group",
+        tools: [...currentToolGroup],
+        startIndex: currentToolGroupStart,
+      });
     }
     currentToolGroup = [];
+    currentToolGroupStart = -1;
   };
 
-  for (const block of blocks) {
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
     // Check if this is a Task tool by NAME (subagent data may arrive later)
     if (block.type === "tool_use") {
       const toolBlock = block as { type: "tool_use"; tool: ToolUse };
       if (toolBlock.tool.name === "Task") {
         // This is a Task tool - add to current group
+        if (currentToolGroup.length === 0) {
+          currentToolGroupStart = i;
+        }
         currentToolGroup.push(toolBlock);
         continue;
       }
@@ -43,13 +51,17 @@ function groupBlocks(blocks: ContentBlock[]): GroupedBlock[] {
 
     // Not a Task tool - flush any pending group and add as single block
     flushToolGroup();
-    result.push({ type: "single", block });
+    result.push({ type: "single", block, startIndex: i });
   }
 
   // Don't forget to flush any remaining tools
   flushToolGroup();
 
   return result;
+}
+
+function isBackgroundTaskVariant(variant?: Message["variant"]): boolean {
+  return variant === "background_task_running" || variant === "background_task_complete";
 }
 
 interface PlanningState {
@@ -190,8 +202,20 @@ const MessageList: Component<MessageListProps> = (props) => {
                 <span class="cleared-label">context cleared</span>
               </Show>
 
+              {/* Background task progress/result message rendered as a tool block */}
+              <Show when={isBackgroundTaskVariant(message.variant)}>
+                <div class="tool-uses">
+                  <ToolResult
+                    name="Task Output"
+                    result={message.content}
+                    isLoading={message.variant === "background_task_running"}
+                    autoExpanded={true}
+                  />
+                </div>
+              </Show>
+
               {/* Regular message content rendering */}
-              <Show when={message.variant !== "compaction" && message.variant !== "cleared"}>
+              <Show when={!isBackgroundTaskVariant(message.variant) && message.variant !== "compaction" && message.variant !== "cleared"}>
                 {/* Render ordered content blocks if present */}
                 <Show when={message.contentBlocks && message.contentBlocks.length > 0} fallback={
                   <>
@@ -292,29 +316,30 @@ const MessageList: Component<MessageListProps> = (props) => {
                 const grouped = groupBlocks(blocks);
                 const lastThinkingIndex = blocks.map((b, i) => b.type === "thinking" ? i : -1).filter(i => i >= 0).pop() ?? -1;
 
-                // Track original block indices for thinking streaming indicator
-                let blockIndex = 0;
-
                 return (
-                  <For each={grouped}>
+                  <Index each={grouped}>
                     {(group) => {
-                      if (group.type === "tool_group") {
+                      const currentGroup = group();
+                      if (currentGroup.type === "tool_group") {
                         // Render grouped Task tools in a single container with shared header
-                        const toolCount = group.tools.length;
-                        blockIndex += toolCount;
-                        const anyLoading = group.tools.some(t =>
+                        const toolCount = currentGroup.tools.length;
+                        const anyLoading = currentGroup.tools.some(t =>
                           t.tool.isLoading || (t.tool.subagent && t.tool.subagent.status !== "complete")
                         );
                         return (
                           <div class="tool-uses">
                             <div class="tool-result tool-group-container" classList={{ loading: anyLoading }}>
                               <div class="tool-header">
-                                <span class="tool-icon" classList={{ complete: !anyLoading }}>{anyLoading ? "◐" : "✓"}</span>
+                                <span class="tool-icon" classList={{ complete: !anyLoading, spinning: anyLoading }}>
+                                  {anyLoading ? "" : "✓"}
+                                </span>
                                 <span class="tool-name">TASKS</span>
-                                <span class="tool-input-preview">{toolCount} parallel agents</span>
+                                <span class="tool-input-preview">
+                                  {toolCount} {toolCount === 1 ? "agent" : "parallel agents"}
+                                </span>
                               </div>
                               <div class="tool-group-items">
-                                <For each={group.tools}>
+                                <For each={currentGroup.tools}>
                                   {(toolBlock) => (
                                     <ToolResult
                                       name={toolBlock.tool.name}
@@ -336,9 +361,8 @@ const MessageList: Component<MessageListProps> = (props) => {
                       }
 
                       // Single block - render based on type
-                      const currentIndex = blockIndex;
-                      blockIndex++;
-                      const block = group.block;
+                      const currentIndex = currentGroup.startIndex;
+                      const block = currentGroup.block;
 
                       if (block.type === "thinking") {
                         return (
@@ -394,7 +418,7 @@ const MessageList: Component<MessageListProps> = (props) => {
                         </div>
                       );
                     }}
-                  </For>
+                  </Index>
                 );
               })()}
               {/* Single cursor AFTER all blocks - only shows when last block is text */}

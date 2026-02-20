@@ -775,14 +775,8 @@ describe("Event Dispatch Functions", () => {
   });
 
   describe("background task handlers", () => {
-    it("should apply queued completion when bg_task_registered arrives", () => {
+    it("should not attach bg_task_registered to original Task tool cards", () => {
       const ctx = createMockContext();
-      ctx.refs.pendingBgTaskCompletionsRef?.current.set("task-123", {
-        agentType: "Explore",
-        duration: 3000,
-        toolCount: 4,
-        summary: "Done",
-      });
 
       handleBgTaskRegistered(
         {
@@ -795,21 +789,10 @@ describe("Event Dispatch Functions", () => {
         ctx
       );
 
-      expect(ctx.dispatch).toHaveBeenCalledWith({
-        type: "UPDATE_TOOL_SUBAGENT",
-        payload: {
-          id: "tool-123",
-          subagent: expect.objectContaining({
-            status: "complete",
-            duration: 3000,
-            toolCount: 4,
-            result: "Done",
-          }),
-        },
-      });
+      expect(ctx.dispatch).not.toHaveBeenCalled();
     });
 
-    it("should queue bg_task_completed when tool mapping is unknown", () => {
+    it("should keep bg_task_completed in task output message without queueing tool updates", () => {
       const ctx = createMockContext();
 
       handleBgTaskCompleted(
@@ -825,11 +808,14 @@ describe("Event Dispatch Functions", () => {
         ctx
       );
 
-      expect(ctx.refs.pendingBgTaskCompletionsRef?.current.get("task-xyz")).toEqual({
-        agentType: "Plan",
-        duration: 2000,
-        toolCount: 2,
-        summary: "Summary",
+      expect(ctx.dispatch).toHaveBeenCalledWith({
+        type: "ADD_MESSAGE",
+        payload: {
+          id: "bg-result-task-xyz",
+          role: "assistant",
+          content: "Local agent: xyz\nCompleted: Pending results\n\nSummary",
+          variant: "background_task_running",
+        },
       });
     });
 
@@ -854,12 +840,13 @@ describe("Event Dispatch Functions", () => {
         payload: {
           id: "bg-result-task-msg",
           role: "assistant",
-          content: "Background (Bash)\n\nAgent completed",
+          content: "Local agent: msg\nCompleted: Pending results\n\nAgent completed",
+          variant: "background_task_running",
         },
       });
     });
 
-    it("should update tool state for bg_task_result with mapped tool", () => {
+    it("should keep bg_task_result text in task output message while completing original task card", () => {
       const ctx = createMockContext();
       ctx.refs.bgTaskToToolUseIdRef?.current.set("task-abc", "tool-abc");
 
@@ -878,16 +865,169 @@ describe("Event Dispatch Functions", () => {
       );
 
       expect(ctx.dispatch).toHaveBeenCalledWith({
-        type: "UPDATE_TOOL",
+        type: "ADD_MESSAGE",
         payload: {
-          id: "tool-abc",
+          id: "bg-result-task-abc",
+          role: "assistant",
+          content: "Local agent: abc\nCompleted: Success\n\nFinal report",
+          variant: "background_task_complete",
+        },
+      });
+      expect(ctx.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "UPDATE_TOOL_SUBAGENT",
+          payload: expect.objectContaining({
+            id: "tool-abc",
+            subagent: expect.objectContaining({
+              status: "complete",
+              duration: 9000,
+              toolCount: 8,
+            }),
+          }),
+        })
+      );
+      expect(ctx.dispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "UPDATE_TOOL",
+          payload: expect.objectContaining({
+            updates: expect.objectContaining({
+              result: expect.anything(),
+            }),
+          }),
+        })
+      );
+    });
+
+    it("should mark original task card complete on bg_task_completed when toolUseId is present", () => {
+      const ctx = createMockContext();
+
+      handleBgTaskCompleted(
+        {
+          type: "bg_task_completed",
+          taskId: "task-777",
+          toolUseId: "tool-777",
+          agentType: "Explore",
+          duration: 1500,
+          toolCount: 3,
+          summary: "Summary",
+        },
+        ctx
+      );
+
+      expect(ctx.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "UPDATE_TOOL_SUBAGENT",
+          payload: expect.objectContaining({
+            id: "tool-777",
+            subagent: expect.objectContaining({
+              status: "complete",
+              duration: 1500,
+              toolCount: 3,
+            }),
+          }),
+        })
+      );
+      expect(ctx.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "UPDATE_TOOL",
+          payload: expect.objectContaining({
+            id: "tool-777",
+            updates: expect.objectContaining({
+              isLoading: false,
+            }),
+          }),
+        })
+      );
+      expect(ctx.dispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "UPDATE_TOOL",
+          payload: expect.objectContaining({
+            updates: expect.objectContaining({
+              result: expect.anything(),
+            }),
+          }),
+        })
+      );
+    });
+
+    it("should merge completion/result into one task output when correlated by toolUseId", () => {
+      const ctx = createMockContext();
+
+      handleBgTaskCompleted(
+        {
+          type: "bg_task_completed",
+          taskId: "task-merge-a",
+          toolUseId: "tool-merge-1",
+          agentType: "Explore",
+          duration: 1000,
+          toolCount: 1,
+          summary: "Background summary",
+        },
+        ctx
+      );
+
+      (ctx.dispatch as ReturnType<typeof vi.fn>).mockClear();
+
+      // Final result arrives with different/missing taskId but same toolUseId.
+      handleBgTaskResult(
+        {
+          type: "bg_task_result",
+          taskId: "",
+          toolUseId: "tool-merge-1",
+          result: "Background final",
+          status: "completed",
+          agentType: "Explore",
+          duration: 2200,
+          toolCount: 3,
+        },
+        ctx
+      );
+
+      expect(ctx.dispatch).toHaveBeenCalledWith({
+        type: "UPDATE_MESSAGE",
+        payload: {
+          id: "bg-result-task-merge-a",
           updates: {
-            result: "Final report",
-            isLoading: false,
-            autoExpanded: true,
+            content: "Local agent: mergea\nCompleted: Success\n\nBackground final",
+            variant: "background_task_complete",
           },
         },
       });
+    });
+
+    it("should track pending background output lock until final result arrives", () => {
+      const ctx = createMockContext();
+
+      handleBgTaskCompleted(
+        {
+          type: "bg_task_completed",
+          taskId: "task-lock-1",
+          toolUseId: "tool-lock-1",
+          agentType: "Explore",
+          duration: 1000,
+          toolCount: 1,
+          summary: "In progress",
+        },
+        ctx
+      );
+
+      expect(ctx.refs.bgPendingFinalTaskKeysRef?.current.has("task-lock-1")).toBe(true);
+
+      handleBgTaskResult(
+        {
+          type: "bg_task_result",
+          taskId: "",
+          toolUseId: "tool-lock-1",
+          result: "Done",
+          status: "completed",
+          agentType: "Explore",
+          duration: 2400,
+          toolCount: 2,
+        },
+        ctx
+      );
+
+      expect(ctx.refs.bgPendingFinalTaskKeysRef?.current.has("task-lock-1")).toBe(false);
     });
 
     it("should ignore late completion summary after final bg_task_result", () => {
@@ -999,7 +1139,12 @@ describe("Event Dispatch Functions", () => {
           lastTaskAction.type === "ADD_MESSAGE"
             ? lastTaskAction.payload.content
             : lastTaskAction.payload.updates.content;
+        const variant =
+          lastTaskAction.type === "ADD_MESSAGE"
+            ? lastTaskAction.payload.variant
+            : lastTaskAction.payload.updates.variant;
         expect(content).toContain(`Final ${taskId}`);
+        expect(variant).toBe("background_task_complete");
       }
     });
   });

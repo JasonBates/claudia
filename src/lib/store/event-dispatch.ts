@@ -660,22 +660,30 @@ export function handleAskUserQuestion(
 // =============================================================================
 
 function upsertBackgroundResultMessage(
-  taskId: string,
-  agentType: string,
+  taskKey: string,
   result: string,
+  finalResultDisplayed: boolean,
   ctx: EventContext
 ): void {
-  if (!taskId || !result) return;
+  if (!taskKey || !result) return;
 
-  const bgMessageId = `bg-result-${taskId}`;
-  const bgPrefix = agentType ? `Background (${agentType})` : "Background";
-  const bgContent = `${bgPrefix}\n\n${result}`;
+  const bgMessageId = `bg-result-${taskKey}`;
+  const compactAgentId = taskKey
+    .replace(/^task[-_:]?/i, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 7)
+    || taskKey.slice(0, 7);
+  const completionStatus = finalResultDisplayed ? "Success" : "Pending results";
+  const bgContent = `Local agent: ${compactAgentId}\nCompleted: ${completionStatus}\n\n${result}`;
+  const bgVariant = finalResultDisplayed
+    ? "background_task_complete"
+    : "background_task_running";
   const knownBgMessages = ctx.refs.bgResultMessageIdsRef?.current;
 
-  if (knownBgMessages?.has(taskId)) {
+  if (knownBgMessages?.has(taskKey)) {
     ctx.dispatch({
       type: "UPDATE_MESSAGE",
-      payload: { id: bgMessageId, updates: { content: bgContent } },
+      payload: { id: bgMessageId, updates: { content: bgContent, variant: bgVariant } },
     });
   } else {
     ctx.dispatch({
@@ -684,21 +692,113 @@ function upsertBackgroundResultMessage(
         id: bgMessageId,
         role: "assistant",
         content: bgContent,
+        variant: bgVariant,
       },
     });
-    knownBgMessages?.add(taskId);
+    knownBgMessages?.add(taskKey);
   }
 }
 
-function markBackgroundTaskFinalized(taskId: string, ctx: EventContext): void {
-  if (!taskId) return;
+function resolveBackgroundTaskKey(
+  taskId: string,
+  toolUseId: string | undefined,
+  ctx: EventContext
+): string {
+  const aliasMap = ctx.refs.bgTaskAliasToCanonicalRef?.current;
+  const normalizedTaskId = taskId.trim();
+  const normalizedToolUseId = (toolUseId || "").trim();
+  const taskAlias = normalizedTaskId ? `task:${normalizedTaskId}` : "";
+  const toolAlias = normalizedToolUseId ? `tool:${normalizedToolUseId}` : "";
+
+  let canonical = "";
+  if (taskAlias && aliasMap?.has(taskAlias)) {
+    canonical = aliasMap.get(taskAlias) || "";
+  }
+  if (!canonical && toolAlias && aliasMap?.has(toolAlias)) {
+    canonical = aliasMap.get(toolAlias) || "";
+  }
+  if (!canonical) {
+    canonical = normalizedTaskId || normalizedToolUseId;
+  }
+
+  if (canonical && aliasMap) {
+    if (taskAlias) aliasMap.set(taskAlias, canonical);
+    if (toolAlias) aliasMap.set(toolAlias, canonical);
+  }
+
+  return canonical;
+}
+
+function rememberBackgroundTaskToolMapping(
+  taskId: string,
+  toolUseId: string | undefined,
+  ctx: EventContext
+): void {
+  const map = ctx.refs.bgTaskToToolUseIdRef?.current;
+  const normalizedTaskId = taskId.trim();
+  const normalizedToolUseId = (toolUseId || "").trim();
+  if (!map || !normalizedTaskId || !normalizedToolUseId) return;
+  map.set(normalizedTaskId, normalizedToolUseId);
+}
+
+function resolveBackgroundTaskToolUseId(
+  taskId: string,
+  toolUseId: string | undefined,
+  ctx: EventContext
+): string | null {
+  const normalizedToolUseId = (toolUseId || "").trim();
+  if (normalizedToolUseId) return normalizedToolUseId;
+
+  const normalizedTaskId = taskId.trim();
+  if (!normalizedTaskId) return null;
+  return ctx.refs.bgTaskToToolUseIdRef?.current.get(normalizedTaskId) || null;
+}
+
+function markOriginalTaskToolCompleted(
+  toolUseId: string | null,
+  duration: number,
+  toolCount: number,
+  ctx: EventContext
+): void {
+  if (!toolUseId) return;
+
+  ctx.dispatch({
+    type: "UPDATE_TOOL_SUBAGENT",
+    payload: {
+      id: toolUseId,
+      subagent: {
+        status: "complete",
+        duration: duration || 0,
+        toolCount: toolCount || 0,
+      },
+    },
+  });
+
+  // Keep textual output in Task Output boxes; this only flips the original
+  // Task tool card out of loading state.
+  ctx.dispatch({
+    type: "UPDATE_TOOL",
+    payload: {
+      id: toolUseId,
+      updates: {
+        isLoading: false,
+      },
+    },
+  });
+}
+
+function markBackgroundTaskFinalized(taskKey: string, ctx: EventContext): void {
+  if (!taskKey) return;
   const finalizedSet = ctx.refs.bgFinalizedTaskIdsRef?.current;
   const finalizedOrder = ctx.refs.bgFinalizedTaskOrderRef?.current;
+  const pendingSet = ctx.refs.bgPendingFinalTaskKeysRef?.current;
   if (!finalizedSet) return;
 
-  if (!finalizedSet.has(taskId)) {
-    finalizedSet.add(taskId);
-    finalizedOrder?.push(taskId);
+  pendingSet?.delete(taskKey);
+
+  if (!finalizedSet.has(taskKey)) {
+    finalizedSet.add(taskKey);
+    finalizedOrder?.push(taskKey);
   }
 
   const MAX_BG_FINALIZED_TASKS = 2000;
@@ -706,110 +806,13 @@ function markBackgroundTaskFinalized(taskId: string, ctx: EventContext): void {
     const evicted = finalizedOrder?.shift();
     if (!evicted) break;
     finalizedSet.delete(evicted);
+    pendingSet?.delete(evicted);
   }
 }
 
-function isBackgroundTaskFinalized(taskId: string, ctx: EventContext): boolean {
-  if (!taskId) return false;
-  return ctx.refs.bgFinalizedTaskIdsRef?.current.has(taskId) ?? false;
-}
-
-function resolveBgTaskToolUseId(
-  taskId: string,
-  explicitToolUseId: string | undefined,
-  ctx: EventContext
-): string | null {
-  const taskToToolMap = ctx.refs.bgTaskToToolUseIdRef?.current;
-  const normalizedTaskId = taskId || "";
-  const normalizedToolId = explicitToolUseId || "";
-
-  if (taskToToolMap && normalizedTaskId && normalizedToolId) {
-    taskToToolMap.set(normalizedTaskId, normalizedToolId);
-  }
-
-  if (normalizedToolId) {
-    return normalizedToolId;
-  }
-
-  if (taskToToolMap && normalizedTaskId) {
-    return taskToToolMap.get(normalizedTaskId) || null;
-  }
-
-  return null;
-}
-
-function applyBgTaskCompletion(
-  toolUseId: string,
-  payload: { agentType: string; duration: number; toolCount: number; summary: string },
-  ctx: EventContext
-): void {
-  const summary = payload.summary || "";
-
-  ctx.dispatch({
-    type: "UPDATE_TOOL_SUBAGENT",
-    payload: {
-      id: toolUseId,
-      subagent: {
-        status: "complete",
-        duration: payload.duration || 0,
-        toolCount: payload.toolCount || 0,
-        result: summary || undefined,
-      },
-    },
-  });
-
-  if (summary) {
-    ctx.dispatch({
-      type: "UPDATE_TOOL",
-      payload: {
-        id: toolUseId,
-        updates: {
-          result: summary,
-          isLoading: false,
-          autoExpanded: true,
-        },
-      },
-    });
-  }
-}
-
-function applyBgTaskResult(
-  toolUseId: string,
-  payload: { result: string; agentType: string; duration: number; toolCount: number },
-  ctx: EventContext
-): void {
-  const result = payload.result || "";
-  if (result) {
-    ctx.refs.pendingResultsRef.current.set(toolUseId, {
-      result,
-      isError: false,
-    });
-  }
-
-  ctx.dispatch({
-    type: "UPDATE_TOOL_SUBAGENT",
-    payload: {
-      id: toolUseId,
-      subagent: {
-        status: "complete",
-        duration: payload.duration || 0,
-        toolCount: payload.toolCount || 0,
-        result: result || undefined,
-      },
-    },
-  });
-
-  ctx.dispatch({
-    type: "UPDATE_TOOL",
-    payload: {
-      id: toolUseId,
-      updates: {
-        result: result || undefined,
-        isLoading: false,
-        autoExpanded: true,
-      },
-    },
-  });
+function isBackgroundTaskFinalized(taskKey: string, ctx: EventContext): boolean {
+  if (!taskKey) return false;
+  return ctx.refs.bgFinalizedTaskIdsRef?.current.has(taskKey) ?? false;
 }
 
 /**
@@ -819,24 +822,13 @@ export function handleBgTaskRegistered(
   event: NormalizedBgTaskRegisteredEvent,
   ctx: EventContext
 ): void {
+  // Background task output is shown only in dedicated "Task Output" messages.
+  // Map aliases so completion/result can merge even if one arrives with only
+  // taskId and the other with only toolUseId (or with differing formats).
   const taskId = event.taskId || "";
-  const toolUseId = resolveBgTaskToolUseId(taskId, event.toolUseId, ctx);
-
-  if (!taskId || !toolUseId) return;
-
-  const pendingCompletion = ctx.refs.pendingBgTaskCompletionsRef?.current.get(taskId);
-  if (pendingCompletion) {
-    applyBgTaskCompletion(toolUseId, pendingCompletion, ctx);
-    ctx.refs.pendingBgTaskCompletionsRef?.current.delete(taskId);
-  }
-
-  const pendingResult = ctx.refs.pendingBgTaskResultsRef?.current.get(taskId);
-  if (pendingResult) {
-    applyBgTaskResult(toolUseId, pendingResult, ctx);
-    ctx.refs.pendingBgTaskResultsRef?.current.delete(taskId);
-    upsertBackgroundResultMessage(taskId, pendingResult.agentType, pendingResult.result, ctx);
-    markBackgroundTaskFinalized(taskId, ctx);
-  }
+  const toolUseId = event.toolUseId;
+  rememberBackgroundTaskToolMapping(taskId, toolUseId, ctx);
+  resolveBackgroundTaskKey(taskId, toolUseId, ctx);
 }
 
 /**
@@ -846,41 +838,25 @@ export function handleBgTaskCompleted(
   event: NormalizedBgTaskCompletedEvent,
   ctx: EventContext
 ): void {
-  const taskId = event.taskId || "";
-  const completionPayload = {
-    agentType: event.agentType || "unknown",
-    duration: event.duration || 0,
-    toolCount: event.toolCount || 0,
-    summary: event.summary || "",
-  };
+  rememberBackgroundTaskToolMapping(event.taskId || "", event.toolUseId, ctx);
+  const taskKey = resolveBackgroundTaskKey(event.taskId || "", event.toolUseId, ctx);
+  const toolUseId = resolveBackgroundTaskToolUseId(event.taskId || "", event.toolUseId, ctx);
+  const summary = event.summary || "";
 
   // Always surface completion notifications per task, even if no later
   // bg_task_result arrives for that task.
-  if (taskId && !isBackgroundTaskFinalized(taskId, ctx)) {
-    const completionText =
-      completionPayload.summary || "Background task completed.";
+  if (taskKey && !isBackgroundTaskFinalized(taskKey, ctx)) {
+    ctx.refs.bgPendingFinalTaskKeysRef?.current.add(taskKey);
+    const completionText = summary || "Background task completed.";
     upsertBackgroundResultMessage(
-      taskId,
-      completionPayload.agentType,
+      taskKey,
       completionText,
+      false,
       ctx
     );
   }
 
-  const toolUseId = resolveBgTaskToolUseId(taskId, event.toolUseId, ctx);
-
-  if (!toolUseId) {
-    if (taskId) {
-      ctx.refs.pendingBgTaskCompletionsRef?.current.set(taskId, completionPayload);
-    }
-    return;
-  }
-
-  if (taskId && isBackgroundTaskFinalized(taskId, ctx)) {
-    return;
-  }
-
-  applyBgTaskCompletion(toolUseId, completionPayload, ctx);
+  markOriginalTaskToolCompleted(toolUseId, event.duration || 0, event.toolCount || 0, ctx);
 }
 
 /**
@@ -890,31 +866,27 @@ export function handleBgTaskResult(
   event: NormalizedBgTaskResultEvent,
   ctx: EventContext
 ): void {
-  const taskId = event.taskId || "";
-  const resultPayload = {
-    result: event.result || "",
-    status: event.status || "completed",
-    agentType: event.agentType || "unknown",
-    duration: event.duration || 0,
-    toolCount: event.toolCount || 0,
-  };
+  rememberBackgroundTaskToolMapping(event.taskId || "", event.toolUseId, ctx);
+  const taskKey = resolveBackgroundTaskKey(event.taskId || "", event.toolUseId, ctx);
+  const toolUseId = resolveBackgroundTaskToolUseId(event.taskId || "", event.toolUseId, ctx);
+  const result = event.result || "";
 
-  // Always surface final bg task output as a dedicated message keyed by task ID.
-  // This guarantees visibility even if tool correlation misses in late/finalized paths.
-  if (taskId && resultPayload.result) {
-    upsertBackgroundResultMessage(taskId, resultPayload.agentType, resultPayload.result, ctx);
-    markBackgroundTaskFinalized(taskId, ctx);
+  if (taskKey) {
+    ctx.refs.bgPendingFinalTaskKeysRef?.current.delete(taskKey);
   }
 
-  const toolUseId = resolveBgTaskToolUseId(taskId, event.toolUseId, ctx);
-  if (!toolUseId) {
-    if (taskId) {
-      ctx.refs.pendingBgTaskResultsRef?.current.set(taskId, resultPayload);
-    }
-    return;
+  // Always surface final bg task output as a dedicated message keyed by canonical task key.
+  if (taskKey && result) {
+    upsertBackgroundResultMessage(
+      taskKey,
+      result,
+      true,
+      ctx
+    );
+    markBackgroundTaskFinalized(taskKey, ctx);
   }
 
-  applyBgTaskResult(toolUseId, resultPayload, ctx);
+  markOriginalTaskToolCompleted(toolUseId, event.duration || 0, event.toolCount || 0, ctx);
 }
 
 /**

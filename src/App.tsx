@@ -377,6 +377,10 @@ function App() {
     return getContextThreshold(used, CONTEXT_LIMIT);
   };
 
+  const hasPendingBackgroundResults = () => {
+    return (store.refs.bgPendingFinalTaskKeysRef?.current.size || 0) > 0;
+  };
+
   // ============================================================================
   // Event Handler Setup
   // ============================================================================
@@ -842,6 +846,8 @@ function App() {
 
   // Main message submission handler
   const handleSubmit = async (text: string, images?: ImageAttachment[]) => {
+    if (hasPendingBackgroundResults()) return;
+
     // Only process local commands for text-only messages
     if (!images && await localCommands.dispatch(text)) {
       return;
@@ -1447,13 +1453,19 @@ function App() {
                 handleSubmit(text, images);
               }
             }}
-            disabled={(store.isLoading() && !store.planReady()) || !store.sessionActive()}
+            disabled={
+              !store.sessionActive() ||
+              hasPendingBackgroundResults() ||
+              (store.isLoading() && !store.planReady())
+            }
             placeholder={
-              store.isPlanning() && planWindowOpen()
-                ? "How can I improve the plan?"
-                : store.sessionActive()
-                  ? "Type a message..."
-                  : ""
+              hasPendingBackgroundResults()
+                ? "Waiting for background task output..."
+                : store.isPlanning() && planWindowOpen()
+                  ? "How can I improve the plan?"
+                  : store.sessionActive()
+                    ? "Type a message..."
+                    : ""
             }
             mode={currentMode()}
             onModeChange={cycleMode}

@@ -26,6 +26,8 @@ export function createStreamingRefs(): StreamingRefs {
     lastToolBlockIndexRef: { current: null },
     toolIdToBlockIndexRef: { current: new Map() },
     bgTaskToToolUseIdRef: { current: new Map() },
+    bgTaskAliasToCanonicalRef: { current: new Map() },
+    bgPendingFinalTaskKeysRef: { current: new Set() },
     pendingBgTaskCompletionsRef: { current: new Map() },
     pendingBgTaskResultsRef: { current: new Map() },
     bgResultMessageIdsRef: { current: new Set() },
@@ -49,6 +51,8 @@ export function resetStreamingRefs(refs: StreamingRefs): void {
   refs.toolIdToBlockIndexRef.current.clear();
   // Keep bgTaskToToolUseIdRef and pending bg task maps across turns because
   // background task events can arrive long after foreground streaming ends.
+  // Keep bgTaskAliasToCanonicalRef/bgPendingFinalTaskKeysRef across turns to
+  // correlate late bg_task_result events and lock input until final output arrives.
   // Keep bgResultMessageIdsRef across turns so later updates for the same
   // background task can replace the existing message instead of duplicating.
   // Keep bgFinalizedTaskIdsRef across turns so late completion summaries do not
