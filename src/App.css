@@ -1344,11 +1344,12 @@ del {
   display: block;
   width: 10px;
   height: 10px;
-  border: 1.5px solid var(--fg-muted);
+  border: 2px solid var(--fg-muted);
   border-top-color: transparent;
   border-radius: 50%;
   box-sizing: border-box;
-  animation: spin 0.9s linear infinite;
+  animation: spin 1s linear infinite;
+  will-change: transform;
 }
 
 .tool-icon.complete {
@@ -1546,11 +1547,6 @@ del {
 
 .todo-pending .todo-text {
   color: var(--fg);
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 /* Floating Todo Panel */
@@ -2687,11 +2683,6 @@ del {
   font-size: 16px;
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
 /* Bot mode flag reason */
 .permission-flag-reason {
   display: flex;
@@ -2838,11 +2829,6 @@ del {
 /* Streaming state - keep same muted appearance, just animate the icon */
 .thinking-block.streaming .thinking-icon {
   animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 /* Collapsed thinking indicator - shows "Thinking" label when not expanded */
@@ -3646,22 +3632,18 @@ del {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 1.5px solid var(--accent);
+  border: 2px solid var(--accent);
   border-top-color: transparent;
   border-radius: 50%;
   box-sizing: border-box;
   flex-shrink: 0;
-  animation: spin 0.9s linear infinite;
+  animation: spin 1s linear infinite;
+  will-change: transform;
 }
 
 .subagent-check {
   color: var(--success, #4ade80);
   font-size: 12px;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 .subagent-activity-box {
