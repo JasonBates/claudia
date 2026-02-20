@@ -177,6 +177,24 @@ Claudia includes 6 bundled color schemes (Solarized Dark/Light, Dracula, Nord, O
 
 Note: iTerm2 does not need to be installed. Claudia reads the `.itermcolors` plist format directly.
 
+### Advanced Runtime Config
+
+You can override model and runtime binaries in `~/.config/claudia/config.json` (or per-project at `.claudia/config.json`):
+
+```json
+{
+  "claude_model": "opus",
+  "claude_binary_path": "/opt/homebrew/bin/claude",
+  "node_binary_path": "/opt/homebrew/bin/node",
+  "legacy_permission_hook_polling": false
+}
+```
+
+- `claude_model`: Passed to Claude CLI as `--model`
+- `claude_binary_path`: Optional explicit path to Claude CLI
+- `node_binary_path`: Optional explicit Node path used to launch the bridge
+- `legacy_permission_hook_polling`: Enables legacy file-based permission flow (off by default)
+
 ## Architecture
 
 Claudia wraps the Claude Code CLI to leverage its built-in features (MCPs, skills, hooks, session management, prompt caching) while providing a custom native UI.

@@ -81,6 +81,7 @@ function App() {
     return "auto";
   };
   const [currentMode, setCurrentMode] = createSignal<Mode>(getInitialMode());
+  const [legacyPermissionHookPolling, setLegacyPermissionHookPolling] = createSignal(false);
 
   // Bot settings panel state
   const [botSettingsOpen, setBotSettingsOpen] = createSignal(false);
@@ -217,7 +218,11 @@ function App() {
     try {
       await session.startSession();
       store.dispatch(actions.setSessionActive(true));
-      permissions.startPolling();
+      if (legacyPermissionHookPolling()) {
+        permissions.startPolling();
+      } else {
+        permissions.stopPolling();
+      }
     } catch (e) {
       store.dispatch(actions.setSessionError(`Failed to start session: ${e}`));
     }
@@ -1152,6 +1157,7 @@ function App() {
     // and sync to localStorage for instant access on next load
     try {
       const config = await getConfig();
+      setLegacyPermissionHookPolling(!!config.legacy_permission_hook_polling);
       if (config.permission_mode) {
         const savedMode = config.permission_mode as Mode;
         console.log("[MOUNT] Loaded saved permission mode:", savedMode);
