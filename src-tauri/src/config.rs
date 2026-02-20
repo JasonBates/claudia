@@ -33,6 +33,18 @@ pub struct Config {
     // Sandbox mode: restricts Claude to only write files within the working directory
     #[serde(default = "default_sandbox_enabled")]
     pub sandbox_enabled: bool,
+    // Claude model selection (passed to bridge)
+    #[serde(default = "default_claude_model")]
+    pub claude_model: String,
+    // Optional explicit path to Claude CLI binary
+    #[serde(default)]
+    pub claude_binary_path: Option<String>,
+    // Optional explicit path to Node.js runtime used to launch bridge
+    #[serde(default)]
+    pub node_binary_path: Option<String>,
+    // Legacy file-based permission hook polling (disabled by default)
+    #[serde(default = "default_legacy_permission_hook_polling")]
+    pub legacy_permission_hook_polling: bool,
 }
 
 fn default_permission_mode() -> String {
@@ -65,6 +77,14 @@ fn default_bot_safety_threshold() -> f64 {
 
 fn default_sandbox_enabled() -> bool {
     true
+}
+
+fn default_claude_model() -> String {
+    "opus".to_string()
+}
+
+fn default_legacy_permission_hook_polling() -> bool {
+    false
 }
 
 impl Config {
@@ -226,5 +246,7 @@ mod tests {
         assert!(config.anthropic_api_key.is_none());
         assert!(config.default_working_dir.is_none());
         assert_eq!(config.theme, "dark"); // default value
+        assert_eq!(config.claude_model, "opus");
+        assert!(!config.legacy_permission_hook_polling);
     }
 }

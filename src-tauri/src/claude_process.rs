@@ -221,10 +221,32 @@ pub fn spawn_claude_process_with_resume(
         rust_debug_log("SPAWN", &format!("Resuming session: {}", session_id));
     }
 
-    let node_path = find_node_binary().map_err(|e| {
-        rust_debug_log("SPAWN_ERROR", &format!("Node binary not found: {}", e));
-        e
-    })?;
+    let dir_str = working_dir.to_string_lossy().to_string();
+    let config = Config::load(Some(&dir_str)).unwrap_or_default();
+
+    let node_path = if let Some(configured_node) = config
+        .node_binary_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        rust_debug_log("NODE", &format!("Using configured node binary: {}", configured_node));
+        let configured_path = PathBuf::from(configured_node);
+        let is_path_like = configured_node.contains('/') || configured_path.is_absolute();
+
+        if is_path_like && !configured_path.exists() {
+            return Err(format!(
+                "Configured node_binary_path does not exist: {}",
+                configured_node
+            ));
+        }
+        configured_path
+    } else {
+        find_node_binary().map_err(|e| {
+            rust_debug_log("SPAWN_ERROR", &format!("Node binary not found: {}", e));
+            e
+        })?
+    };
 
     let bridge_path = get_bridge_script_path().map_err(|e| {
         rust_debug_log("SPAWN_ERROR", &format!("Bridge script not found: {}", e));
@@ -247,12 +269,22 @@ pub fn spawn_claude_process_with_resume(
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
 
-    // Pass sandbox mode to bridge if enabled in config
-    let dir_str = working_dir.to_string_lossy();
-    if Config::load(Some(&dir_str))
-        .map(|c| c.sandbox_enabled)
-        .unwrap_or(false)
+    // Pass model/runtime settings from config to bridge.
+    let claude_model = config.claude_model.trim();
+    if !claude_model.is_empty() {
+        cmd.env("CLAUDIA_MODEL", claude_model);
+    }
+    if let Some(claude_binary_path) = config
+        .claude_binary_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
     {
+        cmd.env("CLAUDIA_CLAUDE_BIN", claude_binary_path);
+    }
+
+    // Pass sandbox mode to bridge if enabled in config.
+    if config.sandbox_enabled {
         rust_debug_log("SPAWN", "Sandbox mode enabled");
         cmd.env("CLAUDIA_SANDBOX", "1");
     }

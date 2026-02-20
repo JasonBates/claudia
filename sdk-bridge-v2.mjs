@@ -35,6 +35,12 @@ process.stdout.on('error', (err) => {
 
 // Find binary in common locations (PATH not available in bundled app)
 function findBinary(name) {
+  const overrideEnv = `CLAUDIA_${name.toUpperCase()}_BIN`;
+  const override = process.env[overrideEnv];
+  if (override && override.trim()) {
+    return override.trim();
+  }
+
   const home = homedir();
   const candidates = [
     join(home, ".local/bin", name),
@@ -186,6 +192,7 @@ async function main() {
 
   // Build Claude args - optionally resume a session
   function buildClaudeArgs(resumeSessionId = null) {
+    const model = (process.env.CLAUDIA_MODEL || "").trim() || "opus";
     const settings = { alwaysThinkingEnabled: true };
 
     // Enable SDK sandbox when CLAUDIA_SANDBOX is set
@@ -208,7 +215,7 @@ async function main() {
       "--input-format", "stream-json",
       "--output-format", "stream-json",
       "--include-partial-messages",
-      "--model", "opus",
+      "--model", model,
       "--verbose",
       // Permission handling via control_request events in the stream protocol
       // --permission-prompt-tool stdio enables the control protocol for tool permissions

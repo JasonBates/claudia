@@ -363,7 +363,8 @@ MCP Server reads response, returns to Claude CLI
 Claude continues (or aborts if denied)
 ```
 
-This flow is **not currently active** since `--permission-prompt-tool stdio` is used.
+This flow is legacy and is **disabled by default**. It can be re-enabled only via
+`legacy_permission_hook_polling: true` in config for fallback compatibility.
 
 ## Key Files
 
