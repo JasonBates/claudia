@@ -1,4 +1,4 @@
-import { Component, For, Show, Index, onMount, onCleanup, createEffect, createSignal } from "solid-js";
+import { Component, For, Show, Index, onMount, onCleanup, createEffect, createSignal, createMemo } from "solid-js";
 import MessageContent from "./MessageContent";
 import ToolResult from "./ToolResult";
 import ThinkingPreview from "./ThinkingPreview";
@@ -166,6 +166,16 @@ const MessageList: Component<MessageListProps> = (props) => {
     containerRef?.removeEventListener('scroll', handleScroll);
   });
 
+  // Memoize grouped streaming blocks so <Index> persists across updates
+  // (avoids the IIFE pattern which recreated <Index> on every streaming event)
+  const streamingGrouped = createMemo(() =>
+    groupBlocks(props.streamingBlocks || [])
+  );
+  const lastStreamingThinkingIndex = createMemo(() => {
+    const blocks = props.streamingBlocks || [];
+    return blocks.map((b, i) => b.type === "thinking" ? i : -1).filter(i => i >= 0).pop() ?? -1;
+  });
+
   return (
     <div class="message-list" ref={containerRef}>
       {/* Optional header (branding) - scrolls with content */}
@@ -311,116 +321,113 @@ const MessageList: Component<MessageListProps> = (props) => {
               </>
             }>
               {/* Render ALL blocks in natural order, grouping consecutive Task tools */}
-              {(() => {
-                const blocks = props.streamingBlocks || [];
-                const grouped = groupBlocks(blocks);
-                const lastThinkingIndex = blocks.map((b, i) => b.type === "thinking" ? i : -1).filter(i => i >= 0).pop() ?? -1;
+              {/* Uses memoized grouping + <Show> for stable DOM (prevents spinner animation restarts) */}
+              <Index each={streamingGrouped()}>
+                {(group) => {
+                  // Reactive helpers for tool_group rendering
+                  // Only called inside <Show>'s truthy branch where group().type === "tool_group"
+                  const tools = () => (group() as GroupedBlock & { type: "tool_group" }).tools;
+                  const anyLoading = () => tools().some(t =>
+                    t.tool.isLoading || (t.tool.subagent && t.tool.subagent.status !== "complete")
+                  );
 
-                return (
-                  <Index each={grouped}>
-                    {(group) => {
-                      const currentGroup = group();
-                      if (currentGroup.type === "tool_group") {
-                        // Render grouped Task tools in a single container with shared header
-                        const toolCount = currentGroup.tools.length;
-                        const anyLoading = currentGroup.tools.some(t =>
-                          t.tool.isLoading || (t.tool.subagent && t.tool.subagent.status !== "complete")
-                        );
+                  return (
+                    <Show when={group().type === "tool_group"} fallback={
+                      // Single block fallback (thinking, text, non-Task tool_use)
+                      // These don't have long-running spinner animations, so DOM recreation is fine
+                      (() => {
+                        const g = group() as GroupedBlock & { type: "single" };
+                        const block = g.block;
+                        const currentIndex = g.startIndex;
+
+                        if (block.type === "thinking") {
+                          return (
+                            <ThinkingPreview
+                              content={(block as { type: "thinking"; content: string }).content}
+                              expanded={isThinkingExpanded(`streaming:${currentIndex}`)}
+                              isStreaming={currentIndex === lastStreamingThinkingIndex() && !!props.streamingThinking}
+                              onToggle={() => toggleThinking(`streaming:${currentIndex}`)}
+                            />
+                          );
+                        }
+
+                        if (block.type === "text") {
+                          return <MessageContent content={(block as { type: "text"; content: string }).content} />;
+                        }
+
+                        // tool_use block
+                        const toolBlock = block as { type: "tool_use"; tool: ToolUse };
+
+                        if (toolBlock.tool.name === "Task") {
+                          return (
+                            <ToolResult
+                              name={toolBlock.tool.name}
+                              input={toolBlock.tool.input}
+                              result={toolBlock.tool.result}
+                              isLoading={toolBlock.tool.isLoading}
+                              autoExpanded={toolBlock.tool.autoExpanded}
+                              subagent={toolBlock.tool.subagent}
+                              startedAt={toolBlock.tool.startedAt}
+                              completedAt={toolBlock.tool.completedAt}
+                              grouped={true}
+                            />
+                          );
+                        }
+
+                        // Regular tool_use (not Task)
                         return (
                           <div class="tool-uses">
-                            <div class="tool-result tool-group-container" classList={{ loading: anyLoading }}>
-                              <div class="tool-header">
-                                <span class="tool-icon" classList={{ complete: !anyLoading, spinning: anyLoading }}>
-                                  {anyLoading ? "" : "✓"}
-                                </span>
-                                <span class="tool-name">TASKS</span>
-                                <span class="tool-input-preview">
-                                  {toolCount} {toolCount === 1 ? "agent" : "parallel agents"}
-                                </span>
-                              </div>
-                              <div class="tool-group-items">
-                                <For each={currentGroup.tools}>
-                                  {(toolBlock) => (
-                                    <ToolResult
-                                      name={toolBlock.tool.name}
-                                      input={toolBlock.tool.input}
-                                      result={toolBlock.tool.result}
-                                      isLoading={toolBlock.tool.isLoading}
-                                      autoExpanded={toolBlock.tool.autoExpanded}
-                                      subagent={toolBlock.tool.subagent}
-                                      startedAt={toolBlock.tool.startedAt}
-                                      completedAt={toolBlock.tool.completedAt}
-                                      grouped={true}
-                                    />
-                                  )}
-                                </For>
-                              </div>
-                            </div>
+                            <ToolResult
+                              name={toolBlock.tool.name}
+                              input={toolBlock.tool.input}
+                              result={toolBlock.tool.result}
+                              isLoading={toolBlock.tool.isLoading}
+                              autoExpanded={toolBlock.tool.autoExpanded}
+                              subagent={toolBlock.tool.subagent}
+                              startedAt={toolBlock.tool.startedAt}
+                              completedAt={toolBlock.tool.completedAt}
+                              planning={toolBlock.tool.name === "Planning" ? props.planning : undefined}
+                            />
                           </div>
                         );
-                      }
-
-                      // Single block - render based on type
-                      const currentIndex = currentGroup.startIndex;
-                      const block = currentGroup.block;
-
-                      if (block.type === "thinking") {
-                        return (
-                          <ThinkingPreview
-                            content={(block as { type: "thinking"; content: string }).content}
-                            expanded={isThinkingExpanded(`streaming:${currentIndex}`)}
-                            isStreaming={currentIndex === lastThinkingIndex && !!props.streamingThinking}
-                            onToggle={() => toggleThinking(`streaming:${currentIndex}`)}
-                          />
-                        );
-                      }
-
-                      if (block.type === "text") {
-                        return <MessageContent content={(block as { type: "text"; content: string }).content} />;
-                      }
-
-                      // tool_use block
-                      const toolBlock = block as { type: "tool_use"; tool: ToolUse };
-
-                      // Task tools render with grouped={true} - no box wrapper
-                      // This prevents visual flash when single Task becomes grouped
-                      // Check by NAME since subagent data may arrive later
-                      if (toolBlock.tool.name === "Task") {
-                        return (
-                          <ToolResult
-                            name={toolBlock.tool.name}
-                            input={toolBlock.tool.input}
-                            result={toolBlock.tool.result}
-                            isLoading={toolBlock.tool.isLoading}
-                            autoExpanded={toolBlock.tool.autoExpanded}
-                            subagent={toolBlock.tool.subagent}
-                            startedAt={toolBlock.tool.startedAt}
-                            completedAt={toolBlock.tool.completedAt}
-                            grouped={true}
-                          />
-                        );
-                      }
-
-                      // Regular tool_use (not Task)
-                      return (
-                        <div class="tool-uses">
-                          <ToolResult
-                            name={toolBlock.tool.name}
-                            input={toolBlock.tool.input}
-                            result={toolBlock.tool.result}
-                            isLoading={toolBlock.tool.isLoading}
-                            autoExpanded={toolBlock.tool.autoExpanded}
-                            subagent={toolBlock.tool.subagent}
-                            startedAt={toolBlock.tool.startedAt}
-                            completedAt={toolBlock.tool.completedAt}
-                            planning={toolBlock.tool.name === "Planning" ? props.planning : undefined}
-                          />
+                      })()
+                    }>
+                      {/* Tool group - <Show> keeps this DOM alive while type stays "tool_group" */}
+                      {/* Spinner CSS animation continues without restart */}
+                      <div class="tool-uses">
+                        <div class="tool-result tool-group-container" classList={{ loading: anyLoading() }}>
+                          <div class="tool-header">
+                            <span class="tool-icon" classList={{ complete: !anyLoading(), spinning: anyLoading() }}>
+                              {anyLoading() ? "" : "✓"}
+                            </span>
+                            <span class="tool-name">TASKS</span>
+                            <span class="tool-input-preview">
+                              {tools().length} {tools().length === 1 ? "agent" : "parallel agents"}
+                            </span>
+                          </div>
+                          <div class="tool-group-items">
+                            <Index each={tools()}>
+                              {(toolBlock) => (
+                                <ToolResult
+                                  name={toolBlock().tool.name}
+                                  input={toolBlock().tool.input}
+                                  result={toolBlock().tool.result}
+                                  isLoading={toolBlock().tool.isLoading}
+                                  autoExpanded={toolBlock().tool.autoExpanded}
+                                  subagent={toolBlock().tool.subagent}
+                                  startedAt={toolBlock().tool.startedAt}
+                                  completedAt={toolBlock().tool.completedAt}
+                                  grouped={true}
+                                />
+                              )}
+                            </Index>
+                          </div>
                         </div>
-                      );
-                    }}
-                  </Index>
-                );
-              })()}
+                      </div>
+                    </Show>
+                  );
+                }}
+              </Index>
               {/* Single cursor AFTER all blocks - only shows when last block is text */}
               <Show when={props.streamingBlocks && props.streamingBlocks.length > 0 && props.streamingBlocks[props.streamingBlocks.length - 1].type === "text"}>
                 <span class="cursor">|</span>

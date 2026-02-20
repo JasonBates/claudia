@@ -408,115 +408,105 @@ const ToolResult: Component<ToolResultProps> = (props) => {
   const isTaskByName = () => props.name === "Task";
   const isTask = () => props.name === "Task" && props.subagent;
 
-  // When grouped, Task tools render just the SubagentTree without wrapper/header
-  if (props.grouped && isTaskByName()) {
-    // Has subagent data → show SubagentTree
-    if (props.subagent) {
-      return <SubagentTree subagent={props.subagent} fullResult={props.result} />;
-    }
-    // No subagent but has result → Task errored or completed without spawning subagent
-    // Fall through to normal ToolResult rendering (don't return early)
-    if (props.result && !props.isLoading) {
-      // Let it render as normal tool result below
-    } else {
-      // Still loading, no subagent yet - show minimal loading state
-      return (
+  // Reactive rendering - all conditions use <Show> so DOM persists across prop changes.
+  // This is critical for <Index>-based rendering where components are reused, not recreated.
+  return (
+    <Show when={props.grouped && isTaskByName() && (props.subagent || !props.result || props.isLoading)} fallback={
+      // Normal rendering: Planning tool, default tool result, or grouped Task fallthrough (error case)
+      <Show when={props.name === "Planning" && props.planning} fallback={
+        <div class="tool-result" classList={{ expanded: isExpanded(), loading: isEffectivelyLoading() }}>
+          <div class="tool-header">
+            <span class="tool-icon" classList={{ complete: !isEffectivelyLoading(), spinning: isEffectivelyLoading() }}>
+              {isEffectivelyLoading() ? "" : "✓"}
+            </span>
+            <span class="tool-name">{displayName()}</span>
+            <Show when={elapsedText()}>
+              <span class="tool-elapsed" classList={{ loading: props.isLoading }}>{elapsedText()}</span>
+            </Show>
+            <Show when={hasInput()}>
+              <span class="tool-input-preview">{inputPreview()}</span>
+            </Show>
+            <Show when={!isEffectivelyLoading() && (hasInput() || props.result)}>
+              <button
+                class="tool-toggle-btn refocus-after"
+                onClick={toggleExpanded}
+                title={isExpanded() ? "Collapse" : "Expand"}
+              >
+                {isExpanded() ? "−" : "+"}
+              </button>
+            </Show>
+          </div>
+
+          {/* Special rendering for TodoWrite - always show todo list */}
+          <Show when={isTodoWrite()}>
+            <TodoList todos={getTodos()} />
+          </Show>
+
+          {/* Special rendering for Task (subagent) - show tree view */}
+          <Show when={isTask()}>
+            <SubagentTree subagent={props.subagent!} fullResult={props.result} />
+          </Show>
+
+          {/* Image result - always show inline when result contains image data */}
+          <Show when={!isTodoWrite() && !isTask() && imageData()}>
+            <div class="tool-result-image">
+              <img
+                src={imageDataUrl()!}
+                alt="Image from Read tool"
+                class="inline-image"
+                onClick={() => setShowImageModal(true)}
+              />
+            </div>
+            <Show when={showImageModal()}>
+              <ImageModal
+                src={imageDataUrl()!}
+                alt="Image from Read tool"
+                onClose={() => setShowImageModal(false)}
+              />
+            </Show>
+          </Show>
+
+          {/* Result content - visible when: loading or expanded (and not an image) */}
+          <Show when={!isTodoWrite() && !isTask() && !imageData() && (props.isLoading || isExpanded())}>
+            <div class="tool-result-preview">
+              <div class="tool-result-content">
+                <Show when={props.result} fallback={<span class="loading-text">Running...</span>}>
+                  <MessageContent content={formattedResult()!} />
+                </Show>
+              </div>
+            </div>
+          </Show>
+
+          {/* Expanded input details */}
+          <Show when={isExpanded() && hasInput() && !isTodoWrite()}>
+            <div class="tool-input-details">
+              <div class="tool-section-label">Input:</div>
+              <pre class="tool-json">
+                {JSON.stringify(props.input, null, 2)}
+              </pre>
+            </div>
+          </Show>
+        </div>
+      }>
+        <PlanningTool
+          isLoading={props.isLoading || false}
+          nestedTools={props.planning!.nestedTools}
+          isReady={props.planning!.isReady}
+        />
+      </Show>
+    }>
+      {/* Grouped Task: reactively switch between SubagentTree and "Starting" spinner */}
+      <Show when={props.subagent} fallback={
         <div class="subagent-tree">
           <div class="subagent-header">
             <span class="subagent-spinner" />
             <span class="subagent-status">Starting</span>
           </div>
         </div>
-      );
-    }
-  }
-
-  // Special rendering for Planning tool - shows status only (content in separate window)
-  // Approval actions are in the footer (PlanApprovalBar)
-  if (props.name === "Planning" && props.planning) {
-    return (
-      <PlanningTool
-        isLoading={props.isLoading || false}
-        nestedTools={props.planning.nestedTools}
-        isReady={props.planning.isReady}
-      />
-    );
-  }
-
-  return (
-    <div class="tool-result" classList={{ expanded: isExpanded(), loading: isEffectivelyLoading() }}>
-      <div class="tool-header">
-        <span class="tool-icon" classList={{ complete: !isEffectivelyLoading(), spinning: isEffectivelyLoading() }}>
-          {isEffectivelyLoading() ? "" : "✓"}
-        </span>
-        <span class="tool-name">{displayName()}</span>
-        <Show when={elapsedText()}>
-          <span class="tool-elapsed" classList={{ loading: props.isLoading }}>{elapsedText()}</span>
-        </Show>
-        <Show when={hasInput()}>
-          <span class="tool-input-preview">{inputPreview()}</span>
-        </Show>
-        <Show when={!isEffectivelyLoading() && (hasInput() || props.result)}>
-          <button
-            class="tool-toggle-btn refocus-after"
-            onClick={toggleExpanded}
-            title={isExpanded() ? "Collapse" : "Expand"}
-          >
-            {isExpanded() ? "−" : "+"}
-          </button>
-        </Show>
-      </div>
-
-      {/* Special rendering for TodoWrite - always show todo list */}
-      <Show when={isTodoWrite()}>
-        <TodoList todos={getTodos()} />
-      </Show>
-
-      {/* Special rendering for Task (subagent) - show tree view */}
-      <Show when={isTask()}>
+      }>
         <SubagentTree subagent={props.subagent!} fullResult={props.result} />
       </Show>
-
-      {/* Image result - always show inline when result contains image data */}
-      <Show when={!isTodoWrite() && !isTask() && imageData()}>
-        <div class="tool-result-image">
-          <img
-            src={imageDataUrl()!}
-            alt="Image from Read tool"
-            class="inline-image"
-            onClick={() => setShowImageModal(true)}
-          />
-        </div>
-        <Show when={showImageModal()}>
-          <ImageModal
-            src={imageDataUrl()!}
-            alt="Image from Read tool"
-            onClose={() => setShowImageModal(false)}
-          />
-        </Show>
-      </Show>
-
-      {/* Result content - visible when: loading or expanded (and not an image) */}
-      <Show when={!isTodoWrite() && !isTask() && !imageData() && (props.isLoading || isExpanded())}>
-        <div class="tool-result-preview">
-          <div class="tool-result-content">
-            <Show when={props.result} fallback={<span class="loading-text">Running...</span>}>
-              <MessageContent content={formattedResult()!} />
-            </Show>
-          </div>
-        </div>
-      </Show>
-
-      {/* Expanded input details */}
-      <Show when={isExpanded() && hasInput() && !isTodoWrite()}>
-        <div class="tool-input-details">
-          <div class="tool-section-label">Input:</div>
-          <pre class="tool-json">
-            {JSON.stringify(props.input, null, 2)}
-          </pre>
-        </div>
-      </Show>
-    </div>
+    </Show>
   );
 };
 
