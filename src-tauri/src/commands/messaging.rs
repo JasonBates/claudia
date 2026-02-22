@@ -32,8 +32,9 @@ const MAX_IDLE_COMPACTION: u32 = 30;
 /// Max idle count for subagents (~5 minutes at 10s intervals)
 /// Task agents can take several minutes for codebase analysis
 const MAX_IDLE_SUBAGENT: u32 = 30;
-/// Max idle count for regular tools (~2 minutes at 5s intervals)
-const MAX_IDLE_TOOLS: u32 = 24;
+/// Max idle count for regular tools (~5 minutes at 5s intervals)
+/// Long-running Bash commands (e.g. jdupe, builds) can exceed 2 minutes
+const MAX_IDLE_TOOLS: u32 = 60;
 /// Max idle count while streaming (~6 seconds at 2s intervals)
 const MAX_IDLE_STREAMING: u32 = 3;
 /// Max idle count during thinking (~30 seconds at 2s intervals)
@@ -813,9 +814,9 @@ mod tests {
             "Subagent should wait >= 2 minutes"
         );
 
-        // Tools: 24 * 5000ms = 120 seconds (2 minutes)
+        // Tools: 60 * 5000ms = 300 seconds (5 minutes)
         let tools_wait = MAX_IDLE_TOOLS as u64 * TIMEOUT_TOOL_EXEC_MS;
-        assert!(tools_wait >= 60_000, "Tools should wait >= 1 minute");
+        assert!(tools_wait >= 120_000, "Tools should wait >= 2 minutes");
 
         // Streaming: 3 * 2000ms = 6 seconds
         let streaming_wait = MAX_IDLE_STREAMING as u64 * TIMEOUT_STREAMING_MS;
