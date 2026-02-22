@@ -260,6 +260,7 @@ pub fn spawn_claude_process_with_resume(
         .current_dir(working_dir)
         .env("NODE_OPTIONS", "--no-warnings")
         .env("FORCE_COLOR", "0")
+        .env_remove("CLAUDECODE") // Strip parent Claude Code env so bridge doesn't refuse as "nested session"
         .env("CLAUDIA_SESSION_ID", app_session_id)
         .env(
             "CLAUDIA_DEBUG",

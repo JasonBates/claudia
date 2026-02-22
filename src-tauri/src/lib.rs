@@ -15,15 +15,21 @@ use tauri_plugin_cli::CliExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|app| {
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
+    #[cfg(debug_assertions)]
+    {
+        builder = builder.plugin(tauri_plugin_webdriver::init());
+    }
+
+    builder.setup(|app| {
             // Parse CLI arguments to get optional directory
             let cli_dir = app.cli().matches().ok().and_then(|matches| {
                 matches
@@ -89,7 +95,6 @@ pub fn run() {
             commands::bot_config::validate_bot_api_key,
             // Window commands
             commands::window_cmd::activate_app,
-        ])
-        .run(tauri::generate_context!())
+        ]).run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
