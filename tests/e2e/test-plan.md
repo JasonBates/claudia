@@ -136,13 +136,7 @@ Test these in order. Each must work correctly.
 - After testing, click back to VIBE mode for subsequent tests (or set to "ask" for Test 4)
 
 ### 6. Sidebar & Sessions
-- **There is no visible sidebar toggle button.** Open the sidebar with `Cmd+Shift+[`:
-  ```javascript
-  document.dispatchEvent(new KeyboardEvent('keydown', {
-    key: '[', code: 'BracketLeft', keyCode: 219,
-    metaKey: true, shiftKey: true, bubbles: true
-  }));
-  ```
+- Click the sidebar toggle button (`.sidebar-toggle-btn` — the ☰ hamburger icon in the top-right, grouped with other action buttons)
 - Verify `.sidebar` loses the `collapsed` class and has `width > 0` (default: 280px)
 - Sidebar has a "Sessions" header (`.sidebar-header`)
 - Session list is populated (`.session-item` elements)
@@ -150,6 +144,7 @@ Test these in order. Each must work correctly.
 - A "+New Session" button (`.new-session-button`) is visible
 - Close the sidebar by clicking `.sidebar-close-button` (the `×`)
 - Verify `.sidebar` has `collapsed` class and `width: 0px`
+- **Alternative:** The keyboard shortcut `Cmd+Shift+[` still works to toggle the sidebar
 
 ### 7. Settings
 - Open settings by clicking `.top-bar-btn[title="Settings (Cmd+,)"]` (the ⚙ button)
@@ -211,6 +206,7 @@ After critical paths pass, explore freely. Look for:
 | Color scheme grid | `.color-scheme-grid` | Theme options container |
 | Color scheme item | `.color-scheme-option` | Individual theme button |
 | Selected theme | `.color-scheme-option.selected` | Currently active theme |
+| Sidebar toggle | `.sidebar-toggle-btn` | Open/close sidebar (☰ button) |
 | Sidebar | `.sidebar` | Session history panel |
 | Sidebar (collapsed) | `.sidebar.collapsed` | Sidebar is hidden (width: 0) |
 | Sidebar close | `.sidebar-close-button` | Close sidebar |

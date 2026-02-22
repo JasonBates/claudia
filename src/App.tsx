@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, onCleanup, Show, getOwner } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, Show, ErrorBoundary, getOwner } from "solid-js";
 import { batch, runWithOwner } from "solid-js";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -12,6 +12,7 @@ import QuestionPanel, { type QuestionAnswers } from "./components/QuestionPanel"
 import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
+import ErrorFallback from "./components/ErrorFallback";
 import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion, hasBotApiKey, listProjects, reopenInDirectory, getLaunchDir, hasCliDirectory, checkClaudeCodeInstalled } from "./lib/tauri";
 import type { ProjectInfo } from "./lib/tauri";
 import type { ThemeSettings } from "./lib/theme-utils";
@@ -1305,26 +1306,38 @@ function App() {
   return (
     <div class="app" classList={{ "cursor-hidden": keyboardCursor.cursorHidden() }}>
       {/* Session Sidebar */}
-      <Sidebar
-        collapsed={sidebar.collapsed()}
-        onToggle={sidebar.toggleSidebar}
-        sessions={sidebar.sessions()}
-        sessionNames={sidebar.sessionNames()}
-        currentSessionId={store.sessionInfo().sessionId || null}
-        launchSessionId={store.launchSessionId()}
-        isLoading={sidebar.isLoading()}
-        error={sidebar.error()}
-        onResume={handleResumeSession}
-        onDelete={sidebar.handleDeleteSession}
-        onRename={sidebar.handleRenameSession}
-        onNewSession={handleNewSession}
-        onReturnToOriginal={handleReturnToOriginal}
-      />
+      <ErrorBoundary fallback={(err, reset) => <ErrorFallback error={err} reset={reset} section="the sidebar" />}>
+        <Sidebar
+          collapsed={sidebar.collapsed()}
+          onToggle={sidebar.toggleSidebar}
+          sessions={sidebar.sessions()}
+          sessionNames={sidebar.sessionNames()}
+          currentSessionId={store.sessionInfo().sessionId || null}
+          launchSessionId={store.launchSessionId()}
+          isLoading={sidebar.isLoading()}
+          error={sidebar.error()}
+          onResume={handleResumeSession}
+          onDelete={sidebar.handleDeleteSession}
+          onRename={sidebar.handleRenameSession}
+          onNewSession={handleNewSession}
+          onReturnToOriginal={handleReturnToOriginal}
+        />
+      </ErrorBoundary>
 
       {/* Main content area */}
       <div class="app-content">
         <div class="top-bar"></div>
         <div class="drag-region" data-tauri-drag-region="true"></div>
+
+        {/* Sidebar toggle button - visible way to discover session history */}
+        <button
+          class="sidebar-toggle-btn"
+          onClick={sidebar.toggleSidebar}
+          title={`${sidebar.collapsed() ? "Open" : "Close"} sidebar (Cmd+Shift+[)`}
+          aria-label={`${sidebar.collapsed() ? "Open" : "Close"} sidebar`}
+        >
+          ☰
+        </button>
 
         {/* Hide dir-indicator when context warning is shown - they overlap in the title bar.
             Condition is inverse of warning: !(threshold !== "ok" && !dismissed) = (threshold === "ok" || dismissed) */}
@@ -1347,7 +1360,7 @@ function App() {
         </Show>
 
         <button
-          class="top-bar-btn"
+          class="top-bar-btn btn-new-window"
           onClick={handleOpenNewWindow}
           title="New Window (Cmd+N)"
           aria-label="Open new window"
@@ -1356,7 +1369,7 @@ function App() {
         </button>
 
         <button
-          class="top-bar-btn"
+          class="top-bar-btn btn-settings"
           onClick={settings.openSettings}
           title="Settings (Cmd+,)"
           aria-label="Open settings"
@@ -1427,19 +1440,21 @@ function App() {
         </Show>
 
         <main class="app-main">
-          <MessageList
-            messages={store.messages()}
-            streamingContent={store.isLoading() ? store.streamingContent() : undefined}
-            streamingToolUses={store.isLoading() ? store.currentToolUses() : undefined}
-            streamingBlocks={store.isLoading() ? store.streamingBlocks() : undefined}
-            streamingThinking={store.isLoading() ? store.streamingThinking() : undefined}
-            showThinking={store.showThinking()}
-            forceScrollToBottom={forceScroll()}
-            planning={{
-              nestedTools: store.planningNestedTools(),
-              isReady: store.planReady(),
-            }}
-          />
+          <ErrorBoundary fallback={(err, reset) => <ErrorFallback error={err} reset={reset} section="the message list" />}>
+            <MessageList
+              messages={store.messages()}
+              streamingContent={store.isLoading() ? store.streamingContent() : undefined}
+              streamingToolUses={store.isLoading() ? store.currentToolUses() : undefined}
+              streamingBlocks={store.isLoading() ? store.streamingBlocks() : undefined}
+              streamingThinking={store.isLoading() ? store.streamingThinking() : undefined}
+              showThinking={store.showThinking()}
+              forceScrollToBottom={forceScroll()}
+              planning={{
+                nestedTools: store.planningNestedTools(),
+                isReady: store.planReady(),
+              }}
+            />
+          </ErrorBoundary>
         </main>
 
         <footer class="app-footer">
@@ -1542,17 +1557,19 @@ function App() {
 
       {/* Inline Permission Dialog */}
       <Show when={store.pendingPermission()}>
-        <div class="permission-container">
-          <PermissionDialog
-            toolName={store.pendingPermission()!.toolName}
-            toolInput={store.pendingPermission()!.toolInput}
-            description={store.pendingPermission()!.description}
-            onAllow={permissions.handlePermissionAllow}
-            onDeny={permissions.handlePermissionDeny}
-            isReviewing={store.permissionIsReviewing()}
-            reviewResult={store.permissionReviewResult()}
-          />
-        </div>
+        <ErrorBoundary fallback={(err, reset) => <ErrorFallback error={err} reset={reset} section="the permission dialog" />}>
+          <div class="permission-container">
+            <PermissionDialog
+              toolName={store.pendingPermission()!.toolName}
+              toolInput={store.pendingPermission()!.toolInput}
+              description={store.pendingPermission()!.description}
+              onAllow={permissions.handlePermissionAllow}
+              onDeny={permissions.handlePermissionDeny}
+              isReviewing={store.permissionIsReviewing()}
+              reviewResult={store.permissionReviewResult()}
+            />
+          </div>
+        </ErrorBoundary>
       </Show>
 
       {/* Drop Zone Overlay */}

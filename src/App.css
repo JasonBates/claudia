@@ -600,6 +600,34 @@ body {
   display: block;
 }
 
+/* Sidebar toggle button (right side of title bar, grouped with other action buttons) */
+.sidebar-toggle-btn {
+  position: fixed;
+  top: 0;
+  right: 80px;
+  height: 32px;
+  width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  z-index: 1000;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+  padding-bottom: 4px;
+}
+
+.sidebar-toggle-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--fg);
+}
+
 /* Top bar buttons (settings, open project, etc.) */
 .top-bar-btn {
   position: fixed;
@@ -627,20 +655,20 @@ body {
   color: var(--fg);
 }
 
-/* Position top bar buttons from right edge */
-.top-bar-btn:nth-of-type(1) {
-  right: 56px;  /* Open project button */
+/* Position top bar buttons from right edge — use explicit classes, not nth-of-type */
+.top-bar-btn.btn-new-window {
+  right: 56px;
 }
 
-.top-bar-btn:nth-of-type(2) {
-  right: 32px;  /* Settings button */
+.top-bar-btn.btn-settings {
+  right: 32px;
 }
 
 /* Right-aligned Token Indicator */
 .token-indicator {
   position: fixed;
   top: 0;
-  right: 80px;
+  right: 104px;
   height: 32px;
   display: flex;
   align-items: center;
@@ -4501,4 +4529,53 @@ del {
 .install-prompt-hint code {
   font-family: "SF Mono", "Monaco", "Menlo", monospace;
   font-size: 11px;
+}
+
+/* ============================================================================
+   Error Boundary Fallback
+   ============================================================================ */
+
+.error-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  min-height: 120px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.error-fallback-icon {
+  font-size: 24px;
+  color: var(--yellow);
+}
+
+.error-fallback-message {
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.error-fallback-detail {
+  font-size: 12px;
+  color: var(--fg-muted);
+  max-width: 400px;
+  word-break: break-word;
+}
+
+.error-fallback-retry {
+  margin-top: 8px;
+  padding: 6px 16px;
+  background: var(--bg-secondary);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.15s ease;
+}
+
+.error-fallback-retry:hover {
+  background: var(--bg-tertiary);
 }
