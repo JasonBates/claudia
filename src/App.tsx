@@ -13,7 +13,7 @@ import PlanApprovalBar from "./components/PlanApprovalBar";
 import PermissionDialog from "./components/PermissionDialog";
 import Sidebar from "./components/Sidebar";
 import ErrorFallback from "./components/ErrorFallback";
-import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion, hasBotApiKey, listProjects, reopenInDirectory, getLaunchDir, hasCliDirectory, checkClaudeCodeInstalled } from "./lib/tauri";
+import { sendMessage, resumeSession, getSessionHistory, clearSession, sendPermissionResponse, sendQuestionResponse, sendQuestionCancel, getSchemeColors, openInNewWindow, openNewWindowWithPicker, getConfig, saveConfig, checkForUpdate, downloadAndInstallUpdate, restartApp, getAppVersion, hasBotApiKey, listProjects, reopenInDirectory, getLaunchDir, hasCliDirectory, checkClaudeCodeInstalled } from "./lib/tauri";
 import type { ProjectInfo } from "./lib/tauri";
 import type { ThemeSettings } from "./lib/theme-utils";
 import { getContextThreshold, DEFAULT_CONTEXT_LIMIT } from "./lib/context-utils";
@@ -194,14 +194,11 @@ function App() {
     },
   };
 
-  // Handle opening a new window for the current project
+  // Handle opening a new window with project picker
   const handleOpenNewWindow = async () => {
-    const dir = session.workingDir();
-    if (!dir) return;
-
-    console.log("[NEW_WINDOW] Opening new window for:", dir);
+    console.log("[NEW_WINDOW] Opening new window with project picker");
     try {
-      await openInNewWindow(dir);
+      await openNewWindowWithPicker();
     } catch (e) {
       console.error("[NEW_WINDOW] Failed:", e);
       store.dispatch(actions.setSessionError(`Failed to open new window: ${e}`));

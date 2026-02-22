@@ -82,6 +82,7 @@ pub fn run() {
             commands::appearance_cmd::list_color_schemes,
             commands::appearance_cmd::get_scheme_colors,
             // Directory/window commands
+            commands::directory_cmd::open_new_window_with_picker,
             commands::directory_cmd::open_new_window,
             commands::directory_cmd::reopen_in_directory,
             commands::directory_cmd::has_cli_directory,

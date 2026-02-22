@@ -488,6 +488,16 @@ export async function getSchemeColors(name: string): Promise<ColorSchemeColors> 
 // ============================================================================
 
 /**
+ * Open a new Claudia window showing the project picker.
+ * Spawns a new app instance without a directory argument.
+ */
+export async function openNewWindowWithPicker(): Promise<void> {
+  console.log("[TAURI] Opening new window with project picker");
+  await invoke("open_new_window_with_picker");
+  console.log("[TAURI] New window with picker opened");
+}
+
+/**
  * Open a new Claudia window with the specified directory.
  * Uses the Rust backend to spawn a new app instance via macOS open command.
  *
