@@ -45,6 +45,11 @@ const MAX_IDLE_INITIAL: u32 = 60;
 /// Max idle count waiting for permission response (~5 minutes at 5s intervals)
 /// User may need significant time to review permission requests
 const MAX_IDLE_PERMISSION: u32 = 60;
+/// Max idle count while waiting for API to start next turn after tool completion
+/// (~45 seconds at 5s intervals)
+/// After tools complete, Claude's API needs time to process results and start the next turn.
+/// This can take 10-30+ seconds for large contexts or complex tool outputs.
+const MAX_IDLE_POST_TOOL: u32 = 9;
 
 /// Calculate adaptive timeout and max idle count based on current state.
 ///
@@ -55,14 +60,16 @@ const MAX_IDLE_PERMISSION: u32 = 60;
 /// 2. Permission pending - long timeout, user needs time to review and respond
 /// 3. Subagent pending - long timeout, Task agents can take several minutes
 /// 4. Tools pending - medium-long timeout, regular tool execution
-/// 5. Thinking in progress - extended timeout, Opus 4.5 can pause 10-20s between bursts
-/// 6. Got first content - short timeout, streaming should be continuous
-/// 7. Waiting for response - medium timeout, initial response can take time
+/// 5. Post-tool waiting - extended timeout, API processing tool results before next turn
+/// 6. Thinking in progress - extended timeout, Opus 4.5 can pause 10-20s between bursts
+/// 7. Got first content - short timeout, streaming should be continuous
+/// 8. Waiting for response - medium timeout, initial response can take time
 pub fn calculate_timeouts(
     compacting: bool,
     permission_pending: bool,
     subagent_pending: bool,
     tools_pending: bool,
+    post_tool_waiting: bool,
     thinking_in_progress: bool,
     got_first_content: bool,
 ) -> (u64, u32) {
@@ -72,7 +79,8 @@ pub fn calculate_timeouts(
         TIMEOUT_PERMISSION_MS
     } else if subagent_pending {
         TIMEOUT_SUBAGENT_MS
-    } else if tools_pending {
+    } else if tools_pending || post_tool_waiting {
+        // Tool execution and post-tool waiting both use 5s intervals
         TIMEOUT_TOOL_EXEC_MS
     } else if thinking_in_progress || got_first_content {
         // Use streaming timeout for thinking even before first text content
@@ -90,6 +98,8 @@ pub fn calculate_timeouts(
         MAX_IDLE_SUBAGENT
     } else if tools_pending {
         MAX_IDLE_TOOLS
+    } else if post_tool_waiting {
+        MAX_IDLE_POST_TOOL
     } else if thinking_in_progress {
         MAX_IDLE_THINKING
     } else if got_first_content {
@@ -286,6 +296,7 @@ pub async fn send_message(
     let mut subagent_tool_ids: std::collections::HashSet<String> = std::collections::HashSet::new(); // Track which tool IDs are subagents
     let mut compacting = false; // Track if compaction is in progress (can take 60+ seconds)
     let mut thinking_in_progress = false; // Track if extended thinking is active (needs longer timeout)
+    let mut post_tool_waiting = false; // Track post-tool API processing phase (45s window)
 
     cmd_debug_log("LOOP", "Starting event receive loop");
 
@@ -325,6 +336,7 @@ pub async fn send_message(
             permission_pending,
             subagent_pending,
             tools_pending,
+            post_tool_waiting,
             thinking_in_progress,
             got_first_content,
         );
@@ -369,6 +381,13 @@ pub async fn send_message(
                     if thinking_in_progress {
                         thinking_in_progress = false;
                         cmd_debug_log("THINKING", "Extended thinking ended");
+                    }
+                    if post_tool_waiting {
+                        post_tool_waiting = false;
+                        cmd_debug_log(
+                            "POST_TOOL",
+                            "Claude resumed - exiting post-tool waiting phase",
+                        );
                     }
                 }
 
@@ -463,6 +482,15 @@ pub async fn send_message(
                                     "Tool result for unknown id={} (no pending counters changed)",
                                     id
                                 ),
+                            );
+                        }
+                        // Enter post-tool waiting phase when all tools/subagents complete.
+                        // Gives the API up to 45s to process results and start next turn.
+                        if pending_tool_count == 0 && pending_subagent_count == 0 {
+                            post_tool_waiting = true;
+                            cmd_debug_log(
+                                "POST_TOOL",
+                                "All tools completed - entering post-tool waiting phase (45s window)",
                             );
                         }
                     }
@@ -680,8 +708,8 @@ mod tests {
     #[test]
     fn timeout_compaction_takes_highest_priority() {
         // Compaction should use longest timeout even when other flags are set
-        // Args: compacting, permission_pending, subagent_pending, tools_pending, thinking, got_first_content
-        let (timeout, max_idle) = calculate_timeouts(true, false, true, true, true, true);
+        // Args: compacting, permission_pending, subagent_pending, tools_pending, post_tool_waiting, thinking, got_first_content
+        let (timeout, max_idle) = calculate_timeouts(true, false, true, true, false, true, true);
         assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
         assert_eq!(max_idle, MAX_IDLE_COMPACTION);
     }
@@ -689,7 +717,7 @@ mod tests {
     #[test]
     fn timeout_subagent_takes_second_priority() {
         // Subagent pending should use long timeout when not compacting
-        let (timeout, max_idle) = calculate_timeouts(false, false, true, true, false, true);
+        let (timeout, max_idle) = calculate_timeouts(false, false, true, true, false, false, true);
         assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
         assert_eq!(max_idle, MAX_IDLE_SUBAGENT);
     }
@@ -697,23 +725,41 @@ mod tests {
     #[test]
     fn timeout_tools_pending_third_priority() {
         // Regular tools use medium-long timeout
-        let (timeout, max_idle) = calculate_timeouts(false, false, false, true, false, true);
+        let (timeout, max_idle) = calculate_timeouts(false, false, false, true, false, false, true);
         assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
         assert_eq!(max_idle, MAX_IDLE_TOOLS);
     }
 
     #[test]
+    fn timeout_post_tool_waiting_fourth_priority() {
+        // Post-tool waiting should use extended timeout (45s) between tools completing
+        // and Claude starting next turn
+        let (timeout, max_idle) =
+            calculate_timeouts(false, false, false, false, true, false, false);
+        assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
+        assert_eq!(max_idle, MAX_IDLE_POST_TOOL);
+
+        // Post-tool waiting should take priority over thinking and streaming
+        let (timeout, max_idle) =
+            calculate_timeouts(false, false, false, false, true, true, true);
+        assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
+        assert_eq!(max_idle, MAX_IDLE_POST_TOOL);
+    }
+
+    #[test]
     fn timeout_thinking_extends_streaming() {
         // Thinking mode should extend idle count but use streaming timeout
-        let (timeout, max_idle) = calculate_timeouts(false, false, false, false, true, true);
+        let (timeout, max_idle) =
+            calculate_timeouts(false, false, false, false, false, true, true);
         assert_eq!(timeout, TIMEOUT_STREAMING_MS);
         assert_eq!(max_idle, MAX_IDLE_THINKING);
     }
 
     #[test]
-    fn timeout_streaming_fifth_priority() {
-        // Streaming mode when no tools, compaction, or thinking
-        let (timeout, max_idle) = calculate_timeouts(false, false, false, false, false, true);
+    fn timeout_streaming_sixth_priority() {
+        // Streaming mode when no tools, compaction, post-tool, or thinking
+        let (timeout, max_idle) =
+            calculate_timeouts(false, false, false, false, false, false, true);
         assert_eq!(timeout, TIMEOUT_STREAMING_MS);
         assert_eq!(max_idle, MAX_IDLE_STREAMING);
     }
@@ -721,7 +767,8 @@ mod tests {
     #[test]
     fn timeout_waiting_lowest_priority() {
         // Waiting for first content - default state
-        let (timeout, max_idle) = calculate_timeouts(false, false, false, false, false, false);
+        let (timeout, max_idle) =
+            calculate_timeouts(false, false, false, false, false, false, false);
         assert_eq!(timeout, TIMEOUT_WAITING_MS);
         assert_eq!(max_idle, MAX_IDLE_INITIAL);
     }
@@ -733,7 +780,8 @@ mod tests {
     #[test]
     fn timeout_compaction_without_content() {
         // Compaction can happen before any content received
-        let (timeout, max_idle) = calculate_timeouts(true, false, false, false, false, false);
+        let (timeout, max_idle) =
+            calculate_timeouts(true, false, false, false, false, false, false);
         assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
         assert_eq!(max_idle, MAX_IDLE_COMPACTION);
     }
@@ -741,7 +789,8 @@ mod tests {
     #[test]
     fn timeout_subagent_without_content() {
         // Subagent can start before text content
-        let (timeout, max_idle) = calculate_timeouts(false, false, true, false, false, false);
+        let (timeout, max_idle) =
+            calculate_timeouts(false, false, true, false, false, false, false);
         assert_eq!(timeout, TIMEOUT_SUBAGENT_MS);
         assert_eq!(max_idle, MAX_IDLE_SUBAGENT);
     }
@@ -749,7 +798,8 @@ mod tests {
     #[test]
     fn timeout_tools_without_content() {
         // Tools can start before text content (e.g., planning mode)
-        let (timeout, max_idle) = calculate_timeouts(false, false, false, true, false, false);
+        let (timeout, max_idle) =
+            calculate_timeouts(false, false, false, true, false, false, false);
         assert_eq!(timeout, TIMEOUT_TOOL_EXEC_MS);
         assert_eq!(max_idle, MAX_IDLE_TOOLS);
     }
@@ -758,7 +808,8 @@ mod tests {
     fn timeout_thinking_without_content() {
         // Thinking can start before text content - should still use streaming timeout
         // to handle 10-20s pauses during extended thinking (15 * 2000ms = 30s)
-        let (timeout, max_idle) = calculate_timeouts(false, false, false, false, true, false);
+        let (timeout, max_idle) =
+            calculate_timeouts(false, false, false, false, false, true, false);
         assert_eq!(timeout, TIMEOUT_STREAMING_MS);
         assert_eq!(max_idle, MAX_IDLE_THINKING);
     }
@@ -818,6 +869,13 @@ mod tests {
         let tools_wait = MAX_IDLE_TOOLS as u64 * TIMEOUT_TOOL_EXEC_MS;
         assert!(tools_wait >= 120_000, "Tools should wait >= 2 minutes");
 
+        // Post-tool: 9 * 5000ms = 45 seconds (API processing after tools)
+        let post_tool_wait = MAX_IDLE_POST_TOOL as u64 * TIMEOUT_TOOL_EXEC_MS;
+        assert!(
+            post_tool_wait >= 30_000,
+            "Post-tool waiting needs >= 30 seconds for API processing"
+        );
+
         // Streaming: 3 * 2000ms = 6 seconds
         let streaming_wait = MAX_IDLE_STREAMING as u64 * TIMEOUT_STREAMING_MS;
         assert!(
@@ -846,7 +904,8 @@ mod tests {
 
     #[test]
     fn timeout_all_flags_false() {
-        let (timeout, max_idle) = calculate_timeouts(false, false, false, false, false, false);
+        let (timeout, max_idle) =
+            calculate_timeouts(false, false, false, false, false, false, false);
         assert_eq!(timeout, 500);
         assert_eq!(max_idle, 60);
     }
@@ -854,7 +913,7 @@ mod tests {
     #[test]
     fn timeout_all_flags_true() {
         // Compaction takes priority over everything
-        let (timeout, max_idle) = calculate_timeouts(true, true, true, true, true, true);
+        let (timeout, max_idle) = calculate_timeouts(true, true, true, true, true, true, true);
         assert_eq!(timeout, 10000);
         assert_eq!(max_idle, 30);
     }

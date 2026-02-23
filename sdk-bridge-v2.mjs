@@ -2288,15 +2288,30 @@ async function main() {
             break;
         }
       } catch (e) {
-        // Ignore parse errors
+        if (e instanceof SyntaxError) {
+          // Expected: non-JSON stdout lines from CLI
+        } else {
+          debugLog("LINE_HANDLER_ERROR", {
+            error: e.message,
+            stack: e.stack?.split('\n').slice(0, 3).join(' | '),
+            line: line.slice(0, 200)
+          });
+        }
       }
     });
 
-    // Handle stderr
+    // Handle stderr - only send error events for actual fatal errors
     claude.stderr.on("data", (data) => {
       const str = data.toString();
       debugLog("CLAUDE_STDERR", str.slice(0, 500));
-      if (str.includes("error") || str.includes("Error")) {
+      const trimmed = str.trim();
+      if (
+        trimmed.startsWith("Error:") ||
+        trimmed.startsWith("FATAL") ||
+        str.includes("panic") ||
+        str.includes("UnhandledPromiseRejection") ||
+        /^error:/im.test(trimmed)
+      ) {
         sendEvent("error", { message: str.slice(0, 500) });
       }
     });
