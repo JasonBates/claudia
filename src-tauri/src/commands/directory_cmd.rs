@@ -19,6 +19,36 @@ pub struct ClaudeCodeStatus {
     pub path: Option<String>,
 }
 
+/// Open a new Claudia window with the project picker.
+///
+/// Re-launches the current executable without any directory argument,
+/// so the new instance shows the project picker on startup.
+#[tauri::command]
+pub async fn open_new_window_with_picker() -> Result<(), String> {
+    cmd_debug_log("NEW_WINDOW", "open_new_window_with_picker called");
+
+    let exe_path =
+        std::env::current_exe().map_err(|e| format!("Failed to get executable path: {}", e))?;
+    cmd_debug_log("NEW_WINDOW", &format!("Current executable: {:?}", exe_path));
+
+    // Clear CLAUDIA_LAUNCH_DIR so the new instance doesn't think
+    // a directory was explicitly provided (which would skip the picker)
+    let result = Command::new(&exe_path)
+        .env_remove("CLAUDIA_LAUNCH_DIR")
+        .spawn();
+
+    match result {
+        Ok(_) => {
+            cmd_debug_log("NEW_WINDOW", "New window (with picker) spawned successfully");
+            Ok(())
+        }
+        Err(e) => {
+            cmd_debug_log("NEW_WINDOW", &format!("Failed to spawn new window: {}", e));
+            Err(format!("Failed to open new window: {}", e))
+        }
+    }
+}
+
 /// Open a new Claudia window with the specified directory
 ///
 /// Re-launches the current executable with the specified directory as an argument.
