@@ -106,6 +106,7 @@ export interface Message {
     | "divider"
     | "status"
     | "compaction"
+    | "compaction_done"
     | "cleared"
     | "background_task_running"
     | "background_task_complete";  // Optional styling variant

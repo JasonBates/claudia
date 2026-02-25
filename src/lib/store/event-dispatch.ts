@@ -130,11 +130,10 @@ export function handleStatus(event: NormalizedStatusEvent, ctx: EventContext): v
   if (event.isCompaction) {
     const preTokens = ctx.getCompactionPreTokens() || event.preTokens || 0;
     const postTokens = event.postTokens || 0;
-    const baseContext = ctx.getSessionInfo().baseContext || 0;
 
     ctx.dispatch({
       type: "COMPLETE_COMPACTION",
-      payload: { preTokens, postTokens, baseContext },
+      payload: { preTokens, postTokens },
     });
     return;
   }

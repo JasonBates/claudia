@@ -1023,19 +1023,19 @@ describe("conversationReducer", () => {
       expect(newState.messages[0]).toEqual({
         id: "compaction-1",
         role: "system",
-        content: "100k → ...",
+        content: "100k tokens",
         variant: "compaction",
       });
     });
 
-    it("COMPLETE_COMPACTION should update compaction message and reset state", () => {
+    it("COMPLETE_COMPACTION should switch variant to done and update context", () => {
       const state = {
         ...createInitialState(),
         messages: [
           {
             id: "compaction-1",
             role: "system" as const,
-            content: "100k → ...",
+            content: "100k tokens",
             variant: "compaction" as const,
           },
         ],
@@ -1053,81 +1053,19 @@ describe("conversationReducer", () => {
         payload: {
           preTokens: 100000,
           postTokens: 30000,
-          baseContext: 20000,
         },
       });
 
       expect(newState.compaction.preTokens).toBeNull();
       expect(newState.compaction.messageId).toBeNull();
       expect(newState.compaction.warningDismissed).toBe(false);
-      expect(newState.compaction.pendingUpdateMessageId).toBeNull(); // baseContext > 5000, no pending update
-      expect(newState.messages[0].content).toBe("100k → 50k");
-      expect(newState.session.info.totalContext).toBe(50000); // baseContext + postTokens
-    });
-
-    it("COMPLETE_COMPACTION should show pending update when baseContext is too low", () => {
-      const state = {
-        ...createInitialState(),
-        messages: [
-          {
-            id: "compaction-1",
-            role: "system" as const,
-            content: "31k → ...",
-            variant: "compaction" as const,
-          },
-        ],
-        compaction: {
-          preTokens: 31000,
-          messageId: "compaction-1",
-          warningDismissed: true,
-          pendingUpdateMessageId: null,
-          pendingPreTokens: null,
-        },
-      };
-
-      const newState = conversationReducer(state, {
-        type: "COMPLETE_COMPACTION",
-        payload: {
-          preTokens: 31000,
-          postTokens: 17000,
-          baseContext: 0, // Too low - likely missing cache data
-        },
-      });
-
-      expect(newState.compaction.pendingUpdateMessageId).toBe("compaction-1");
-      expect(newState.compaction.pendingPreTokens).toBe(31000);
-      expect(newState.messages[0].content).toBe("31k → ...");
-    });
-
-    it("UPDATE_SESSION_INFO should update compaction message when pending and totalContext received", () => {
-      const state = {
-        ...createInitialState(),
-        messages: [
-          {
-            id: "compaction-1",
-            role: "system" as const,
-            content: "31k → ...",
-            variant: "compaction" as const,
-          },
-        ],
-        compaction: {
-          preTokens: null,
-          messageId: null,
-          warningDismissed: false,
-          pendingUpdateMessageId: "compaction-1",
-          pendingPreTokens: 31000,
-        },
-      };
-
-      const newState = conversationReducer(state, {
-        type: "UPDATE_SESSION_INFO",
-        payload: { totalContext: 30000 }, // Real context from next API call
-      });
-
-      expect(newState.compaction.pendingUpdateMessageId).toBeNull();
-      expect(newState.compaction.pendingPreTokens).toBeNull();
-      expect(newState.messages[0].content).toBe("31k → 30k");
+      // Variant switches to compaction_done (stops spinner, shows complete icon)
+      expect(newState.messages[0].variant).toBe("compaction_done");
+      expect(newState.messages[0].content).toBe("100k tokens");
+      // Uses SDK postTokens as approximation for totalContext
       expect(newState.session.info.totalContext).toBe(30000);
+      // baseContext is reset since cache is invalidated after compaction
+      expect(newState.session.info.baseContext).toBe(0);
     });
   });
 

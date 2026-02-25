@@ -108,7 +108,7 @@ export type Action =
     }
   | {
       type: "COMPLETE_COMPACTION";
-      payload: { preTokens: number; postTokens: number; baseContext: number };
+      payload: { preTokens: number; postTokens: number };
     }
 
   // === Update Actions ===
@@ -334,11 +334,10 @@ export const actions = {
   }),
   completeCompaction: (
     preTokens: number,
-    postTokens: number,
-    baseContext: number
+    postTokens: number
   ): Action => ({
     type: "COMPLETE_COMPACTION",
-    payload: { preTokens, postTokens, baseContext },
+    payload: { preTokens, postTokens },
   }),
 
   // === Update Actions ===
