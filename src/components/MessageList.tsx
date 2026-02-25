@@ -195,13 +195,13 @@ const MessageList: Component<MessageListProps> = (props) => {
             </Show>
 
             <div class="message-body">
-              {/* Special rendering for compaction variant - looks like a tool block */}
-              <Show when={message.variant === "compaction"}>
-                <span class={`compaction-icon${message.content.endsWith('...') ? ' loading' : ''}`}>
-                  {message.content.endsWith('...') ? '◐' : '⚡'}
+              {/* Special rendering for compaction variants */}
+              <Show when={message.variant === "compaction" || message.variant === "compaction_done"}>
+                <span class={`compaction-icon${message.variant === "compaction" ? ' loading' : ''}`}>
+                  {message.variant === "compaction" ? '◐' : '⚡'}
                 </span>
                 <span class="compaction-label">
-                  {message.content.endsWith('...') ? 'compacting' : 'compacted'}
+                  {message.variant === "compaction" ? 'compacting' : 'compacted'}
                 </span>
                 <span class="compaction-tokens">{message.content}</span>
               </Show>
@@ -225,7 +225,7 @@ const MessageList: Component<MessageListProps> = (props) => {
               </Show>
 
               {/* Regular message content rendering */}
-              <Show when={!isBackgroundTaskVariant(message.variant) && message.variant !== "compaction" && message.variant !== "cleared"}>
+              <Show when={!isBackgroundTaskVariant(message.variant) && message.variant !== "compaction" && message.variant !== "compaction_done" && message.variant !== "cleared"}>
                 {/* Render ordered content blocks if present */}
                 <Show when={message.contentBlocks && message.contentBlocks.length > 0} fallback={
                   <>

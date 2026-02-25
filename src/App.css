@@ -879,12 +879,14 @@ body {
 }
 
 /* Compaction - styled like a collapsed tool block */
-.message-compaction {
+.message-compaction,
+.message-compaction_done {
   margin: 4px 0;
   padding: 0;
 }
 
-.message-compaction .message-body {
+.message-compaction .message-body,
+.message-compaction_done .message-body {
   background: rgba(133, 153, 0, 0.04);  /* Same green tint as tool-result */
   border: none;
   border-left: 1px solid var(--fg-muted);
@@ -897,22 +899,26 @@ body {
   color: var(--fg-muted);
 }
 
-.message-compaction .compaction-icon {
+.message-compaction .compaction-icon,
+.message-compaction_done .compaction-icon {
   font-size: 12px;
   opacity: 0.7;
 }
 
-.message-compaction .compaction-icon.loading {
+.message-compaction .compaction-icon.loading,
+.message-compaction_done .compaction-icon.loading {
   animation: spin 1s linear infinite;
 }
 
-.message-compaction .compaction-label {
+.message-compaction .compaction-label,
+.message-compaction_done .compaction-label {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
 
-.message-compaction .compaction-tokens {
+.message-compaction .compaction-tokens,
+.message-compaction_done .compaction-tokens {
   font-family: "SF Mono", monospace;
   color: var(--green);
   opacity: 0.8;

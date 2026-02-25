@@ -161,44 +161,31 @@ export function handleStatusEvent(
     const compactionMsg: Message = {
       id: msgId,
       role: "system",
-      content: `${preK}k → ...`,
+      content: `${preK}k tokens`,
       variant: "compaction",
     };
     deps.setMessages((prev) => [...prev, compactionMsg]);
     return;
   }
 
-  // Compaction completed - normalized event has consistent camelCase fields
+  // Compaction completed
   if (event.isCompaction) {
-    const preTokens = deps.getLastCompactionPreTokens() || event.preTokens;
-    const summaryTokens = event.postTokens;
-    const baseContext = deps.getSessionInfo().baseContext || 0;
-    const estimatedContext = baseContext + summaryTokens;
+    const postTokens = event.postTokens;
 
-    if (estimatedContext > 0) {
-      deps.setSessionInfo((prev) => ({
-        ...prev,
-        totalContext: estimatedContext,
-      }));
-    }
+    deps.setSessionInfo((prev) => ({
+      ...prev,
+      totalContext: postTokens > 0 ? postTokens : prev.totalContext,
+      baseContext: 0,
+    }));
 
-    const preK = Math.round(preTokens / 1000);
-    const postK = estimatedContext > 0 ? Math.round(estimatedContext / 1000) : "?";
-    const content = `${preK}k → ${postK}k`;
-
+    // Switch variant to compaction_done so spinner stops
     const existingMsgId = deps.getCompactionMessageId();
     if (existingMsgId) {
       deps.setMessages((prev) =>
-        prev.map((msg) => (msg.id === existingMsgId ? { ...msg, content } : msg))
+        prev.map((msg) =>
+          msg.id === existingMsgId ? { ...msg, variant: "compaction_done" as const } : msg
+        )
       );
-    } else {
-      const compactionMsg: Message = {
-        id: `compaction-${Date.now()}`,
-        role: "system",
-        content,
-        variant: "compaction",
-      };
-      deps.setMessages((prev) => [...prev, compactionMsg]);
     }
 
     deps.setLastCompactionPreTokens(null);

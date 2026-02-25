@@ -131,7 +131,6 @@ describe("Event Dispatch Functions", () => {
           payload: {
             preTokens: 100000,
             postTokens: 30000,
-            baseContext: 20000,
           },
         })
       );
