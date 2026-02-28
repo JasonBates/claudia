@@ -225,8 +225,13 @@ function processMarkdownWithTables(content: string): string {
         }
 
         // Parse the table
-        const parseRow = (row: string) =>
-          row.split('|').map(c => c.trim()).filter(c => c !== '');
+        const parseRow = (row: string) => {
+          const cells = row.split('|').map(c => c.trim());
+          // Remove leading/trailing empty strings from outer pipes, but preserve inner empty cells
+          if (cells.length > 0 && cells[0] === '') cells.shift();
+          if (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
+          return cells;
+        };
 
         const headerRow = parseRow(tableLines[0]);
         const dataRows = tableLines.slice(2).map(parseRow);
