@@ -46,10 +46,10 @@ const MAX_IDLE_INITIAL: u32 = 60;
 /// User may need significant time to review permission requests
 const MAX_IDLE_PERMISSION: u32 = 60;
 /// Max idle count while waiting for API to start next turn after tool completion
-/// (~45 seconds at 5s intervals)
+/// (~2 minutes at 5s intervals)
 /// After tools complete, Claude's API needs time to process results and start the next turn.
-/// This can take 10-30+ seconds for large contexts or complex tool outputs.
-const MAX_IDLE_POST_TOOL: u32 = 9;
+/// This can take 10-30+ seconds for large contexts, and background agents/tools can take even longer.
+const MAX_IDLE_POST_TOOL: u32 = 24;
 
 /// Calculate adaptive timeout and max idle count based on current state.
 ///
