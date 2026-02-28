@@ -716,15 +716,17 @@ function App() {
   });
 
   // Automatically open plan window when plan is ready AND we have a file path
+  // Also open when plan content is captured (Write tool) even without ExitPlanMode
   createEffect(() => {
     const ready = store.planReady();
     const planning = store.isPlanning();
     const filePath = store.planFilePath();
+    const content = store.planContent();
     const windowOpen = planWindowOpen();
 
-    console.log("[PLAN_AUTO_OPEN] State:", { ready, planning, filePath, windowOpen });
+    console.log("[PLAN_AUTO_OPEN] State:", { ready, planning, filePath, hasContent: !!content, windowOpen });
 
-    if (ready && planning && filePath && !windowOpen) {
+    if (planning && filePath && !windowOpen && (ready || content)) {
       console.log("[PLAN_AUTO_OPEN] Opening plan window...");
       openPlanWindow(filePath);
     }
