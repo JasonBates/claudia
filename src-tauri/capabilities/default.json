@@ -17,13 +17,16 @@
     "process:allow-exit",
     "process:allow-restart",
     "updater:default",
+    "fs:allow-read-text-file",
     "fs:allow-read",
     "fs:allow-watch",
     "dialog:default",
     {
       "identifier": "fs:scope",
       "allow": [
-        { "path": "$HOME/**" }
+        { "path": "$HOME/**" },
+        { "path": "$HOME/.claude/**" },
+        { "path": "$HOME/**/.claude/**" }
       ]
     }
   ]
