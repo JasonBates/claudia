@@ -115,17 +115,21 @@ impl Default for AppState {
     }
 }
 
-/// Debug logging helper for command handlers
-/// Gated behind CLAUDIA_DEBUG=1 environment variable
-pub(crate) fn cmd_debug_log(prefix: &str, msg: &str) {
+/// Check if debug logging is enabled (CLAUDIA_DEBUG=1).
+/// Use this to gate expensive format! calls before passing to cmd_debug_log.
+pub(crate) fn cmd_debug_enabled() -> bool {
     static DEBUG_ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    let enabled = *DEBUG_ENABLED.get_or_init(|| {
+    *DEBUG_ENABLED.get_or_init(|| {
         std::env::var("CLAUDIA_DEBUG")
             .map(|v| v == "1")
             .unwrap_or(false)
-    });
+    })
+}
 
-    if !enabled {
+/// Debug logging helper for command handlers
+/// Gated behind CLAUDIA_DEBUG=1 environment variable
+pub(crate) fn cmd_debug_log(prefix: &str, msg: &str) {
+    if !cmd_debug_enabled() {
         return;
     }
 

@@ -1248,8 +1248,9 @@ function App() {
       if (pendingResume) {
         console.log("[MOUNT] --resume flag detected, auto-resuming session:", pendingResume);
         await continueWithStartup();
-        // Auto-resume after the base session is established
-        setTimeout(() => handleResumeSession(pendingResume), 500);
+        // workingDir is set by startSession() inside continueWithStartup(),
+        // so we can resume immediately — no setTimeout needed.
+        await handleResumeSession(pendingResume);
       } else {
         console.log("[MOUNT] Explicit CLI directory provided, skipping picker");
         await continueWithStartup();

@@ -9,7 +9,7 @@ mod streaming;
 pub mod timeouts;
 pub mod warmup;
 
-use commands::{cmd_debug_log, AppState};
+use commands::{cmd_debug_enabled, cmd_debug_log, AppState};
 use tauri::Manager;
 use tauri_plugin_cli::CliExt;
 
@@ -30,14 +30,17 @@ pub fn run() {
     }
 
     builder.setup(|app| {
-            // Log raw args for diagnostics
-            cmd_debug_log("SETUP", &format!("Raw args: {:?}", std::env::args().collect::<Vec<_>>()));
+            if cmd_debug_enabled() {
+                cmd_debug_log("SETUP", &format!("Raw args: {:?}", std::env::args().collect::<Vec<_>>()));
+            }
 
             // Parse CLI arguments (with diagnostic logging instead of silent .ok())
             let cli_matches = match app.cli().matches() {
                 Ok(matches) => {
-                    cmd_debug_log("SETUP", &format!("CLI parsed OK: {:?}",
-                        matches.args.keys().collect::<Vec<_>>()));
+                    if cmd_debug_enabled() {
+                        cmd_debug_log("SETUP", &format!("CLI parsed OK: {:?}",
+                            matches.args.keys().collect::<Vec<_>>()));
+                    }
                     Some(matches)
                 }
                 Err(e) => {
@@ -60,7 +63,9 @@ pub fn run() {
                     .and_then(|arg| arg.value.as_str().map(|s| s.to_string()))
             });
 
-            cmd_debug_log("SETUP", &format!("CLI: dir={:?}, resume={:?}", cli_dir, cli_resume));
+            if cmd_debug_enabled() {
+                cmd_debug_log("SETUP", &format!("CLI: dir={:?}, resume={:?}", cli_dir, cli_resume));
+            }
 
             // Check for file-based launch intent (from recall skill or external tools).
             // This sidesteps macOS Launch Services not reliably passing CLI args to app bundles.
@@ -70,7 +75,9 @@ pub fn run() {
             let final_dir = cli_dir.or(file_dir);
             let final_resume = cli_resume.or(file_resume);
 
-            cmd_debug_log("SETUP", &format!("Final: dir={:?}, resume={:?}", final_dir, final_resume));
+            if cmd_debug_enabled() {
+                cmd_debug_log("SETUP", &format!("Final: dir={:?}, resume={:?}", final_dir, final_resume));
+            }
 
             // Create and manage AppState with CLI directory and optional resume session
             let state = AppState::new(final_dir, final_resume);
@@ -137,58 +144,104 @@ pub fn run() {
 
 /// Read and consume a pending launch intent file written by external tools (e.g. recall skill).
 ///
-/// The file at `~/.claudia/pending-launch.json` contains:
+/// Looks for files matching `~/.claudia/pending-launch-*.json` containing:
 ///   { "directory": "/path/to/project", "sessionId": "uuid", "timestamp": "iso8601" }
 ///
-/// The file is always deleted after reading (even on parse failure) to prevent stale launches.
+/// Uses uniquely-named files (with UUID suffix) to avoid race conditions when
+/// multiple launches fire in quick succession. Picks the freshest non-stale file,
+/// then cleans up all pending files to prevent accumulation.
+///
 /// Files older than 30 seconds are ignored as stale.
 fn read_pending_launch() -> (Option<String>, Option<String>) {
-    let path = match dirs::home_dir() {
-        Some(home) => home.join(".claudia").join("pending-launch.json"),
+    let claudia_dir = match dirs::home_dir() {
+        Some(home) => home.join(".claudia"),
         None => return (None, None),
     };
 
-    if !path.exists() {
+    if !claudia_dir.exists() {
         return (None, None);
     }
 
-    cmd_debug_log("SETUP", &format!("Found pending-launch.json at {:?}", path));
-
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(e) => {
-            cmd_debug_log("SETUP", &format!("Failed to read pending-launch.json: {}", e));
-            let _ = std::fs::remove_file(&path);
-            return (None, None);
-        }
+    // Collect all pending-launch-*.json files
+    let entries: Vec<_> = match std::fs::read_dir(&claudia_dir) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name();
+                let name = name.to_string_lossy();
+                name.starts_with("pending-launch-") && name.ends_with(".json")
+            })
+            .collect(),
+        Err(_) => return (None, None),
     };
 
-    // Always delete after reading
-    let _ = std::fs::remove_file(&path);
+    if entries.is_empty() {
+        return (None, None);
+    }
 
-    let json: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(e) => {
-            cmd_debug_log("SETUP", &format!("Failed to parse pending-launch.json: {}", e));
-            return (None, None);
+    if cmd_debug_enabled() {
+        cmd_debug_log("SETUP", &format!("Found {} pending-launch file(s)", entries.len()));
+    }
+
+    // Parse all files, pick the freshest non-stale one
+    let mut best: Option<(String, String, chrono::DateTime<chrono::FixedOffset>, std::path::PathBuf)> = None;
+    let now = chrono::Utc::now();
+
+    for entry in &entries {
+        let path = entry.path();
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let json: serde_json::Value = match serde_json::from_str(&content) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        // Check timestamp freshness
+        let ts_str = match json.get("timestamp").and_then(|v| v.as_str()) {
+            Some(ts) => ts,
+            None => continue,
+        };
+        let file_time = match chrono::DateTime::parse_from_rfc3339(ts_str) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let age = now.signed_duration_since(file_time);
+        if age.num_seconds() > 30 {
+            continue; // Stale
         }
-    };
 
-    // Reject stale files (older than 30 seconds)
-    if let Some(ts) = json.get("timestamp").and_then(|v| v.as_str()) {
-        if let Ok(file_time) = chrono::DateTime::parse_from_rfc3339(ts) {
-            let age = chrono::Utc::now().signed_duration_since(file_time);
-            if age.num_seconds() > 30 {
-                cmd_debug_log("SETUP", &format!("Ignoring stale pending-launch.json ({}s old)", age.num_seconds()));
-                return (None, None);
-            }
+        let dir = json.get("directory").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let session = json.get("sessionId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+        // Keep the freshest (most recent timestamp)
+        if best.as_ref().map_or(true, |(_, _, t, _)| file_time > *t) {
+            best = Some((dir, session, file_time, path.clone()));
         }
     }
 
-    let dir = json.get("directory").and_then(|v| v.as_str()).map(String::from);
-    let session = json.get("sessionId").and_then(|v| v.as_str()).map(String::from);
+    // Clean up ALL pending-launch files (consumed or stale)
+    for entry in &entries {
+        let _ = std::fs::remove_file(entry.path());
+    }
 
-    cmd_debug_log("SETUP", &format!("Pending launch: dir={:?}, session={:?}", dir, session));
-
-    (dir, session)
+    match best {
+        Some((dir, session, _, path)) => {
+            if cmd_debug_enabled() {
+                cmd_debug_log("SETUP", &format!("Using launch intent from {:?}: dir={:?}, session={:?}",
+                    path.file_name().unwrap_or_default(), dir, session));
+            }
+            let dir = if dir.is_empty() { None } else { Some(dir) };
+            let session = if session.is_empty() { None } else { Some(session) };
+            (dir, session)
+        }
+        None => {
+            if cmd_debug_enabled() {
+                cmd_debug_log("SETUP", "All pending-launch files were stale");
+            }
+            (None, None)
+        }
+    }
 }
