@@ -675,6 +675,7 @@ describe("conversationReducer", () => {
           isReady: true,
           needsRefresh: null,
           permissionRequestId: "req-123",
+          exitedThisSession: false,
         },
       };
 
