@@ -113,18 +113,28 @@ impl ClaudeSender {
         rust_debug_log("SENDER", "Sending interrupt signal");
 
         let interrupt_msg = r#"{"type":"interrupt"}"#;
-        self.stdin
-            .write_all(interrupt_msg.as_bytes())
-            .map_err(|e| {
-                rust_debug_log("SENDER", &format!("Write error: {}", e));
-                format!("Write error: {}", e)
-            })?;
-        self.stdin
-            .write_all(b"\n")
-            .map_err(|e| format!("Write error: {}", e))?;
-        self.stdin
-            .flush()
-            .map_err(|e| format!("Flush error: {}", e))?;
+        // Broken pipe (EPIPE) is expected here — the process may already be
+        // terminated, which is exactly the outcome we want from an interrupt.
+        if let Err(e) = self.stdin.write_all(interrupt_msg.as_bytes()) {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                rust_debug_log("SENDER", "Process already gone (broken pipe), interrupt successful");
+                return Ok(());
+            }
+            rust_debug_log("SENDER", &format!("Write error: {}", e));
+            return Err(format!("Write error: {}", e));
+        }
+        if let Err(e) = self.stdin.write_all(b"\n") {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                return Ok(());
+            }
+            return Err(format!("Write error: {}", e));
+        }
+        if let Err(e) = self.stdin.flush() {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                return Ok(());
+            }
+            return Err(format!("Flush error: {}", e));
+        }
 
         rust_debug_log("SENDER", "Interrupt sent");
         Ok(())
