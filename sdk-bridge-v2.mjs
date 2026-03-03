@@ -134,6 +134,9 @@ async function main() {
   let readySent = false;
   let isInterrupting = false;
   let pendingMessages = [];  // Queue messages during respawn
+  let isShuttingDown = false; // True when bridge is told to exit (quit command, SIGINT)
+  let respawnCount = 0;      // Rate-limit unexpected respawns
+  let respawnWindowStart = Date.now();
   let isWarmingUp = false;   // Suppress events during warmup
   let currentToolId = null;  // Track current tool ID for tool_result matching
   let currentToolName = null; // Track current tool name for subagent detection
@@ -2316,24 +2319,47 @@ async function main() {
       }
     });
 
-    // Handle Claude process exit - IMMEDIATELY respawn if interrupted
+    // Handle Claude process exit - always respawn unless shutting down
+    // Rate limiting (respawnCount/respawnWindowStart) prevents infinite loops
     claude.on("close", (code) => {
-      debugLog("CLAUDE_CLOSE", { code, isInterrupting, sessionId: currentSessionId });
+      debugLog("CLAUDE_CLOSE", { code, isInterrupting, isShuttingDown, sessionId: currentSessionId });
 
-      if (isInterrupting) {
-        // Interrupted - respawn immediately, resuming the same session
-        // This preserves conversation context after interrupt
-        const sessionToResume = currentSessionId;
-        debugLog("RESPAWN", `Respawning Claude with --resume ${sessionToResume?.slice(0,8)}...`);
-        sendEvent("interrupted", {});
-        setImmediate(() => {
-          spawnClaude(sessionToResume);
-        });
-      } else {
-        // Normal exit - close the bridge
+      if (isShuttingDown) {
         sendEvent("closed", { code });
         process.exit(code || 0);
+        return;
       }
+
+      const sessionToResume = currentSessionId;
+
+      if (isInterrupting) {
+        // Interrupted by user - respawn immediately, reset rate limit
+        respawnCount = 0;
+        debugLog("RESPAWN", `Respawning Claude with --resume ${sessionToResume?.slice(0,8)}... (interrupted)`);
+        sendEvent("interrupted", {});
+      } else {
+        // Unexpected exit - respawn with rate limiting
+        const now = Date.now();
+        if (now - respawnWindowStart > 30000) {
+          // Reset window every 30 seconds
+          respawnCount = 0;
+          respawnWindowStart = now;
+        }
+        respawnCount++;
+
+        if (respawnCount > 3) {
+          debugLog("RESPAWN", `Too many respawns (${respawnCount} in 30s), exiting bridge`);
+          sendEvent("closed", { code });
+          process.exit(code || 1);
+          return;
+        }
+
+        debugLog("RESPAWN", `Claude exited unexpectedly (code ${code}), respawning (${respawnCount}/3)...`);
+      }
+
+      setImmediate(() => {
+        spawnClaude(sessionToResume);
+      });
     });
 
     claude.on("error", (err) => {
@@ -2677,6 +2703,7 @@ async function main() {
         case "exit":
         case "quit":
           sendEvent("status", { message: "Exiting..." });
+          isShuttingDown = true;
           if (claude) claude.kill();
           process.exit(0);
           return;
@@ -2756,6 +2783,7 @@ async function main() {
   });
 
   process.on("SIGINT", () => {
+    isShuttingDown = true;
     if (claude) claude.kill();
     process.exit(0);
   });
