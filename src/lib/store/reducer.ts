@@ -462,6 +462,8 @@ export function conversationReducer(
         planning: {
           ...state.planning,
           isActive: action.payload,
+          // Explicit entry clears the exit flag so future auto-detect can work
+          ...(action.payload ? { exitedThisSession: false } : {}),
         },
       };
 
@@ -550,6 +552,7 @@ export function conversationReducer(
           isReady: false,
           needsRefresh: null,
           permissionRequestId: null,
+          exitedThisSession: true,
         },
       };
 

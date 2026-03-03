@@ -161,6 +161,8 @@ export interface ConversationState {
     needsRefresh: string | null;
     /** Permission request ID for ExitPlanMode (to send control_response) */
     permissionRequestId: string | null;
+    /** True after plan mode was explicitly exited this session (prevents Edit auto-reactivation) */
+    exitedThisSession: boolean;
   };
 
   // === Permissions ===
@@ -245,6 +247,7 @@ export function createInitialState(): ConversationState {
       isReady: false,
       needsRefresh: null,
       permissionRequestId: null,
+      exitedThisSession: false,
     },
     permission: {
       queue: [],

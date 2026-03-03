@@ -87,6 +87,8 @@ export interface StoreContextValue {
   planNeedsRefresh: () => string | null;
   /** Permission request ID for plan approval (to send control_response) */
   planPermissionRequestId: () => string | null;
+  /** Whether plan mode was explicitly exited this session */
+  planExitedThisSession: () => boolean;
   /** Pending permission request (first in queue, or null) */
   pendingPermission: () => PermissionRequest | null;
   /** Whether Bot mode is reviewing the current permission */
@@ -427,6 +429,7 @@ export const StoreProvider: ParentComponent = (props) => {
     planReady: () => state.planning.isReady,
     planNeedsRefresh: () => state.planning.needsRefresh,
     planPermissionRequestId: () => state.planning.permissionRequestId,
+    planExitedThisSession: () => state.planning.exitedThisSession,
     pendingPermission: () => {
       const first = state.permission.queue[0];
       return first ? first.request : null;

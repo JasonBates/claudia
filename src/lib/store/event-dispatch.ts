@@ -89,6 +89,9 @@ export interface EventContext {
   /** Check if planning mode is active */
   isPlanning: () => boolean;
 
+  /** Check if plan mode was explicitly exited this session */
+  wasPlanExited: () => boolean;
+
   /** Get pre-compaction token count */
   getCompactionPreTokens: () => number | null;
 
@@ -522,7 +525,8 @@ export function handleToolResult(event: NormalizedToolResultEvent, ctx: EventCon
       if (isMatchingPath || looksLikePlanFile) {
         console.log("[PLANNING] Plan file edited:", inputPath);
         // Activate planning mode if not already active (e.g., resumed session)
-        if (!isInPlanningMode) {
+        // Skip if plan mode was explicitly exited this session to prevent re-activation
+        if (!isInPlanningMode && !ctx.wasPlanExited()) {
           console.log("[PLANNING] Activating planning mode from Edit");
           ctx.dispatch({ type: "SET_PLANNING_ACTIVE", payload: true });
           // Add Planning tool block to show activity
@@ -568,6 +572,12 @@ export function handlePermissionRequest(
 
   // ExitPlanMode requires special handling - route to plan approval flow
   if (toolName === "ExitPlanMode") {
+    // If planning was already exited (e.g., user cancelled), auto-deny the late permission
+    if (!ctx.isPlanning()) {
+      console.log("[PERMISSION] ExitPlanMode arrived after planning exited, auto-denying, requestId:", requestId);
+      ctx.sendPermissionResponse(requestId, false, false);
+      return;
+    }
     console.log("[PERMISSION] ExitPlanMode - routing to plan approval, requestId:", requestId);
     ctx.dispatch({ type: "SET_PLAN_PERMISSION_REQUEST_ID", payload: requestId });
     ctx.dispatch({ type: "SET_PLAN_READY", payload: true });

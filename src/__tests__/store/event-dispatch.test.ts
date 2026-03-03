@@ -50,6 +50,7 @@ function createMockContext(overrides: Partial<EventContext> = {}): EventContext 
     getPlanFilePath: () => null,
     getPlanningToolId: () => null,
     isPlanning: () => false,
+    wasPlanExited: () => false,
     getCompactionPreTokens: () => null,
     getCompactionMessageId: () => null,
     getCurrentToolUses: () => [],
@@ -648,6 +649,7 @@ describe("Event Dispatch Functions", () => {
       const ctx = createMockContext({
         getCurrentMode: () => "auto",
         getPlanningToolId: () => "planning-123",
+        isPlanning: () => true,
       });
       const event: NormalizedEvent = {
         type: "permission_request",

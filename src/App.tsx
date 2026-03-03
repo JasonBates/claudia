@@ -404,6 +404,7 @@ function App() {
     getPlanFilePath: store.planFilePath,
     getPlanningToolId: store.planningToolId,
     isPlanning: store.isPlanning,
+    wasPlanExited: store.planExitedThisSession,
     getCompactionPreTokens: store.lastCompactionPreTokens,
     getCompactionMessageId: store.compactionMessageId,
     getCurrentToolUses: store.currentToolUses,
@@ -729,6 +730,22 @@ function App() {
     if (planning && filePath && !windowOpen && (ready || content)) {
       console.log("[PLAN_AUTO_OPEN] Opening plan window...");
       openPlanWindow(filePath);
+    }
+  });
+
+  // Handle plan window closed externally (user clicked X) while awaiting approval
+  createEffect(() => {
+    const planning = store.isPlanning();
+    const ready = store.planReady();
+    const windowOpen = planWindowOpen();
+    const requestId = store.planPermissionRequestId();
+
+    if (planning && ready && !windowOpen && requestId) {
+      console.log("[PLAN_CLOSE] Plan window closed externally, cancelling plan");
+      store.dispatch(actions.exitPlanning());
+      sendPermissionResponse(requestId, false, false).catch(err => {
+        console.error("[PLAN_CLOSE] Failed to send denial:", err);
+      });
     }
   });
 
