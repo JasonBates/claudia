@@ -34,6 +34,8 @@ Claude Code is powerful. The terminal is not where you want to live. Claudia wra
 </p>
 <p align="center"><em>Interactive questions with multiple choice options</em></p>
 
+> **Note:** Claudia is a personal project, provided as-is with no warranty or guaranteed support. Use at your own risk. Bug reports are welcome, but responses and fixes are best-effort.
+
 ## Why Claudia?
 
 Claude Code CLI is powerful but terminal-focused. Claudia gives you:
