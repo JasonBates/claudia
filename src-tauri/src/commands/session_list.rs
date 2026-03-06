@@ -50,6 +50,29 @@ fn get_claude_projects_dir() -> Result<PathBuf, String> {
         .map(|home| home.join(".claude").join("projects"))
 }
 
+fn validate_session_id(session_id: &str) -> Result<(), String> {
+    if session_id.is_empty() {
+        return Err("Session ID cannot be empty".to_string());
+    }
+
+    if session_id.len() > 128 {
+        return Err("Session ID is too long".to_string());
+    }
+
+    if session_id == "." || session_id == ".." {
+        return Err("Invalid session ID".to_string());
+    }
+
+    if !session_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err("Session ID contains invalid characters".to_string());
+    }
+
+    Ok(())
+}
+
 /// List sessions for a given working directory
 #[tauri::command]
 pub async fn list_sessions(working_dir: String) -> Result<Vec<SessionEntry>, String> {
@@ -282,6 +305,8 @@ pub async fn delete_session(session_id: String, working_dir: String) -> Result<(
 
 /// Synchronous implementation of session deletion
 fn delete_session_sync(session_id: &str, working_dir: &str) -> Result<(), String> {
+    validate_session_id(session_id)?;
+
     let projects_dir = get_claude_projects_dir()?;
     let project_dir_name = path_to_project_dir(working_dir);
     let project_dir = projects_dir.join(&project_dir_name);
@@ -381,6 +406,8 @@ fn get_session_history_sync(
     session_id: &str,
     working_dir: &str,
 ) -> Result<Vec<HistoryMessage>, String> {
+    validate_session_id(session_id)?;
+
     let projects_dir = get_claude_projects_dir()?;
     let project_dir_name = path_to_project_dir(working_dir);
     let session_file = projects_dir
@@ -520,5 +547,19 @@ mod tests {
             path_to_project_dir("/Users/alice/code/repos/claudia"),
             "-Users-alice-code-repos-claudia"
         );
+    }
+
+    #[test]
+    fn test_validate_session_id_accepts_safe_ids() {
+        assert!(validate_session_id("session-123").is_ok());
+        assert!(validate_session_id("session_123").is_ok());
+    }
+
+    #[test]
+    fn test_validate_session_id_rejects_path_traversal() {
+        assert!(validate_session_id("../session").is_err());
+        assert!(validate_session_id("..").is_err());
+        assert!(validate_session_id("session/123").is_err());
+        assert!(validate_session_id(r"session\123").is_err());
     }
 }
