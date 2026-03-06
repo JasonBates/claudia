@@ -1,4 +1,4 @@
-import { Component, createResource, Show, For, createMemo } from "solid-js";
+import { Component, createMemo, createResource, For, Show } from "solid-js";
 import { highlightCode } from "../lib/highlight";
 
 interface MessageContentProps {
@@ -11,14 +11,100 @@ interface ParsedBlock {
   lang?: string;
 }
 
+const calloutIcons: Record<string, string> = {
+  insight: "✎",
+  note: "✎",
+  tip: "💡",
+  info: "ℹ",
+  warning: "⚠",
+  danger: "⚠",
+  example: "→",
+  quote: "❝",
+  success: "✓",
+  question: "?",
+};
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function sanitizeHref(href: string): string {
+  const trimmed = href.trim();
+  if (!trimmed) return "#";
+
+  if (
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("./") ||
+    trimmed.startsWith("../") ||
+    trimmed.startsWith("?")
+  ) {
+    return trimmed;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    if (
+      url.protocol === "http:" ||
+      url.protocol === "https:" ||
+      url.protocol === "mailto:"
+    ) {
+      return trimmed;
+    }
+  } catch {
+    return "#";
+  }
+
+  return "#";
+}
+
+function renderInlineMarkdown(text: string): string {
+  const tokenRegex =
+    /\[([^\]]+)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*|__([^_]+)__|~~([^~]+)~~|\*([^*\n]+)\*|_([^_\n]+)_/g;
+
+  let html = "";
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenRegex.exec(text)) !== null) {
+    html += escapeHtml(text.slice(lastIndex, match.index));
+
+    if (match[1] !== undefined && match[2] !== undefined) {
+      const safeHref = escapeHtml(sanitizeHref(match[2]));
+      html += `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${renderInlineMarkdown(match[1])}</a>`;
+    } else if (match[3] !== undefined) {
+      html += `<code class="inline-code">${escapeHtml(match[3])}</code>`;
+    } else if (match[4] !== undefined) {
+      html += `<strong>${renderInlineMarkdown(match[4])}</strong>`;
+    } else if (match[5] !== undefined) {
+      html += `<strong>${renderInlineMarkdown(match[5])}</strong>`;
+    } else if (match[6] !== undefined) {
+      html += `<del>${renderInlineMarkdown(match[6])}</del>`;
+    } else if (match[7] !== undefined) {
+      html += `<em>${renderInlineMarkdown(match[7])}</em>`;
+    } else if (match[8] !== undefined) {
+      html += `<em>${renderInlineMarkdown(match[8])}</em>`;
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  html += escapeHtml(text.slice(lastIndex));
+  return html;
+}
+
 function parseMarkdown(content: string): ParsedBlock[] {
   const blocks: ParsedBlock[] = [];
   const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
   let lastIndex = 0;
-  let match;
+  let match: RegExpExecArray | null;
 
   while ((match = codeBlockRegex.exec(content)) !== null) {
-    // Text before code block
     if (match.index > lastIndex) {
       const text = content.slice(lastIndex, match.index);
       if (text.trim()) {
@@ -26,7 +112,6 @@ function parseMarkdown(content: string): ParsedBlock[] {
       }
     }
 
-    // Code block
     blocks.push({
       type: "code",
       lang: match[1] || "text",
@@ -36,7 +121,6 @@ function parseMarkdown(content: string): ParsedBlock[] {
     lastIndex = match.index + match[0].length;
   }
 
-  // Remaining text
   if (lastIndex < content.length) {
     const text = content.slice(lastIndex);
     if (text.trim()) {
@@ -65,258 +149,197 @@ const CodeBlock: Component<{ code: string; lang: string }> = (props) => {
   );
 };
 
-// Callout icons for different types
-const calloutIcons: Record<string, string> = {
-  insight: '✎',
-  note: '✎',
-  tip: '💡',
-  info: 'ℹ',
-  warning: '⚠',
-  danger: '⚠',
-  example: '→',
-  quote: '❝',
-  success: '✓',
-  question: '?',
-};
+function renderCallout(
+  type: string,
+  title: string,
+  lines: string[]
+): string {
+  const calloutType = calloutIcons[type] ? type : "note";
+  const icon = calloutIcons[calloutType];
+  const content = lines.map(renderInlineMarkdown).join("<br>");
 
-// Transform ★ Insight blocks (backtick-bordered) into Obsidian callout format
-function processInsightBlocks(content: string): string {
-  const lines = content.split('\n');
-  const result: string[] = [];
-  let i = 0;
+  return (
+    `<div class="callout callout-${calloutType}">` +
+    `<div class="callout-header"><span class="callout-icon">${icon}</span><span class="callout-title">${renderInlineMarkdown(title)}</span></div>` +
+    `<div class="callout-content">${content}</div>` +
+    `</div>`
+  );
+}
 
-  while (i < lines.length) {
+function renderTextBlock(content: string): string {
+  const lines = content.split("\n");
+  const parts: string[] = [];
+
+  const flushParagraph = (paragraphLines: string[]) => {
+    if (paragraphLines.length === 0) return;
+    parts.push(`<p>${paragraphLines.map(renderInlineMarkdown).join("<br>")}</p>`);
+    paragraphLines.length = 0;
+  };
+
+  const isTableSeparator = (line: string) =>
+    line.startsWith("|") && /^[\|\-:\s]+$/.test(line);
+
+  const parseTableRow = (row: string) => {
+    const cells = row.split("|").map((cell) => cell.trim());
+    if (cells[0] === "") cells.shift();
+    if (cells[cells.length - 1] === "") cells.pop();
+    return cells;
+  };
+
+  const paragraphLines: string[] = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
+    const trimmed = line.trim();
 
-    // Check for insight start: `★ Insight ───...`
-    const insightStartMatch = line.match(/^`★\s*Insight\s*─+`$/);
-    if (insightStartMatch) {
-      // Collect content until the closing border line
-      const contentLines: string[] = [];
-      let j = i + 1;
-
-      while (j < lines.length) {
-        const nextLine = lines[j];
-        // Check for closing border: `───...`
-        if (nextLine.match(/^`─+`$/)) {
-          j++; // Skip the closing border
-          break;
-        }
-        contentLines.push(nextLine);
-        j++;
-      }
-
-      // Convert to Obsidian callout format
-      result.push('> [!insight] Insight');
-      contentLines.forEach(cl => {
-        result.push(`> ${cl}`);
-      });
-
-      i = j;
+    if (!trimmed) {
+      flushParagraph(paragraphLines);
       continue;
     }
 
-    result.push(line);
-    i++;
-  }
+    if (/^`★\s*Insight\s*─+`$/.test(trimmed)) {
+      flushParagraph(paragraphLines);
+      const insightLines: string[] = [];
+      i += 1;
+      while (i < lines.length && !/^`─+`$/.test(lines[i].trim())) {
+        insightLines.push(lines[i]);
+        i += 1;
+      }
+      parts.push(renderCallout("insight", "Insight", insightLines));
+      continue;
+    }
 
-  return result.join('\n');
-}
-
-function processCallouts(content: string): string {
-  const lines = content.split('\n');
-  const result: string[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Check for callout start: > [!type] or > [!type] Title
     const calloutMatch = line.match(/^>\s*\[!(\w+)\]\s*(.*)$/i);
     if (calloutMatch) {
-      const calloutType = calloutMatch[1].toLowerCase();
-      const calloutTitle = calloutMatch[2] || calloutType.charAt(0).toUpperCase() + calloutType.slice(1);
-      const icon = calloutIcons[calloutType] || '✎';
-
-      // Collect all callout content lines
-      const contentLines: string[] = [];
+      flushParagraph(paragraphLines);
+      const calloutLines: string[] = [];
       let j = i + 1;
       while (j < lines.length) {
-        const nextLine = lines[j];
-        // Continue if line starts with > (callout continuation)
-        if (nextLine.match(/^>\s?(.*)$/)) {
-          const contentMatch = nextLine.match(/^>\s?(.*)$/);
-          contentLines.push(contentMatch ? contentMatch[1] : '');
-          j++;
-        } else {
-          break;
-        }
+        const match = lines[j].match(/^>\s?(.*)$/);
+        if (!match) break;
+        calloutLines.push(match[1]);
+        j += 1;
       }
 
-      // Build callout HTML
-      const calloutContent = contentLines.join('<br>');
-      result.push(
-        `<div class="callout callout-${calloutType}">` +
-        `<div class="callout-header"><span class="callout-icon">${icon}</span><span class="callout-title">${calloutTitle}</span></div>` +
-        `<div class="callout-content">${calloutContent}</div>` +
-        `</div>`
+      const title =
+        calloutMatch[2] ||
+        `${calloutMatch[1].charAt(0).toUpperCase()}${calloutMatch[1].slice(1)}`;
+      parts.push(renderCallout(calloutMatch[1].toLowerCase(), title, calloutLines));
+      i = j - 1;
+      continue;
+    }
+
+    if (trimmed.startsWith(">")) {
+      flushParagraph(paragraphLines);
+      const quoteLines: string[] = [trimmed.replace(/^>\s?/, "")];
+      let j = i + 1;
+      while (j < lines.length) {
+        const match = lines[j].trim().match(/^>\s?(.*)$/);
+        if (!match) break;
+        quoteLines.push(match[1]);
+        j += 1;
+      }
+      parts.push(
+        `<blockquote class="md-quote">${quoteLines
+          .map(renderInlineMarkdown)
+          .join("<br>")}</blockquote>`
       );
-
-      i = j;
+      i = j - 1;
       continue;
     }
 
-    // Check for regular blockquote (not a callout): > text
-    const blockquoteMatch = line.match(/^>\s?(.*)$/);
-    if (blockquoteMatch) {
-      // Collect all consecutive blockquote lines
-      const quoteLines: string[] = [blockquoteMatch[1]];
-      let j = i + 1;
-      while (j < lines.length) {
-        const nextLine = lines[j];
-        const nextMatch = nextLine.match(/^>\s?(.*)$/);
-        if (nextMatch) {
-          quoteLines.push(nextMatch[1]);
-          j++;
-        } else {
-          break;
-        }
-      }
-
-      // Build blockquote HTML
-      const quoteContent = quoteLines.join('<br>');
-      result.push(`<blockquote class="md-quote">${quoteContent}</blockquote>`);
-
-      i = j;
-      continue;
-    }
-
-    result.push(line);
-    i++;
-  }
-
-  return result.join('\n');
-}
-
-function processMarkdownWithTables(content: string): string {
-  // Transform ★ Insight blocks to Obsidian callout format first
-  content = processInsightBlocks(content);
-  // Then process callouts (including the transformed insight blocks)
-  content = processCallouts(content);
-
-  const lines = content.split('\n');
-  const result: string[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Check if this looks like the start of a table
-    if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
-      // Look ahead to see if next line is a separator
-      const nextLine = lines[i + 1]?.trim() || '';
-      if (nextLine.startsWith('|') && /^[\|\-:\s]+$/.test(nextLine)) {
-        // This is a table! Collect all table rows
-        const tableLines: string[] = [line];
-        let j = i + 1;
-        while (j < lines.length && lines[j].trim().startsWith('|')) {
-          tableLines.push(lines[j]);
-          j++;
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      const nextLine = lines[i + 1]?.trim() || "";
+      if (isTableSeparator(nextLine)) {
+        flushParagraph(paragraphLines);
+        const tableLines = [trimmed];
+        let j = i + 2;
+        while (j < lines.length) {
+          const tableLine = lines[j].trim();
+          if (!(tableLine.startsWith("|") && tableLine.endsWith("|"))) break;
+          tableLines.push(tableLine);
+          j += 1;
         }
 
-        // Parse the table
-        const parseRow = (row: string) => {
-          const cells = row.split('|').map(c => c.trim());
-          // Remove leading/trailing empty strings from outer pipes, but preserve inner empty cells
-          if (cells.length > 0 && cells[0] === '') cells.shift();
-          if (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
-          return cells;
-        };
+        const header = parseTableRow(tableLines[0]);
+        const rows = tableLines.slice(1).map(parseTableRow);
 
-        const headerRow = parseRow(tableLines[0]);
-        const dataRows = tableLines.slice(2).map(parseRow);
-
-        let html = '<table class="md-table"><thead><tr>';
-        headerRow.forEach(cell => { html += `<th>${cell}</th>`; });
-        html += '</tr></thead><tbody>';
-        dataRows.forEach(row => {
-          html += '<tr>';
-          row.forEach(cell => { html += `<td>${cell}</td>`; });
-          html += '</tr>';
-        });
-        html += '</tbody></table>';
-
-        result.push(html);
-        i = j;
+        const html =
+          `<table class="md-table"><thead><tr>${header
+            .map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`)
+            .join("")}</tr></thead><tbody>${rows
+            .map(
+              (row) =>
+                `<tr>${row
+                  .map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`)
+                  .join("")}</tr>`
+            )
+            .join("")}</tbody></table>`;
+        parts.push(html);
+        i = j - 1;
         continue;
       }
     }
 
-    result.push(line);
-    i++;
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph(paragraphLines);
+      const headingHtml = renderInlineMarkdown(headingMatch[2]);
+      if (headingMatch[1].length === 1) {
+        parts.push(`<h2 class="md-h1">${headingHtml}</h2>`);
+      } else if (headingMatch[1].length === 2) {
+        parts.push(`<h3 class="md-h2">${headingHtml}</h3>`);
+      } else {
+        parts.push(`<h4 class="md-h3">${headingHtml}</h4>`);
+      }
+      continue;
+    }
+
+    if (trimmed === "---") {
+      flushParagraph(paragraphLines);
+      parts.push('<hr class="md-hr">');
+      continue;
+    }
+
+    const taskMatch = line.match(/^- \[([ xX])\] (.+)$/);
+    if (taskMatch) {
+      flushParagraph(paragraphLines);
+      const done = taskMatch[1].toLowerCase() === "x";
+      parts.push(
+        `<div class="md-task${done ? " md-task-done" : ""}">${
+          done ? "✓" : "○"
+        } ${renderInlineMarkdown(taskMatch[2])}</div>`
+      );
+      continue;
+    }
+
+    const orderedMatch = line.match(/^(\d+)\. (.+)$/);
+    if (orderedMatch) {
+      flushParagraph(paragraphLines);
+      parts.push(
+        `<div class="md-li">${escapeHtml(orderedMatch[1])}. ${renderInlineMarkdown(
+          orderedMatch[2]
+        )}</div>`
+      );
+      continue;
+    }
+
+    const unorderedMatch = line.match(/^[-*] (.+)$/);
+    if (unorderedMatch) {
+      flushParagraph(paragraphLines);
+      parts.push(`<div class="md-li">• ${renderInlineMarkdown(unorderedMatch[1])}</div>`);
+      continue;
+    }
+
+    paragraphLines.push(line);
   }
 
-  return result.join('\n');
+  flushParagraph(paragraphLines);
+  return parts.join("");
 }
 
 const TextBlock: Component<{ content: string }> = (props) => {
-
-  const formattedContent = createMemo(() => {
-    // Process tables first (before other transformations)
-    let text = processMarkdownWithTables(props.content);
-
-    // Headers (must be at start of line)
-    text = text.replace(/^# (.+)$/gm, '<h2 class="md-h1">$1</h2>');
-    text = text.replace(/^## (.+)$/gm, '<h3 class="md-h2">$1</h3>');
-    text = text.replace(/^### (.+)$/gm, '<h4 class="md-h3">$1</h4>');
-
-    // Task lists
-    text = text.replace(/^- \[x\] (.+)$/gim, '<div class="md-task md-task-done">✓ $1</div>');
-    text = text.replace(/^- \[ \] (.+)$/gm, '<div class="md-task">○ $1</div>');
-
-    // Lists (unordered)
-    text = text.replace(/^- (.+)$/gm, '<div class="md-li">• $1</div>');
-    text = text.replace(/^\* (.+)$/gm, '<div class="md-li">• $1</div>');
-
-    // Lists (ordered)
-    text = text.replace(/^(\d+)\. (.+)$/gm, '<div class="md-li">$1. $2</div>');
-
-    // Horizontal rule
-    text = text.replace(/^---$/gm, '<hr class="md-hr">');
-
-    // Strikethrough
-    text = text.replace(/~~([^~]+)~~/g, '<del>$1</del>');
-
-    // Bold (** or __) - must come before italic
-    text = text.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    text = text.replace(/__([^_]+)__/g, "<strong>$1</strong>");
-
-    // Italic (* or _) - must come after bold
-    text = text.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-    text = text.replace(/ _([^_]+)_ /g, " <em>$1</em> ");
-    text = text.replace(/^_([^_]+)_$/gm, "<em>$1</em>");
-
-    // Inline code
-    text = text.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-
-    // Links
-    text = text.replace(
-      /\[([^\]]+)\]\(([^)]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener">$1</a>'
-    );
-
-    // Paragraph breaks (double newline) - add visual separation
-    text = text.replace(/\n\n+/g, '<div class="md-break"></div>');
-
-    // Single line breaks
-    text = text.replace(/\n/g, "<br>");
-
-    // Clean up breaks after block elements
-    text = text.replace(/(<\/(?:h[234]|div|blockquote|hr|table)>)(?:<br>|<div class="md-break"><\/div>)/g, '$1');
-
-    return text;
-  });
-
+  const formattedContent = createMemo(() => renderTextBlock(props.content));
   return <div class="text-block" innerHTML={formattedContent()} />;
 };
 
