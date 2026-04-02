@@ -35,6 +35,7 @@ import BotSettings from "./components/BotSettings";
 import UpdateBanner from "./components/UpdateBanner";
 import { ProjectPickerModal } from "./components/ProjectPickerModal";
 import ClaudeCodeInstallPrompt from "./components/ClaudeCodeInstallPrompt";
+import { openUrl, openPath } from "@tauri-apps/plugin-opener";
 import "./App.css";
 
 function App() {
@@ -1164,6 +1165,39 @@ function App() {
 
   onMount(async () => {
     console.log("[MOUNT] Starting session...");
+
+    // Intercept clicks on custom protocol links (e.g. obsidian://, file://)
+    // and local file paths, opening them via the OS instead of the webview
+    const CUSTOM_PROTOCOLS = ["obsidian:", "file:"];
+    const handleCustomProtocolClick = async (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const link = target.closest("a");
+      if (!link) return;
+      const href = link.getAttribute("href");
+      if (!href) return;
+
+      const isLocal = href.startsWith("/");
+      const isCustom = CUSTOM_PROTOCOLS.some((p) => href.startsWith(p));
+      if (!isLocal && !isCustom) return;
+
+      // Must prevent default AND stop propagation — target="_blank" on
+      // these links can cause Tauri's webview to navigate/reset
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      link.removeAttribute("target");
+
+      try {
+        if (isLocal) {
+          await openPath(href);
+        } else {
+          await openUrl(href);
+        }
+      } catch (err) {
+        console.error("[CLICK] Failed to open:", href, err);
+      }
+    };
+    document.addEventListener("click", handleCustomProtocolClick, true);
+    onCleanup(() => document.removeEventListener("click", handleCustomProtocolClick, true));
 
     // Load app version from Tauri
     try {

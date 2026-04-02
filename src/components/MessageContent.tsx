@@ -33,6 +33,14 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#039;");
 }
 
+const ALLOWED_PROTOCOLS = [
+  "http:",
+  "https:",
+  "mailto:",
+  "obsidian:",
+  "file:",
+];
+
 function sanitizeHref(href: string): string {
   const trimmed = href.trim();
   if (!trimmed) return "#";
@@ -49,11 +57,7 @@ function sanitizeHref(href: string): string {
 
   try {
     const url = new URL(trimmed);
-    if (
-      url.protocol === "http:" ||
-      url.protocol === "https:" ||
-      url.protocol === "mailto:"
-    ) {
+    if (ALLOWED_PROTOCOLS.includes(url.protocol)) {
       return trimmed;
     }
   } catch {
