@@ -1190,7 +1190,12 @@ function App() {
         if (isLocal) {
           await openPath(href);
         } else {
-          await openUrl(href);
+          // For obsidian:// links, open in a new tab if not already specified
+          let url = href;
+          if (url.startsWith("obsidian://") && !url.includes("paneType=")) {
+            url += (url.includes("?") ? "&" : "?") + "paneType=tab";
+          }
+          await openUrl(url);
         }
       } catch (err) {
         console.error("[CLICK] Failed to open:", href, err);
