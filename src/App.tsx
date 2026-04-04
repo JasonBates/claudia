@@ -1605,14 +1605,12 @@ function App() {
           availableFonts={settings.availableFonts}
           saveLocally={settings.saveLocally()}
           sandboxEnabled={settings.sandboxEnabled()}
-          extendedContext={settings.extendedContext()}
           onMarginChange={settings.setContentMargin}
           onFontChange={settings.setFontFamily}
           onFontSizeChange={settings.setFontSize}
           onColorSchemeChange={settings.setColorScheme}
           onSaveLocallyChange={settings.setSaveLocally}
           onSandboxEnabledChange={settings.setSandboxEnabled}
-          onExtendedContextChange={settings.setExtendedContext}
           onResetDefaults={settings.resetToDefaults}
           onClose={settings.closeSettings}
           currentVersion={appVersion()}

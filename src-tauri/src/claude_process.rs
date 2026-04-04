@@ -294,12 +294,6 @@ pub fn spawn_claude_process_with_resume(
         cmd.env("CLAUDIA_CLAUDE_BIN", claude_binary_path);
     }
 
-    // Pass extended context (1M) mode to bridge if enabled in config.
-    if config.extended_context {
-        rust_debug_log("SPAWN", "Extended context (1M) enabled");
-        cmd.env("CLAUDIA_EXTENDED_CONTEXT", "1");
-    }
-
     // Pass sandbox mode to bridge if enabled in config.
     if config.sandbox_enabled {
         rust_debug_log("SPAWN", "Sandbox mode enabled");

@@ -42,9 +42,6 @@ pub struct Config {
     // Optional explicit path to Node.js runtime used to launch bridge
     #[serde(default)]
     pub node_binary_path: Option<String>,
-    // Extended 1M context window (default: false, uses standard 200K)
-    #[serde(default)]
-    pub extended_context: bool,
     // Legacy file-based permission hook polling (disabled by default)
     #[serde(default = "default_legacy_permission_hook_polling")]
     pub legacy_permission_hook_polling: bool,

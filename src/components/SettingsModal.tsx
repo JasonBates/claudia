@@ -12,14 +12,12 @@ interface SettingsModalProps {
   availableFonts: FontOption[];
   saveLocally: boolean;
   sandboxEnabled: boolean;
-  extendedContext: boolean;
   onMarginChange: (margin: number) => void;
   onFontChange: (font: string) => void;
   onFontSizeChange: (size: number) => void;
   onColorSchemeChange: (scheme: string | null) => void;
   onSaveLocallyChange: (locally: boolean) => void;
   onSandboxEnabledChange: (enabled: boolean) => void;
-  onExtendedContextChange: (enabled: boolean) => void;
   onResetDefaults: () => void;
   onClose: () => void;
   // Update props
@@ -273,22 +271,6 @@ const SettingsModal: Component<SettingsModalProps> = (props) => {
                 </div>
               </>
             )}
-          </div>
-
-          {/* Extended Context Section */}
-          <div class="settings-section">
-            <label class="settings-label">Extended Context</label>
-            <p class="settings-hint">
-              Increases the context window from 200K to 1M tokens. Uses more memory and may increase costs. Takes effect on next session. Use /1m to switch mid-session.
-            </p>
-            <label class="settings-checkbox">
-              <input
-                type="checkbox"
-                checked={props.extendedContext}
-                onChange={(e) => props.onExtendedContextChange(e.currentTarget.checked)}
-              />
-              Enable 1M context window
-            </label>
           </div>
 
           {/* Sandbox Section */}

@@ -138,7 +138,7 @@ async function main() {
   let respawnCount = 0;      // Rate-limit unexpected respawns
   let respawnWindowStart = Date.now();
   let isWarmingUp = false;   // Suppress events during warmup
-  let extended1mEnabled = process.env.CLAUDIA_EXTENDED_CONTEXT === "1"; // Track 1M context window toggle
+  let extended1mEnabled = false; // Track 1M context window toggle (via /1m command)
   let currentToolId = null;  // Track current tool ID for tool_result matching
   let currentToolName = null; // Track current tool name for subagent detection
 
@@ -196,8 +196,7 @@ async function main() {
 
   // Build Claude args - optionally resume a session
   function buildClaudeArgs(resumeSessionId = null) {
-    const baseModel = (process.env.CLAUDIA_MODEL || "").trim() || "opus";
-    const model = extended1mEnabled ? `${baseModel.replace(/\[1m\]$/i, "")}[1m]` : baseModel;
+    const model = (process.env.CLAUDIA_MODEL || "").trim() || "opus";
     const settings = { alwaysThinkingEnabled: true };
 
     // Enable SDK sandbox when CLAUDIA_SANDBOX is set
