@@ -166,7 +166,8 @@ async function main() {
   // The CLI holds the result message while bg agents are running, causing a 6+ second
   // streaming timeout delay. By sending done on message_stop, we unblock the user immediately.
   let lastStopReason = null;        // stop_reason from most recent message_delta
-  let pendingCliResultAcks = [];    // Timestamps of late CLI result messages to suppress (sent early done)
+  let pendingCliResultAcks = [];    // {turnId, createdAt} entries for late CLI result suppression
+  let currentTurnId = 0;            // Incremented on each new user message to scope ack matching
 
   // Buffer limits to prevent unbounded memory growth
   const MAX_TASK_INPUT_SIZE = 1024 * 1024;  // 1MB limit for task input buffer
@@ -395,8 +396,8 @@ async function main() {
     const hasPendingBackground = activeSubagents.size > 0 || completedBgAgents.size > 0;
     const ttlMs = hasPendingBackground ? PENDING_CLI_RESULT_BG_TTL_MS : PENDING_CLI_RESULT_TTL_MS;
     const before = pendingCliResultAcks.length;
-    pendingCliResultAcks = pendingCliResultAcks.filter((createdAt) =>
-      now - createdAt <= ttlMs
+    pendingCliResultAcks = pendingCliResultAcks.filter((entry) =>
+      now - entry.createdAt <= ttlMs
     );
     if (pendingCliResultAcks.length !== before) {
       debugLog("PENDING_CLI_RESULT_ACKS_PRUNED", {
@@ -410,7 +411,7 @@ async function main() {
 
   function enqueuePendingCliResultAck() {
     prunePendingCliResultAcks();
-    pendingCliResultAcks.push(Date.now());
+    pendingCliResultAcks.push({ turnId: currentTurnId, createdAt: Date.now() });
     while (pendingCliResultAcks.length > MAX_PENDING_CLI_RESULT_ACKS) {
       pendingCliResultAcks.shift();
     }
@@ -419,8 +420,10 @@ async function main() {
 
   function consumePendingCliResultAck() {
     prunePendingCliResultAcks();
-    if (pendingCliResultAcks.length === 0) return false;
-    pendingCliResultAcks.shift();
+    // Only consume acks from a previous turn — never suppress the current turn's result
+    const idx = pendingCliResultAcks.findIndex(entry => entry.turnId < currentTurnId);
+    if (idx === -1) return false;
+    pendingCliResultAcks.splice(idx, 1);
     return true;
   }
 
@@ -2115,10 +2118,15 @@ async function main() {
             break;
 
           case "tool_result":
-            // Standalone tool result - tool completed successfully
-            // Use tool_use_id from message if available (more reliable for parallel tools)
-            const completedToolId = msg.tool_use_id || currentToolId;
+            // Standalone tool result - tool completed successfully.
+            // Never fall back to currentToolId — in parallel tool runs it may
+            // point to a different tool, causing mis-attribution.
+            const completedToolId = msg.tool_use_id;
             debugLog("TOOL_RESULT_STANDALONE", { msgToolUseId: msg.tool_use_id, currentToolId, completedToolId });
+            if (!completedToolId) {
+              debugLog("TOOL_RESULT_NO_ID_DROPPED", { currentToolId, content: (msg.content || "").slice(0, 200) });
+              break;
+            }
 
             // Check if this completes a subagent (Task tool)
             if (activeSubagents.has(completedToolId)) {
@@ -2442,6 +2450,7 @@ async function main() {
     // events from background agents are still correlated correctly.
     mainResultSent = false;
     lastStopReason = null;
+    currentTurnId++;  // Scope acks — stale entries from prior turns can't suppress this turn's result
 
     const msg = JSON.stringify({
       type: "user",
