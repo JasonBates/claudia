@@ -228,6 +228,7 @@ async function main() {
       "--permission-prompt-tool", "stdio",
       "--permission-mode", "default",
       "--settings", JSON.stringify(settings),
+      "--thinking-display", "summarized",
       "--append-system-prompt", `User's timezone: ${userTimezone}`
     ];
 
