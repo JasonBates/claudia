@@ -1982,6 +1982,18 @@ async function main() {
             // After main result is sent, Claude may continue emitting extra synthesis text
             // while background tasks complete. Keep processing stream events for internal
             // state tracking, but optionally suppress user-visible deltas.
+            //
+            // When the CLI synthesizes bg agent results into a follow-up turn, it
+            // emits a fresh message_start. Reset turn-local flags so the new message
+            // renders instead of being eaten by the post-main-result suppression gate.
+            if (msg.event?.type === "message_start" && mainResultSent) {
+              debugLog("CLI_FOLLOWUP_TURN", {
+                completedBgAgents: completedBgAgents.size,
+                activeSubagents: activeSubagents.size,
+              });
+              mainResultSent = false;
+              lastStopReason = null;
+            }
             handleStreamEvent(
               msg.event,
               msg.session_id,

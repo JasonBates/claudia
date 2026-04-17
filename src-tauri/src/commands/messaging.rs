@@ -664,22 +664,25 @@ pub async fn send_message(
                 }; // Lock released here (RAII)
 
                 if let Some(event) = event {
-                    // Only forward subagent-related events from the background pump.
-                    // Other events (Done, TextDelta, Result, etc.) could interfere
-                    // with a new request the user has started since the main loop ended.
-                    if matches!(
-                        &event,
-                        ClaudeEvent::SubagentEnd { .. }
-                            | ClaudeEvent::SubagentProgress { .. }
-                            | ClaudeEvent::SubagentStart { .. }
-                            | ClaudeEvent::BgTaskRegistered { .. }
-                            | ClaudeEvent::BgTaskCompleted { .. }
-                            | ClaudeEvent::BgTaskResult { .. }
-                    ) {
-                        cmd_debug_log("PUMP", &format!("Forwarding bg event: {:?}", event));
-                        let _ = pump_app.emit("claude-bg-event", &event);
+                    // Forward every pump event EXCEPT Result. The bridge emits
+                    // both an early `done` (on message_stop) and a late CLI
+                    // `result` for the same turn — the main loop breaks on
+                    // `done`, so `result` arrives via the pump. Forwarding it
+                    // triggers a second FINISH_STREAMING in the frontend whose
+                    // fallbackContent creates a partial duplicate bubble.
+                    //
+                    // Every other event is safe: bg-task/subagent lifecycle is
+                    // intentional pump traffic, and the CLI's follow-up turn
+                    // after bg agents return (text_delta, block_end, done,
+                    // etc.) needs to flow through so the synthesized response
+                    // renders. A second `done` in the pump is a no-op —
+                    // FINISH_STREAMING on empty streaming state creates no
+                    // new message.
+                    if matches!(&event, ClaudeEvent::Result { .. }) {
+                        cmd_debug_log("PUMP", &format!("Dropping Result (dup guard): {:?}", event));
                     } else {
-                        cmd_debug_log("PUMP", &format!("Filtering out non-subagent bg event: {:?}", event));
+                        cmd_debug_log("PUMP", &format!("Forwarding event: {:?}", event));
+                        let _ = pump_app.emit("claude-bg-event", &event);
                     }
                 }
             }
